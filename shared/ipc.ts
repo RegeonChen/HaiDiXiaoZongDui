@@ -14,7 +14,7 @@
 import type {
   Feed, FeedCreateInput, FeedUpdateInput,
   Article, ArticleFilter,
-  Tag, TagCreateInput, TagUpdateInput, TagSuggestion,
+  Tag, TagCreateInput, TagUpdateInput,
   Note, NoteCreateInput, NoteUpdateInput,
   Digest, DigestCreateInput, ExportFormat,
   Topic, TopicCreateInput, TopicUpdateInput,
