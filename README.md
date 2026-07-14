@@ -8,6 +8,7 @@
 .
 ├── electron/              # 主进程 + preload
 │   ├── main/index.ts
+│   ├── main/services/content-pipeline/ # Feed、同步、清洗、OPML
 │   └── preload/index.ts
 ├── src/                   # 渲染进程（React）
 │   ├── App.tsx
@@ -35,6 +36,8 @@
 | `npm run build` | 打包 main / preload / renderer 三段产物到 `out/` |
 | `npm run preview` | 预览构建后的产物 |
 | `npm run typecheck` | 同时校验 Node 与 Web 两侧的 TypeScript |
+| `npm test` | 运行离线单元测试和本地 HTTP 集成测试 |
+| `npm run test:real-feeds` | 验证 NASA RSS、Mozilla Atom 和 JSON Feed 官方源 |
 | `npm run smoke` | 跑 Task 1.1 验收脚本（无头环境也能验证窗口 + IPC + 进程隔离） |
 
 ## 国内装依赖
@@ -68,3 +71,16 @@ SMOKE_REPORT_PASS
 含义：
 - `isolation` 四项全 false：Renderer 拿不到 `require` / `process` / `module` / `Buffer`
 - `ipc.ok: true`：preload 桥接成功，主进程 handler 返回了 `IpcResult<AppSettings>`
+
+## Task 2.2 内容管线
+
+内容管线位于 `electron/main/services/content-pipeline/`，只在 Main 进程运行：
+
+- RSS、Atom、JSON Feed 解析为统一文章结构；
+- HTTP 超时、有限重试、状态码和响应大小限制；
+- Readability 正文提取、HTML 白名单清洗和 GFM Markdown 转换；
+- 单个/全部订阅源的手动同步与进度；
+- OPML 分组、去重、导入和原子导出；
+- 通过 `FeedSyncStore`、`OpmlFeedStore` 与 Task 2.3 数据库模块连接。
+
+在数据库实现两个 Store 接口前，Main 不会注册同步和 OPML IPC；详细交接方式见该模块的 README。
