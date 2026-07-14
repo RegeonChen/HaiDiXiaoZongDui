@@ -32,6 +32,8 @@
 
 包管理器、具体依赖版本、UI 组件库、测试框架和构建工具尚未最终确定。项目脚手架通过验收后，应在此记录正式选择。
 
+- SQLite 驱动：**sql.js**（1.14.1，WASM 版本），无需 node-gyp / Visual Studio C++ 编译，跨平台兼容性好。数据库为内存态 + 磁盘持久化模式。
+
 ## 核心功能
 
 - RSS、Atom、JSON Feed 和 OPML 解析
@@ -92,9 +94,18 @@
 - `INIT.md` 已定义产品范围、功能要求、技术方向和约束。
 - `PLAN.md` 已定义五个开发阶段和张晨阳/张宇凡/陈冠中的职责分工。
 - `shared/types.ts` 和 `shared/ipc.ts` 已建立（Task 1.2 完成），定义了核心领域类型和 IPC 通道协议。
-- **Task 1.1（Application Scaffold）已完成**：Electron 31 + electron-vite + React 18 + TypeScript strict，main/preload/renderer 三段式构建，预加载脚本强制 CJS（sandbox 兼容），安全基线 `contextIsolation + sandbox + nodeIntegration: false` 已通过无头烟雾测试验证（`npm run smoke`）。
-- 应用模块、数据库 Schema、自动化测试和跨平台构建均尚未建立。
-- 当前活动里程碑：Phase 1 - Project Foundation，Task 1.1 验收已通过，等待进入 Phase 2。
+- **Task 1.1（Application Scaffold）已完成**：Electron 31 + electron-vite + React 18 + TypeScript strict，main/preload/renderer 三段式构建。
+- **Task 2.3（Local Database）进行中**：
+  - **2.3.1 完成**：SQLite 驱动选型 `sql.js`（WASM 版本，无需 node-gyp 原生编译），已安装 `sql.js` + `@types/sql.js`。
+  - **2.3.2 完成**：`electron/main/db/connection.ts` — 单例连接管理，数据库文件 `{userData}/juhe-shivi.db`，启动时自动加载/创建，每次写操作后存盘，will-quit 时优雅关闭，WAL 模式 + foreign_keys ON。
+  - **2.3.3 完成**：`electron/main/db/migration.ts` — 版本化迁移机制（db_version 表驱动），v1 定义 feeds 表（url 索引）、articles 表（guid UNIQUE 索引保证去重 + feed/published 复合索引 + is_read/is_starred 索引），已接入主进程 `initDatabase()` 之后自动执行。
+  - **2.3.4 完成**：`electron/main/db/feed-repository.ts` — FeedRepository，实现 list/getById/create/update/delete/recordSync/findByUrl，url 去重忽略末尾 / 和 www. 前缀，幂等创建。
+  - **2.3.5 完成**：`electron/main/db/article-repository.ts` — ArticleRepository，实现 list（分页+筛选）、getById、insertBatch（INSERT OR IGNORE 走 guid 唯一索引导入去重）、markRead/markStarred/batchMarkRead、getExistingGuidsForFeed。
+  - **2.3.6 完成**：同步状态记录已内置在 `FeedRepository.recordSync()`（更新 feeds 表的 lastSyncAt/lastSyncSuccess/lastSyncError），通过 `sync:feed` IPC 通道即可调用。
+  - **2.3.7 完成**：IPC handler 全部注册 — feed:*（5 个通道）、article:*（5 个通道）、sync:*（3 个占位通道，`sync:feed` 已对接 recordSync）、settings:*（2 个通道）。preload 升级为类型安全的 `invoke<>` 封装，暴露 `window.api.feed./article./sync./settings.` 方法。
+  - **2.3.8 完成**：`scripts/smoke-2.3.cjs` 验证脚本，通过 `npm run smoke:db` 运行。验证项：createFeed / listFeeds / dupFeed (幂等) / getFeed / listArticlesEmpty / settings / updateFeed / deleteFeed — 全部 8 项通过。
+- **Task 2.3（Local Database）已完成。**
+- 当前活动里程碑：Phase 2 - Core Reading Workflow（Task 2.1 / 2.2 / 2.3 并行开发中）。
 
 ## 设计决策
 
@@ -126,6 +137,17 @@
   - IPC 风格：Main handler 直接返回 `IpcResult<T>`，preload 透传 `IpcResponse<C>`，Renderer 端通过 `window.api.*` 访问
   - 提供 `scripts/smoke-1.1.cjs` 无头烟雾测试：起 Electron、加载 production 产物、注入 JS 探测 `require/process/module/Buffer` 是否泄漏、走一次 `settings.get` IPC 校验主进程 handler，headless 环境也能验收
   - 修了 `shared/ipc.ts` 的一个 dead import（`TagSuggestion`），**未改动任何类型或通道定义**
+- **2026-07-14**：Task 2.3.2-2.3.5 完成（数据库 Schema + Repository 层）：
+  - Schema v1：`feeds`（url 索引）、`articles`（guid UNIQUE 索引 + feed/published 复合索引 + is_read/is_starred 索引），`db_version` 版本化迁移
+  - FeedRepository：幂等 create（url 去重忽略末尾 / 和 www.），完整 CRUD + recordSync
+  - ArticleRepository：分页查询 + 筛选（feedId/isRead/isStarred/search）+ insertBatch（INSERT OR IGNORE 基于 guid 唯一索引去重）+ 已读/星标读写
+  - 设计决策：`better-sqlite3` 因需要 Visual Studio C++ 编译且环境探测失败而放弃，改为 `sql.js`（WASM），纯 JavaScript 跨平台零编译
+  - 数据库持久化模式：内存态操作 + 每次写后 `.export()` 到磁盘，`will-quit` 时最后存盘
+- **2026-07-14**：Task 2.3.6-2.3.8 完成（IPC handler + 验证）：
+  - 注册了 15 个 IPC handler：feed CRUD（5 个）、article 查询+状态（5 个）、sync 占位（3 个）、settings（2 个）
+  - 所有 handler 统一 `ok<T>()` / `fail()` 返回 `IpcResult<T>`，含入参校验
+  - preload 从手动枚举升级为 `invoke<C>(channel, args)` / `invokeVoid<C>(channel)` 泛型封装
+  - `npm run smoke:db` 无头烟雾测试全 8 项通过（创建/列表/去重/获取/更新/删除/文章/设置）
 - 具体实现选择应在项目脚手架和共享协议建立后再补充记录。
 
 ## 路线图
@@ -141,7 +163,6 @@
 ## 已知问题
 
 - UI 组件库、单元/E2E 测试框架、CI 流水线、跨平台打包工具（electron-builder / electron-forge）尚未确定。
-- SQLite Schema 和迁移工具尚未确定。
 - Feed 解析、Readability、HTML 安全清洗和 Markdown 转换使用的具体依赖尚未确定。
 - 不同 OpenAI-compatible Provider 在 Endpoint、流式响应和用量信息方面可能存在差异，需要进行兼容性测试。
 - 专题匹配和相似报道分组的实现方案尚未确定。
