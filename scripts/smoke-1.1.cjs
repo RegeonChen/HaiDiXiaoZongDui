@@ -13,6 +13,7 @@
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 
 const root = path.resolve(__dirname, '..');
 const electron = require(path.join(root, 'node_modules', 'electron'));
@@ -28,12 +29,15 @@ if (!fs.existsSync(electron)) {
   process.exit(2);
 }
 
+const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'juhe-shivi-smoke-1.1-'));
+
 // 临时覆盖 main 进程入口的 window load 后行为
 // 我们用 ELECTRON_DISABLE_GPU / ELECTRON_RUN_AS_NODE=0 直接跑 .js
 const env = {
   ...process.env,
   ELECTRON_DISABLE_GPU: '1',
-  JUHE_SHIVI_SMOKE: '1'
+  JUHE_SHIVI_SMOKE: '1',
+  JUHE_SHIVI_USER_DATA: temporaryDirectory
 };
 
 // 启动 electron
@@ -45,6 +49,7 @@ const child = spawn(electron, [mainEntry, '--no-sandbox', '--disable-gpu'], {
 
 let stdout = '';
 let stderr = '';
+let finished = false;
 child.stdout.on('data', (b) => { stdout += b.toString(); process.stdout.write(b); });
 child.stderr.on('data', (b) => { stderr += b.toString(); process.stderr.write(b); });
 
@@ -62,9 +67,22 @@ child.on('exit', (code, signal) => {
   const ok = /SMOKE_REPORT_PASS/.test(stdout);
   if (ok) {
     console.log('[smoke] ✓ 全部验证项通过');
-    process.exit(0);
+    finish(0);
   } else {
     console.error('[smoke] ✗ 验证失败，未见 SMOKE_REPORT_PASS');
-    process.exit(1);
+    finish(1);
   }
 });
+
+child.on('error', (error) => {
+  clearTimeout(timer);
+  console.error(`[smoke] Electron 启动失败：${String(error)}`);
+  finish(1);
+});
+
+function finish(exitCode) {
+  if (finished) return;
+  finished = true;
+  fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  process.exitCode = exitCode;
+}
