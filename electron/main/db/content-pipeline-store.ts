@@ -69,16 +69,33 @@ export class SqliteContentPipelineStore implements
 
       for (const article of output.articles) {
         const existingRows = db.exec(
-          'SELECT id FROM articles WHERE feed_id = ? AND guid = ? LIMIT 1',
+          `SELECT id, url, raw_html AS rawHtml, raw_text AS rawText
+           FROM articles WHERE feed_id = ? AND guid = ? LIMIT 1`,
           [output.feedId, article.guid]
         );
-        const existingId = existingRows[0]?.values[0]?.[0];
+        const existingResult = existingRows[0];
+        const existingValues = existingResult?.values[0];
+        const existing = existingResult && existingValues
+          ? rowToRecord(existingResult.columns, existingValues)
+          : null;
+        const existingId = existing?.id;
 
-        if (typeof existingId === 'string') {
+        if (existing && typeof existingId === 'string') {
+          const contentInputChanged =
+            existing.url !== article.url ||
+            existing.rawHtml !== article.rawHtml ||
+            nullableString(existing.rawText) !== article.rawText;
+          const cacheInvalidation = contentInputChanged
+            ? `, source_html = NULL, source_kind = NULL,
+                 content_title = NULL, content_byline = NULL, content_excerpt = NULL,
+                 cleaned_html = NULL, cleaned_markdown = NULL,
+                 cleaning_status = 'pending', cleaning_error = NULL`
+            : '';
+
           db.run(
             `UPDATE articles
              SET title = ?, url = ?, author = ?, published_at = ?, fetched_at = ?,
-                 raw_html = ?, raw_text = ?, updated_at = ?
+                 raw_html = ?, raw_text = ?, updated_at = ?${cacheInvalidation}
              WHERE id = ?`,
             [
               article.title,

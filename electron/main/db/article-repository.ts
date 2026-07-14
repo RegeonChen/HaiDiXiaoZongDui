@@ -152,29 +152,36 @@ export const ArticleRepository = {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    for (const a of articles) {
-      db.run(stmt, [
-        a.id || uid(),
-        a.feedId,
-        a.title,
-        a.url,
-        a.author ?? null,
-        a.publishedAt ?? null,
-        a.fetchedAt || now(),
-        a.rawHtml,
-        a.rawText ?? null,
-        a.cleanedHtml ?? null,
-        a.cleanedMarkdown ?? null,
-        a.cleaningStatus || 'pending',
-        a.isRead ? 1 : 0,
-        a.isStarred ? 1 : 0,
-        a.summary ?? null,
-        a.translatedParagraphs ? JSON.stringify(a.translatedParagraphs) : null,
-        a.guid,
-        a.createdAt || now(),
-        a.updatedAt || now()
-      ]);
-      inserted += db.getRowsModified();
+    db.run('BEGIN TRANSACTION');
+    try {
+      for (const a of articles) {
+        db.run(stmt, [
+          a.id || uid(),
+          a.feedId,
+          a.title,
+          a.url,
+          a.author ?? null,
+          a.publishedAt ?? null,
+          a.fetchedAt || now(),
+          a.rawHtml,
+          a.rawText ?? null,
+          a.cleanedHtml ?? null,
+          a.cleanedMarkdown ?? null,
+          a.cleaningStatus || 'pending',
+          a.isRead ? 1 : 0,
+          a.isStarred ? 1 : 0,
+          a.summary ?? null,
+          a.translatedParagraphs ? JSON.stringify(a.translatedParagraphs) : null,
+          a.guid,
+          a.createdAt || now(),
+          a.updatedAt || now()
+        ]);
+        inserted += db.getRowsModified();
+      }
+      db.run('COMMIT');
+    } catch (error) {
+      db.run('ROLLBACK');
+      throw error;
     }
 
     saveDatabase();

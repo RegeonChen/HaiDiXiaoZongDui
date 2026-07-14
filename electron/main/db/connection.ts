@@ -11,6 +11,7 @@
  */
 
 import { app } from 'electron';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import initSqlJsModule from 'sql.js';
@@ -62,9 +63,7 @@ export async function initDatabase(): Promise<void> {
     db = new SQL.Database();
   }
 
-  // 安全与性能优化
-  db.run('PRAGMA foreign_keys = ON');
-  db.run('PRAGMA cache_size = -8000'); // 约 8 MB 缓存
+  configureDatabase(db);
 
   initialized = true;
 }
@@ -87,7 +86,9 @@ export function getDatabase(): Db {
 export function saveDatabase(): void {
   if (!db || !dbPath) return;
   const data: Uint8Array = db.export();
-  fs.writeFileSync(dbPath, Buffer.from(data));
+  // sql.js export() 会重建内部 SQLite 连接，连接级 PRAGMA 需要重新设置。
+  configureDatabase(db);
+  writeDatabaseAtomically(dbPath, data);
 }
 
 /**
@@ -96,12 +97,15 @@ export function saveDatabase(): void {
  */
 export function closeDatabase(): void {
   if (!db) return;
-  // 先保存到磁盘再关闭
-  const data: Uint8Array = db.export();
-  fs.writeFileSync(dbPath!, Buffer.from(data));
-  db.close();
-  db = null;
-  initialized = false;
+  const databaseToClose = db;
+  try {
+    saveDatabase();
+  } finally {
+    databaseToClose.close();
+    db = null;
+    dbPath = null;
+    initialized = false;
+  }
 }
 
 /**
@@ -109,4 +113,44 @@ export function closeDatabase(): void {
  */
 export function getDbPath(): string | null {
   return dbPath;
+}
+
+/**
+ * 先将完整的 sql.js 快照写入同目录临时文件，再用 rename 原子替换。
+ * 直接覆盖正式文件会先截断旧库，应用崩溃或断电时可能丢失整个数据库。
+ */
+function writeDatabaseAtomically(targetPath: string, data: Uint8Array): void {
+  const temporaryPath = path.join(
+    path.dirname(targetPath),
+    `.${path.basename(targetPath)}.${process.pid}.${crypto.randomUUID()}.tmp`
+  );
+
+  let fileDescriptor: number | null = null;
+  try {
+    fileDescriptor = fs.openSync(temporaryPath, 'wx', 0o600);
+    fs.writeFileSync(fileDescriptor, Buffer.from(data));
+    fs.fsyncSync(fileDescriptor);
+    fs.closeSync(fileDescriptor);
+    fileDescriptor = null;
+    fs.renameSync(temporaryPath, targetPath);
+  } catch (error) {
+    if (fileDescriptor !== null) {
+      try {
+        fs.closeSync(fileDescriptor);
+      } catch {
+        // 保留原始写入错误。
+      }
+    }
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+    } catch {
+      // 保留原始写入错误。
+    }
+    throw error;
+  }
+}
+
+function configureDatabase(database: Db): void {
+  database.run('PRAGMA foreign_keys = ON');
+  database.run('PRAGMA cache_size = -8000'); // 约 8 MB 缓存
 }
