@@ -97,18 +97,18 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 - `PLAN.md` 已定义五个开发阶段和张晨阳/张宇凡/陈冠中的职责分工。
 - `shared/types.ts` 和 `shared/ipc.ts` 已建立（Task 1.2 完成），定义了核心领域类型和 IPC 通道协议。
 - **Task 1.1（Application Scaffold）已完成**：Electron 31 + electron-vite + React 18 + TypeScript strict，main/preload/renderer 三段式构建，预加载脚本强制 CJS（sandbox 兼容），安全基线 `contextIsolation + sandbox + nodeIntegration: false` 已通过无头烟雾测试验证（`npm run smoke`）。
-- **Task 2.2（Feed, OPML and Cleaning Pipeline）已在功能分支完成首版实现**：支持 RSS/Atom/JSON Feed、受限 HTTP 抓取、按需正文提取与安全清洗、GFM Markdown、手动同步编排、OPML 导入导出，以及面向 Task 2.3 的存储端口；当前正在与数据库实现集成。
-- **Task 2.3（Local Database）已完成**（陈冠中 / `RegeonChen` 提交）：SQLite (`sql.js` WASM) 连接 + 版本化迁移 + Feed/Article Repository + 15 IPC handler + preload 类型安全封装 + 8/8 烟雾测试通过（`npm run smoke:db`）。**修复**：他的 `connection.ts` 用了 `require('sql.js')` 在 ESM 产物里挂掉，改为 `await import('sql.js')`（合入同一 commit）。
-  - 2.3.1 SQLite 驱动选型 `sql.js`（WASM，无原生编译）
-  - 2.3.2 `electron/main/db/connection.ts` 单例连接 / `userData/juhe-shivi.db` / foreign_keys ON
-  - 2.3.3 `electron/main/db/migration.ts` 版本化迁移，v1 = feeds / articles + 索引
-  - 2.3.4 `electron/main/db/feed-repository.ts` 幂等 create + CRUD + recordSync，url 去重忽略末尾 / 和 www. 前缀
-  - 2.3.5 `electron/main/db/article-repository.ts` list（分页+筛选）/ insertBatch（走 guid UNIQUE 去重）/ 状态读写
-  - 2.3.6 同步状态记录在 `FeedRepository.recordSync()`
-  - 2.3.7 IPC handler 已注册 feed/article/settings 及 sync 占位通道，preload 使用类型安全 `invoke<>` 封装
-  - 2.3.8 `scripts/smoke-2.3.cjs` 8/8 通过
-- **Task 2.1（Electron UI and Reader Shell）已完成**（张晨阳）：三栏 layout（订阅源侧栏 / 文章列表 / 阅读区），主题切换（亮 / 暗 / 跟随系统 + `<html data-theme>` + localStorage），点击交互（选 article 自动 markRead、star 切换），同步按钮，Loading/Empty/Error 状态组件。数据用 `MockDataSource` 走 `DataSource` 类型契约，Task 2.2 完成后切到 IPC 实现只换 Provider。`scripts/smoke-2.1.cjs` headless 验证通过：layoutRendered / paneWidths (1266=1266) / 8 个 feed 按钮 / 10 篇文章 / 点击切换阅读区 / 主题切到 dark + 切回 system — 7 项全过。
-- 当前活动里程碑：Phase 2 - Core Reading Workflow，2.1 / 2.3 已完成，2.2 等待数据库集成。
+- **Task 2.2（Feed, OPML and Cleaning Pipeline）已完成并接入数据库**：支持 RSS/Atom/JSON Feed、受限 HTTP 抓取、按需正文提取与安全清洗、GFM Markdown、手动同步编排、OPML 导入导出；同步、正文和 OPML IPC 已注册。
+- **Task 2.3（Local Database）已完成**：
+  - **2.3.1 完成**：SQLite 驱动选型 `sql.js`（WASM 版本，无需 node-gyp 原生编译），已安装 `sql.js` + `@types/sql.js`。
+  - **2.3.2 完成**：`electron/main/db/connection.ts` — 单例连接管理，数据库文件 `{userData}/juhe-shivi.db`，启动时自动加载/创建，每次写操作后存盘，will-quit 时优雅关闭，foreign_keys ON。
+  - **2.3.3 完成**：`electron/main/db/migration.ts` — 版本化、事务化迁移机制；v1 建立 feeds/articles，v2 增加按需正文缓存字段，并将文章唯一键调整为 `(feed_id, guid)`。
+  - **2.3.4 完成**：`electron/main/db/feed-repository.ts` — FeedRepository，实现 list/getById/create/update/delete/recordSync/findByUrl，url 去重忽略末尾 / 和 www. 前缀，幂等创建。
+  - **2.3.5 完成**：`electron/main/db/article-repository.ts` — ArticleRepository，实现 list（分页+筛选）、getById、insertBatch（按 Feed + guid 去重并准确返回新增数）、markRead/markStarred/batchMarkRead、getExistingGuidsForFeed。
+  - **2.3.6 完成**：`SqliteContentPipelineStore` 实现 Feed 同步、按需正文和 OPML 三个存储接口，并保存同步成功/失败状态。
+  - **2.3.7 完成**：feed/article/settings 及真实 sync/content/opml IPC 均已注册；preload 通过类型安全封装暴露对应 API。
+  - **2.3.8 完成**：`scripts/smoke-2.3.cjs` 验证脚本，通过 `npm run smoke:db` 运行。验证项：createFeed / listFeeds / dupFeed (幂等) / getFeed / listArticlesEmpty / settings / updateFeed / deleteFeed — 全部 8 项通过。
+- **Task 2.1（Electron UI and Reader Shell）已完成**（张晨阳）：三栏 layout（订阅源侧栏 / 文章列表 / 阅读区）、主题切换、文章选择、已读/星标交互、同步按钮及 Loading/Empty/Error 状态已实现；`npm run smoke:ui` 7 项通过。当前仍通过 `MockDataSource` 展示演示数据。
+- 当前活动里程碑：Phase 2 - Core Reading Workflow；2.1、2.2、2.3 均已实现，最后待把 UI 的 `DataSource` Provider 从 Mock 切换到真实 IPC。
 
 ## 设计决策
 
@@ -158,6 +158,11 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - Feed 同步只保存条目和 Feed 自带内容；Reader/AI 首次请求正文时才抓取文章页并运行 Readability，之后复用持久化的 source HTML、cleaned HTML 和 Markdown；
   - 提供 `SyncService`、`ArticleContentService`、OPML 解析/去重/原子导出，以及与数据库解耦的 `FeedSyncStore`、`ArticleContentStore`、`OpmlFeedStore`；
   - 引入 Vitest 测试，离线测试覆盖三种 Feed、清洗、同步、HTTP 和 OPML；另提供 NASA RSS、Mozilla Atom 和 JSON Feed 官方源的网络兼容性验证。
+- **2026-07-14**：Task 2.2 与 Task 2.3 完成集成：
+  - 新增 Schema v2，分层保存 Feed 原文、文章页原文、Cleaned HTML/Markdown 和清洗元数据；
+  - 文章去重从全局 guid 调整为 `(feed_id, guid)`，修复批量插入新增数量统计；
+  - `SqliteContentPipelineStore` 接通同步、按需正文和 OPML，主进程用真实服务替换 sync 占位 handler，preload 增加 content/opml API；
+  - `npm run smoke:phase2` 以本地 HTTP fixture 验证添加 Feed、两次同步去重、同步失败状态、SQLite 落盘、按需抓取且缓存复用、已读/星标和 OPML 往返。
 - 具体实现选择应在项目脚手架和共享协议建立后再补充记录。
 
 ## 路线图
@@ -173,9 +178,10 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 ## 已知问题
 
 - UI 组件库、E2E 测试框架、CI 流水线、跨平台打包工具（electron-builder / electron-forge）尚未确定。
-- Task 2.2 尚待与 Task 2.3 数据库实现连接，连接前同步、按需正文和 OPML IPC 不会在 Main 中注册。
+- Task 2.1 正式阅读界面尚待接入真实 feed/article/content IPC，Phase 2 的可视化用户流程还未完成。
 - 不同 OpenAI-compatible Provider 在 Endpoint、流式响应和用量信息方面可能存在差异，需要进行兼容性测试。
 - 专题匹配和相似报道分组的实现方案尚未确定。
 - 尚未进行跨平台行为测试。
-- 尚未选定一组固定且具有代表性的 Feed、HTML、OPML 和 AI 测试样本。
+- Feed、HTML 和 OPML 已有固定离线样本；AI 功能的固定测试样本尚未建立。
+- 完整 `npm audit` 报告 Electron 31、Vite 5/electron-vite 2 存在 4 组开发/运行工具链公告（2 moderate、2 high）；生产依赖审计为 0。修复需要 Electron、Vite 和 electron-vite 跨大版本升级，应由脚手架负责人协调并在发布前完成兼容性验证。
 - electron-builder / electron-forge 等打包方案未引入；`npm run build` 当前只产出 unpacked 三段产物，不含可分发的安装包（Phase 5 验收前需补齐）。

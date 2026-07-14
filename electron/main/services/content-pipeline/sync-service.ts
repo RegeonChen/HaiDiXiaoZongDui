@@ -18,6 +18,7 @@ export interface FeedSyncStore {
   listFeedSyncTargets(): Promise<FeedSyncTarget[]>;
   getFeedSyncTarget(feedId: string): Promise<FeedSyncTarget | null>;
   saveFeedPipelineOutput(output: FeedPipelineOutput): Promise<PipelineSaveResult>;
+  recordFeedSyncFailure(feedId: string, error: string): Promise<void>;
 }
 
 export class SyncService {
@@ -86,7 +87,17 @@ export class SyncService {
         finishedAt: new Date().toISOString()
       };
     } catch (error) {
-      return failedResult(target.id, startedAt, errorMessage(error));
+      const message = errorMessage(error);
+      try {
+        await this.store.recordFeedSyncFailure(target.id, message);
+        return failedResult(target.id, startedAt, message);
+      } catch (recordError) {
+        return failedResult(
+          target.id,
+          startedAt,
+          `${message}；同步状态保存失败：${errorMessage(recordError)}`
+        );
+      }
     }
   }
 }

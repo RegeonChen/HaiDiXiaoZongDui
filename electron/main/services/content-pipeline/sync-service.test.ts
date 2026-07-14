@@ -29,7 +29,8 @@ describe('SyncService', () => {
     const store: FeedSyncStore = {
       listFeedSyncTargets: vi.fn(async () => [{ id: 'a', url: 'https://example.com/a' }]),
       getFeedSyncTarget: vi.fn(async () => ({ id: 'a', url: 'https://example.com/a' })),
-      saveFeedPipelineOutput: vi.fn(async () => ({ newArticles: 3, updatedArticles: 1 }))
+      saveFeedPipelineOutput: vi.fn(async () => ({ newArticles: 3, updatedArticles: 1 })),
+      recordFeedSyncFailure: vi.fn(async () => undefined)
     };
     const pipeline = {
       syncFeed: vi.fn(async () => pipelineOutput('a'))
@@ -52,7 +53,8 @@ describe('SyncService', () => {
         { id: 'b', url: 'https://example.com/b' }
       ]),
       getFeedSyncTarget: vi.fn(async () => null),
-      saveFeedPipelineOutput: vi.fn(async () => ({ newArticles: 1, updatedArticles: 0 }))
+      saveFeedPipelineOutput: vi.fn(async () => ({ newArticles: 1, updatedArticles: 0 })),
+      recordFeedSyncFailure: vi.fn(async () => undefined)
     };
     const pipeline = {
       syncFeed: vi.fn(async ({ feedId }: { feedId: string }) => {
@@ -68,5 +70,24 @@ describe('SyncService', () => {
     expect(results[0]?.success).toBe(false);
     expect(results[1]?.success).toBe(true);
     expect(service.getProgress()).toMatchObject({ totalFeeds: 2, completedFeeds: 2 });
+    expect(store.recordFeedSyncFailure).toHaveBeenCalledWith('a', 'network failed');
+  });
+
+  it('returns both errors when persisting a sync failure also fails', async () => {
+    const store: FeedSyncStore = {
+      listFeedSyncTargets: vi.fn(async () => []),
+      getFeedSyncTarget: vi.fn(async () => ({ id: 'a', url: 'https://example.com/a' })),
+      saveFeedPipelineOutput: vi.fn(async () => ({ newArticles: 0, updatedArticles: 0 })),
+      recordFeedSyncFailure: vi.fn(async () => { throw new Error('database unavailable'); })
+    };
+    const pipeline = {
+      syncFeed: vi.fn(async () => { throw new Error('network failed'); })
+    } as unknown as FeedPipeline;
+
+    const result = await new SyncService(store, pipeline).syncFeed('a');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('network failed');
+    expect(result.error).toContain('database unavailable');
   });
 });

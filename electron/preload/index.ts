@@ -85,6 +85,24 @@ const api = {
       invokeVoid(IPC_CHANNELS.SYNC_PROGRESS)
   },
 
+  // —— Content ——
+  content: {
+    getCleanedHtml: (articleId: string): Promise<IpcResponse<typeof IPC_CHANNELS.CONTENT_GET_CLEANED_HTML>> =>
+      invoke(IPC_CHANNELS.CONTENT_GET_CLEANED_HTML, { articleId }),
+
+    getCleanedMarkdown: (articleId: string): Promise<IpcResponse<typeof IPC_CHANNELS.CONTENT_GET_CLEANED_MARKDOWN>> =>
+      invoke(IPC_CHANNELS.CONTENT_GET_CLEANED_MARKDOWN, { articleId })
+  },
+
+  // —— OPML ——
+  opml: {
+    import: (filePath: string): Promise<IpcResponse<typeof IPC_CHANNELS.OPML_IMPORT>> =>
+      invoke(IPC_CHANNELS.OPML_IMPORT, { filePath }),
+
+    export: (filePath: string): Promise<IpcResponse<typeof IPC_CHANNELS.OPML_EXPORT>> =>
+      invoke(IPC_CHANNELS.OPML_EXPORT, { filePath })
+  },
+
   // —— Settings ——
   settings: {
     get: (): Promise<IpcResponse<typeof IPC_CHANNELS.SETTINGS_GET>> =>
@@ -93,7 +111,7 @@ const api = {
     update: (settings: IpcArgs<typeof IPC_CHANNELS.SETTINGS_UPDATE>['settings']): Promise<IpcResponse<typeof IPC_CHANNELS.SETTINGS_UPDATE>> =>
       invoke(IPC_CHANNELS.SETTINGS_UPDATE, { settings })
   }
-  // 后续按 Phase 接入时在这里加：tag / note / digest / topic / ai / log / opml / content
+  // 后续按 Phase 接入时在这里加：tag / note / digest / topic / ai / log
 } as const;
 
 export type AppApi = typeof api;

@@ -18,15 +18,20 @@ import type { Feed, FeedCreateInput, FeedUpdateInput, IsoTimestamp } from '../..
 
 /**
  * 规范化 URL 用于查重比较：
- * - 转小写
- * - 去掉协议前缀 www.
- * - 去掉末尾 /
+ * - 仅允许 http/https
+ * - 主机名转小写并去掉 www. 前缀
+ * - 去掉 fragment 和路径末尾的 /
  */
-function normalizeUrl(url: string): string {
-  let u = url.toLowerCase().trim();
-  u = u.replace(/^https?:\/\/www\./, 'https://');
-  u = u.replace(/\/$/, '');
-  return u;
+export function canonicalFeedKey(value: string): string {
+  const url = new URL(value.trim());
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new TypeError('订阅地址仅支持 http 和 https');
+  }
+
+  url.hash = '';
+  url.hostname = url.hostname.replace(/^www\./i, '').toLowerCase();
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+  return url.toString();
 }
 
 /**
@@ -92,10 +97,10 @@ export const FeedRepository = {
    * 返回 null 表示该 URL 无重复，可以新建。
    */
   findByUrl(url: string): Feed | null {
-    const norm = normalizeUrl(url);
+    const norm = canonicalFeedKey(url);
     const all = FeedRepository.list();
     for (const f of all) {
-      if (normalizeUrl(f.url) === norm) return f;
+      if (canonicalFeedKey(f.url) === norm) return f;
     }
     return null;
   },
@@ -105,6 +110,8 @@ export const FeedRepository = {
    * 返回创建的 Feed。若 url 重复则返回已存在的 Feed（幂等）。
    */
   create(input: FeedCreateInput): Feed {
+    canonicalFeedKey(input.url);
+
     // 检查重复
     const existing = FeedRepository.findByUrl(input.url);
     if (existing) return existing;

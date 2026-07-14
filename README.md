@@ -8,6 +8,7 @@
 .
 ├── electron/              # 主进程 + preload
 │   ├── main/index.ts
+│   ├── main/db/            # SQLite 连接、迁移、Repository 与内容管线适配器
 │   ├── main/services/content-pipeline/ # Feed、同步、清洗、OPML
 │   └── preload/index.ts
 ├── src/                   # 渲染进程（React）
@@ -19,8 +20,7 @@
 ├── shared/                # 跨进程共享的类型与 IPC 协议
 │   ├── types.ts
 │   └── ipc.ts
-├── scripts/
-│   └── smoke-1.1.cjs      # Task 1.1 验收用无头烟雾测试
+├── scripts/               # Task 1.1、2.3 与 Phase 2 无头烟雾测试
 ├── electron.vite.config.ts
 ├── tsconfig.json          # base（仅 references）
 ├── tsconfig.node.json     # main + preload
@@ -39,6 +39,8 @@
 | `npm test` | 运行离线单元测试和本地 HTTP 集成测试 |
 | `npm run test:real-feeds` | 验证 NASA RSS、Mozilla Atom 和 JSON Feed 官方源 |
 | `npm run smoke` | 跑 Task 1.1 验收脚本（无头环境也能验证窗口 + IPC + 进程隔离） |
+| `npm run smoke:db` | 跑 Task 2.3 数据库 CRUD 与 IPC 验收脚本 |
+| `npm run smoke:phase2` | 使用本地测试服务器跑同步、入库、按需清洗、去重、OPML 的离线端到端验收 |
 
 ## 国内装依赖
 
@@ -84,4 +86,21 @@ SMOKE_REPORT_PASS
 - OPML 分组、去重、导入和原子导出；
 - 通过 `FeedSyncStore`、`ArticleContentStore`、`OpmlFeedStore` 与 Task 2.3 数据库模块连接。
 
-在数据库实现三个 Store 接口前，Main 不会注册同步、正文和 OPML IPC；详细交接方式见该模块的 README。
+三个 Store 已由 `electron/main/db/content-pipeline-store.ts` 实现，Main 已注册同步、正文和 OPML IPC。Schema v2 将 Feed 自带内容与按需获取的文章页分层保存，并以 `(feed_id, guid)` 避免重复文章。
+
+## Phase 2 集成验收
+
+运行：
+
+```bash
+npm run smoke:phase2
+```
+
+脚本完全离线，会临时启动本地 Feed 和文章页面，验证以下闭环：
+
+1. 添加订阅源并同步文章到 SQLite；
+2. 再次同步不重复写入文章，同步成功/失败状态都能保存；
+3. 第一次请求阅读正文时抓取并清洗文章页；
+4. 后续 HTML/Markdown 请求复用缓存；
+5. 已读、星标和 OPML 导入导出正常；
+6. 临时数据库确实写入磁盘。

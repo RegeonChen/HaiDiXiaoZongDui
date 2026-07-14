@@ -14,9 +14,10 @@ orchestration, and OPML import/export. It runs only in the Electron Main process
 - `OpmlApplicationService`: import/export OPML files through a storage port.
 - `registerContentPipelineIpc`: register Task 2.2 IPC handlers after stores exist.
 
-## Task 2.3 handoff
+## Task 2.3 integration
 
-The database module implements three small ports exported from `index.ts`:
+The database adapter at `electron/main/db/content-pipeline-store.ts` implements
+three small ports exported from this module:
 
 - `FeedSyncStore`: list/get feed targets and persist a `FeedPipelineOutput` with
   GUID deduplication. Its save result supplies accurate new/updated article counts.
@@ -24,8 +25,8 @@ The database module implements three small ports exported from `index.ts`:
   layers, track cleaning status, and save source HTML + cleaned HTML + Markdown.
 - `OpmlFeedStore`: bulk-create imported feeds and list feeds for export.
 
-After constructing `SyncService`, `ArticleContentService`, and
-`OpmlApplicationService`, Main calls `registerContentPipelineIpc`. This keeps both
+Main constructs `SyncService`, `ArticleContentService`, and
+`OpmlApplicationService`, then calls `registerContentPipelineIpc`. This keeps both
 modules independent: the pipeline does not import SQLite repositories, and the
 database does not import parser or cleaner internals.
 
@@ -41,7 +42,10 @@ The intended lifecycle mirrors Mercury's layered Reader pipeline:
 ```bash
 npm test
 npm run test:real-feeds
+npm run smoke:phase2
 ```
 
 The default suite is deterministic and offline. The real-feed suite checks live
 RSS, Atom and JSON Feed sources separately because it depends on network access.
+The Phase 2 smoke starts a local HTTP fixture and verifies the complete Electron
+IPC, SQLite, deduplication, lazy cleaning/cache, state, and OPML path.
