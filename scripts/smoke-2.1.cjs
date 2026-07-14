@@ -16,6 +16,7 @@
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 
 const root = path.resolve(__dirname, '..');
 const electron = require(path.join(root, 'node_modules', 'electron'));
@@ -26,18 +27,23 @@ if (!fs.existsSync(mainEntry)) {
   process.exit(2);
 }
 
+const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'juhe-shivi-smoke-2.1-'));
+
 const child = spawn(electron, [mainEntry, '--no-sandbox', '--disable-gpu'], {
   cwd: root,
   env: {
     ...process.env,
     ELECTRON_DISABLE_GPU: '1',
-    JUHE_SHIVI_SMOKE_UI: '1'
+    JUHE_SHIVI_SMOKE: '1',
+    JUHE_SHIVI_SMOKE_UI: '1',
+    JUHE_SHIVI_USER_DATA: temporaryDirectory
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 
 let stdout = '';
 let stderr = '';
+let finished = false;
 child.stdout.on('data', (b) => { stdout += b.toString(); process.stdout.write(b); });
 child.stderr.on('data', (b) => { stderr += b.toString(); process.stderr.write(b); });
 
@@ -53,9 +59,22 @@ child.on('exit', (code, signal) => {
   const ok = /SMOKE_REPORT_PASS/.test(stdout);
   if (ok) {
     console.log('[smoke-ui] ✓ UI Shell 验证全部通过');
-    process.exit(0);
+    finish(0);
   } else {
     console.error('[smoke-ui] ✗ 验证失败，未见 SMOKE_REPORT_PASS');
-    process.exit(1);
+    finish(1);
   }
 });
+
+child.on('error', (error) => {
+  clearTimeout(timer);
+  console.error(`[smoke-ui] Electron 启动失败：${String(error)}`);
+  finish(1);
+});
+
+function finish(exitCode) {
+  if (finished) return;
+  finished = true;
+  fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  process.exitCode = exitCode;
+}

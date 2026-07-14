@@ -26,6 +26,7 @@
   "include": [
     "electron/**/*.ts",
     "shared/**/*.ts",
-    "electron.vite.config.ts"
+    "electron.vite.config.ts",
+    "vitest.config.ts"
   ]
 }

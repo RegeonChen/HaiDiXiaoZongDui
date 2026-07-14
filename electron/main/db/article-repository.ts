@@ -4,7 +4,7 @@
  *
  * 职责：
  *  - articles 表的 CRUD 操作
- *  - 批量插入（INSERT OR IGNORE 基于 guid 唯一索引去重）
+ *  - 批量插入（INSERT OR IGNORE 基于 feed_id + guid 唯一索引去重）
  *  - 已读/星标状态更新
  *  - 按筛选条件分页查询
  */
@@ -133,8 +133,8 @@ export const ArticleRepository = {
 
   /**
    * 批量插入文章。
-   * 使用 INSERT OR IGNORE 基于 guid 唯一索引去重：
-   * guid 冲突的旧文章保留，新文章跳过。
+   * 使用 INSERT OR IGNORE 基于 feed_id + guid 唯一索引去重：
+   * 同一 Feed 内 guid 冲突的旧文章保留，新文章跳过。
    *
    * 返回实际新插入的文章数量。
    */
@@ -152,29 +152,36 @@ export const ArticleRepository = {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    for (const a of articles) {
-      db.run(stmt, [
-        a.id || uid(),
-        a.feedId,
-        a.title,
-        a.url,
-        a.author ?? null,
-        a.publishedAt ?? null,
-        a.fetchedAt || now(),
-        a.rawHtml,
-        a.rawText ?? null,
-        a.cleanedHtml ?? null,
-        a.cleanedMarkdown ?? null,
-        a.cleaningStatus || 'pending',
-        a.isRead ? 1 : 0,
-        a.isStarred ? 1 : 0,
-        a.summary ?? null,
-        a.translatedParagraphs ? JSON.stringify(a.translatedParagraphs) : null,
-        a.guid,
-        a.createdAt || now(),
-        a.updatedAt || now()
-      ]);
-      inserted++;
+    db.run('BEGIN TRANSACTION');
+    try {
+      for (const a of articles) {
+        db.run(stmt, [
+          a.id || uid(),
+          a.feedId,
+          a.title,
+          a.url,
+          a.author ?? null,
+          a.publishedAt ?? null,
+          a.fetchedAt || now(),
+          a.rawHtml,
+          a.rawText ?? null,
+          a.cleanedHtml ?? null,
+          a.cleanedMarkdown ?? null,
+          a.cleaningStatus || 'pending',
+          a.isRead ? 1 : 0,
+          a.isStarred ? 1 : 0,
+          a.summary ?? null,
+          a.translatedParagraphs ? JSON.stringify(a.translatedParagraphs) : null,
+          a.guid,
+          a.createdAt || now(),
+          a.updatedAt || now()
+        ]);
+        inserted += db.getRowsModified();
+      }
+      db.run('COMMIT');
+    } catch (error) {
+      db.run('ROLLBACK');
+      throw error;
     }
 
     saveDatabase();

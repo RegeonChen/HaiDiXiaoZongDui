@@ -89,6 +89,25 @@ const migrations: Migration[] = [
       db.run(`CREATE INDEX IF NOT EXISTS idx_articles_read ON articles(is_read)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_articles_starred ON articles(is_starred)`);
     }
+  },
+  {
+    version: 2,
+    up(db) {
+      // Feed 原文与按需抓取的文章页分层保存，避免覆盖同步得到的内容。
+      db.run(`ALTER TABLE articles ADD COLUMN source_html TEXT`);
+      db.run(`ALTER TABLE articles ADD COLUMN source_kind TEXT`);
+      db.run(`ALTER TABLE articles ADD COLUMN content_title TEXT`);
+      db.run(`ALTER TABLE articles ADD COLUMN content_byline TEXT`);
+      db.run(`ALTER TABLE articles ADD COLUMN content_excerpt TEXT`);
+      db.run(`ALTER TABLE articles ADD COLUMN cleaning_error TEXT`);
+
+      // GUID 只在所属 Feed 内保证唯一；不同 Feed 可能使用相同的通用 GUID。
+      db.run(`DROP INDEX IF EXISTS idx_articles_guid`);
+      db.run(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_feed_guid
+        ON articles(feed_id, guid)
+      `);
+    }
   }
 ];
 
@@ -133,10 +152,16 @@ export function runMigrations(): void {
   for (const m of migrations) {
     if (m.version <= currentVersion) continue;
 
-    m.up(db);
-    db.run('INSERT INTO db_version (version) VALUES (?)', [m.version]);
-
-    ranAny = true;
+    db.run('BEGIN TRANSACTION');
+    try {
+      m.up(db);
+      db.run('INSERT INTO db_version (version) VALUES (?)', [m.version]);
+      db.run('COMMIT');
+      ranAny = true;
+    } catch (error) {
+      db.run('ROLLBACK');
+      throw error;
+    }
   }
 
   if (ranAny) {

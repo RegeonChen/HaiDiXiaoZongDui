@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Example RSS</title>
+    <link>https://example.com/</link>
+    <description>RSS fixture</description>
+    <item>
+      <title>RSS Article</title>
+      <link>https://example.com/rss-article</link>
+      <guid isPermaLink="false">rss-guid-1</guid>
+      <pubDate>Mon, 13 Jul 2026 08:00:00 GMT</pubDate>
+      <author>author@example.com</author>
+      <content:encoded><![CDATA[<p>RSS <strong>content</strong>.</p>]]></content:encoded>
+    </item>
+  </channel>
+</rss>

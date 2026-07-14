@@ -8,13 +8,31 @@
  *  - 统一返回 IpcResult<T> 结构
  *  - 不在 Renderer 暴露裸 Node 能力
  */
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import { fileURLToPath } from 'node:url';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  type IpcMainInvokeEvent,
+  type OpenDialogOptions,
+  type SaveDialogOptions
+} from 'electron';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { initDatabase, closeDatabase } from './db/connection.js';
 import { runMigrations } from './db/migration.js';
 import { FeedRepository } from './db/feed-repository.js';
 import { ArticleRepository } from './db/article-repository.js';
+import { SqliteContentPipelineStore } from './db/content-pipeline-store.js';
+import { ArticleContentService } from './services/content-pipeline/article-content-service.js';
+import {
+  installNavigationGuards,
+  isTrustedRendererUrl,
+  registerContentPipelineIpc
+} from './services/content-pipeline/ipc-handlers.js';
+import { OpmlApplicationService } from './services/content-pipeline/opml-service.js';
+import { SyncService } from './services/content-pipeline/sync-service.js';
 import { IPC_CHANNELS, type IpcResult } from '../../shared/ipc.js';
 import {
   DEFAULT_SETTINGS,
@@ -23,18 +41,27 @@ import {
   type FeedCreateInput,
   type FeedUpdateInput,
   type Article,
-  type ArticleFilter,
-  type SyncResult,
-  type SyncProgress
+  type ArticleFilter
 } from '../../shared/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+let disposeContentPipelineIpc: (() => void) | null = null;
+
+const configuredUserDataPath = process.env['JUHE_SHIVI_USER_DATA'];
+if (process.env['JUHE_SHIVI_SMOKE'] === '1' && configuredUserDataPath) {
+  app.setPath('userData', configuredUserDataPath);
+}
 
 // ============================================================
 // 窗口创建
 // ============================================================
 
-async function createMainWindow(): Promise<void> {
+function getTrustedRendererUrl(): string {
+  return process.env['ELECTRON_RENDERER_URL'] ??
+    pathToFileURL(path.join(__dirname, '../renderer/index.html')).toString();
+}
+
+async function createMainWindow(trustedRendererUrl: string): Promise<void> {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -56,9 +83,8 @@ async function createMainWindow(): Promise<void> {
     win.show();
   });
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
-    return { action: 'deny' };
+  installNavigationGuards(win.webContents, trustedRendererUrl, (url) => {
+    void shell.openExternal(url).catch(() => undefined);
   });
 
   const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
@@ -81,12 +107,87 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   // 等到 React 把 #root 渲染完 + mock dataSource 拉完
   await new Promise<void>((resolve) => setTimeout(resolve, 800));
 
-  // Smoke mode 2.3 or 1.1 or 2.1 UI — determined by env
+  // Smoke mode — determined by env
+  const smokePhase2 = process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1';
   const smokeV2 = process.env['JUHE_SHIVI_SMOKE_V2'] === '1';
   const smokeUI = process.env['JUHE_SHIVI_SMOKE_UI'] === '1';
   let probe: string;
 
-  if (smokeV2) {
+  if (smokePhase2) {
+    const feedUrl = process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? '';
+    probe = `
+      (async () => {
+        const report = { phase2: { ok: false, error: null, checks: {} } };
+        const feedUrl = ${JSON.stringify(feedUrl)};
+
+        try {
+          const created = await window.api.feed.create({ url: feedUrl, title: 'Phase2 Feed' });
+          report.phase2.checks.createFeed = created.success && !!created.data?.id;
+
+          const firstSync = await window.api.sync.feed(created.data.id);
+          const syncedFeed = await window.api.feed.get(created.data.id);
+          report.phase2.checks.firstSync = firstSync.success && firstSync.data?.success === true &&
+            firstSync.data?.newArticles === 1 && syncedFeed.success &&
+            syncedFeed.data?.lastSyncSuccess === true &&
+            syncedFeed.data?.siteTitle === 'Phase 2 Integration Feed';
+
+          const firstList = await window.api.article.list({ feedId: created.data.id });
+          const article = firstList.success ? firstList.data?.items[0] : null;
+          report.phase2.checks.articleStored = firstList.success && firstList.data?.total === 1 &&
+            !!article?.id && article.rawHtml.includes('Feed fallback');
+
+          const cleanedHtml = await window.api.content.getCleanedHtml(article.id);
+          const cleanedMarkdown = await window.api.content.getCleanedMarkdown(article.id);
+          report.phase2.checks.lazyContent = cleanedHtml.success && cleanedMarkdown.success &&
+            cleanedHtml.data.includes('Integration body') &&
+            !cleanedHtml.data.includes('<script') &&
+            cleanedMarkdown.data.includes('Integration body');
+
+          const secondSync = await window.api.sync.feed(created.data.id);
+          const secondList = await window.api.article.list({ feedId: created.data.id });
+          report.phase2.checks.repeatSyncDedup = secondSync.success &&
+            secondSync.data?.success === true && secondSync.data?.newArticles === 0 &&
+            secondSync.data?.updatedArticles === 1 && secondList.success &&
+            secondList.data?.total === 1;
+
+          const failedFeed = await window.api.feed.create({
+            url: feedUrl.replace('/feed.xml', '/missing.xml'),
+            title: 'Failing Feed'
+          });
+          const failedSync = await window.api.sync.feed(failedFeed.data.id);
+          const recordedFailure = await window.api.feed.get(failedFeed.data.id);
+          const deletedFailedFeed = await window.api.feed.delete(failedFeed.data.id);
+          report.phase2.checks.syncFailureState = failedSync.success &&
+            failedSync.data?.success === false && recordedFailure.success &&
+            recordedFailure.data?.lastSyncSuccess === false &&
+            !!recordedFailure.data?.lastSyncError && deletedFailedFeed.success;
+
+          const markedRead = await window.api.article.markRead(article.id, true);
+          const markedStarred = await window.api.article.markStarred(article.id, true);
+          const updatedArticle = await window.api.article.get(article.id);
+          report.phase2.checks.articleState = markedRead.success && markedStarred.success &&
+            updatedArticle.success && updatedArticle.data?.isRead === true &&
+            updatedArticle.data?.isStarred === true &&
+            updatedArticle.data?.cleaningStatus === 'done';
+
+          const exported = await window.api.opml.export();
+          const imported = await window.api.opml.import();
+          report.phase2.checks.opmlRoundTrip = exported.success && exported.data === true &&
+            imported.success && imported.data !== null &&
+            imported.data?.feedsSkipped === 1 && imported.data?.feedsImported === 0;
+
+          const deleted = await window.api.feed.delete(created.data.id);
+          report.phase2.checks.deleteFeed = deleted.success;
+          report.phase2.ok = Object.values(report.phase2.checks).every(function(value) {
+            return value;
+          });
+        } catch (error) {
+          report.phase2.error = String(error);
+        }
+        return JSON.stringify(report);
+      })()
+    `;
+  } else if (smokeV2) {
     // Phase 2.3 smoke: test feed/article/sync CRUD via IPC
     probe = `
       (async () => {
@@ -248,7 +349,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     console.log(`SMOKE_REPORT_JSON ${raw}`);
 
     let pass: boolean;
-    if (smokeV2) {
+    if (smokePhase2) {
+      pass = raw.includes('"phase2":{"ok":true');
+    } else if (smokeV2) {
       pass = raw.includes('"db":{"ok":true');
     } else if (smokeUI) {
       pass = raw.includes('"ui":{"ok":true');
@@ -282,10 +385,31 @@ function fail(code: string, message: string, detail?: string): IpcResult<never> 
   return { success: false, error: { code, message, detail } };
 }
 
-function registerIpcHandlers(): void {
+type MainIpcHandler = Parameters<typeof ipcMain.handle>[1];
+
+function registerTrustedHandler(
+  channel: string,
+  trustedRendererUrl: string,
+  handler: MainIpcHandler
+): void {
+  ipcMain.handle(channel, async (event, ...args) => {
+    if (!isTrustedRendererUrl(event.senderFrame?.url ?? '', trustedRendererUrl)) {
+      return fail('UNTRUSTED_IPC_SENDER', '拒绝来自非应用页面的请求');
+    }
+    return handler(event, ...args);
+  });
+}
+
+function registerIpcHandlers(trustedRendererUrl: string): void {
+  const trustedIpcMain = {
+    handle: (channel: string, handler: MainIpcHandler): void => {
+      registerTrustedHandler(channel, trustedRendererUrl, handler);
+    }
+  };
+
   // ============= Feed =============
 
-  ipcMain.handle(IPC_CHANNELS.FEED_LIST, async (): Promise<IpcResult<Feed[]>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_LIST, async (): Promise<IpcResult<Feed[]>> => {
     try {
       return ok(FeedRepository.list());
     } catch (e) {
@@ -293,7 +417,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.FEED_GET, async (_, args): Promise<IpcResult<Feed>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_GET, async (_, args): Promise<IpcResult<Feed>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       const feed = FeedRepository.getById(args.id);
@@ -304,7 +428,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.FEED_CREATE, async (_, args): Promise<IpcResult<Feed>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_CREATE, async (_, args): Promise<IpcResult<Feed>> => {
     try {
       const input = args?.input as FeedCreateInput | undefined;
       if (!input?.url) return fail('INVALID_PARAMS', '缺少 url');
@@ -314,7 +438,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.FEED_UPDATE, async (_, args): Promise<IpcResult<Feed>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_UPDATE, async (_, args): Promise<IpcResult<Feed>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       const input = args?.input as FeedUpdateInput | undefined;
@@ -327,7 +451,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.FEED_DELETE, async (_, args): Promise<IpcResult<void>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_DELETE, async (_, args): Promise<IpcResult<void>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       FeedRepository.delete(args.id);
@@ -339,7 +463,7 @@ function registerIpcHandlers(): void {
 
   // ============= Article =============
 
-  ipcMain.handle(IPC_CHANNELS.ARTICLE_LIST, async (_, args): Promise<IpcResult<{ items: Article[]; total: number }>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_LIST, async (_, args): Promise<IpcResult<{ items: Article[]; total: number }>> => {
     try {
       const filter = (args?.filter ?? {}) as ArticleFilter;
       return ok(ArticleRepository.list(filter));
@@ -348,7 +472,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.ARTICLE_GET, async (_, args): Promise<IpcResult<Article>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_GET, async (_, args): Promise<IpcResult<Article>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       const article = ArticleRepository.getById(args.id);
@@ -359,7 +483,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.ARTICLE_MARK_READ, async (_, args): Promise<IpcResult<void>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_MARK_READ, async (_, args): Promise<IpcResult<void>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       ArticleRepository.markRead(args.id, !!args.isRead);
@@ -369,7 +493,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.ARTICLE_MARK_STARRED, async (_, args): Promise<IpcResult<void>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_MARK_STARRED, async (_, args): Promise<IpcResult<void>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       ArticleRepository.markStarred(args.id, !!args.isStarred);
@@ -379,7 +503,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.ARTICLE_BATCH_MARK_READ, async (_, args): Promise<IpcResult<void>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_BATCH_MARK_READ, async (_, args): Promise<IpcResult<void>> => {
     try {
       if (!args?.ids?.length) return fail('INVALID_PARAMS', '缺少 ids');
       ArticleRepository.batchMarkRead(args.ids, !!args.isRead);
@@ -389,58 +513,57 @@ function registerIpcHandlers(): void {
     }
   });
 
-  // ============= Sync =============
-
-  ipcMain.handle(IPC_CHANNELS.SYNC_FEED, async (_, args): Promise<IpcResult<SyncResult>> => {
-    try {
-      if (!args?.feedId) return fail('INVALID_PARAMS', '缺少 feedId');
-      // 当前阶段：Sync 的实际拉取逻辑由张宇凡在 Task 2.2 实现。
-      // 这里只提供一个占位 handler，让 feed:* 和 article:* 通道先行可用。
-      // 张宇凡完成 Task 2.2 后可以注入 SyncService 替换此逻辑。
-      const now = new Date().toISOString();
-      FeedRepository.recordSync(args.feedId, false, '同步服务尚未实现（Task 2.2 待完成）');
-      const result: SyncResult = {
-        feedId: args.feedId,
-        success: false,
-        error: '同步服务尚未实现（Task 2.2 待完成）',
-        newArticles: 0,
-        updatedArticles: 0,
-        startedAt: now,
-        finishedAt: now
-      };
-      return ok(result);
-    } catch (e) {
-      return fail('SYNC_FEED_FAILED', String(e));
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.SYNC_ALL, async (): Promise<IpcResult<SyncResult[]>> => {
-    try {
-      return ok([]);
-    } catch (e) {
-      return fail('SYNC_ALL_FAILED', String(e));
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.SYNC_PROGRESS, async (): Promise<IpcResult<SyncProgress>> => {
-    try {
-      return ok({ totalFeeds: 0, completedFeeds: 0, results: [] });
-    } catch (e) {
-      return fail('SYNC_PROGRESS_FAILED', String(e));
-    }
-  });
-
   // ============= Settings (Phase 1.1 已有，保持兼容) =============
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
     return ok(DEFAULT_SETTINGS);
   });
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, async (_, args): Promise<IpcResult<AppSettings>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, async (_, args): Promise<IpcResult<AppSettings>> => {
     // Phase 3 接入 SQLite 持久化设置
     const partial = args?.settings as Partial<AppSettings> | undefined;
     return ok({ ...DEFAULT_SETTINGS, ...partial });
   });
+}
+
+function smokeOpmlPath(): string | null {
+  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] !== '1') return null;
+  const value = process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim();
+  return value || null;
+}
+
+async function selectOpmlImportPath(event: IpcMainInvokeEvent): Promise<string | null> {
+  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1') return smokeOpmlPath();
+
+  const options: OpenDialogOptions = {
+    title: '导入 OPML 订阅',
+    properties: ['openFile'],
+    filters: [
+      { name: 'OPML', extensions: ['opml', 'xml'] }
+    ]
+  };
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const result = owner
+    ? await dialog.showOpenDialog(owner, options)
+    : await dialog.showOpenDialog(options);
+  return result.canceled ? null : result.filePaths[0] ?? null;
+}
+
+async function selectOpmlExportPath(event: IpcMainInvokeEvent): Promise<string | null> {
+  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1') return smokeOpmlPath();
+
+  const options: SaveDialogOptions = {
+    title: '导出 OPML 订阅',
+    defaultPath: path.join(app.getPath('documents'), 'subscriptions.opml'),
+    filters: [
+      { name: 'OPML', extensions: ['opml'] }
+    ]
+  };
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const result = owner
+    ? await dialog.showSaveDialog(owner, options)
+    : await dialog.showSaveDialog(options);
+  return result.canceled ? null : result.filePath ?? null;
 }
 
 // ============================================================
@@ -451,17 +574,30 @@ app.whenReady().then(async () => {
   await initDatabase();
   runMigrations();
 
-  registerIpcHandlers();
-  await createMainWindow();
+  const trustedRendererUrl = getTrustedRendererUrl();
+  registerIpcHandlers(trustedRendererUrl);
+  const contentPipelineStore = new SqliteContentPipelineStore();
+  disposeContentPipelineIpc = registerContentPipelineIpc({
+    sync: new SyncService(contentPipelineStore),
+    content: new ArticleContentService(contentPipelineStore),
+    opml: new OpmlApplicationService(contentPipelineStore)
+  }, {
+    trustedRendererUrl,
+    selectOpmlImportPath,
+    selectOpmlExportPath
+  });
+  await createMainWindow(trustedRendererUrl);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      void createMainWindow();
+      void createMainWindow(trustedRendererUrl);
     }
   });
 });
 
 app.on('will-quit', () => {
+  disposeContentPipelineIpc?.();
+  disposeContentPipelineIpc = null;
   closeDatabase();
 });
 

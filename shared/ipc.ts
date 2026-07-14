@@ -259,8 +259,10 @@ export interface IpcRequestMap {
   [IPC_CHANNELS.LOG_EXPORT]:{ args: void;                 result: string };
 
   // -- OPML --
-  [IPC_CHANNELS.OPML_IMPORT]: { args: { filePath: string }; result: OpmlImportResult };
-  [IPC_CHANNELS.OPML_EXPORT]: { args: { filePath: string }; result: void };
+  /** Main 进程显示原生文件选择器；Renderer 不得传入任意路径。null 表示用户取消。 */
+  [IPC_CHANNELS.OPML_IMPORT]: { args: void; result: OpmlImportResult | null };
+  /** Main 进程显示原生保存对话框；false 表示用户取消。 */
+  [IPC_CHANNELS.OPML_EXPORT]: { args: void; result: boolean };
 }
 
 // ============================================================
