@@ -8,8 +8,17 @@
  *  - 统一返回 IpcResult<T> 结构
  *  - 不在 Renderer 暴露裸 Node 能力
  */
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import { fileURLToPath } from 'node:url';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  type IpcMainInvokeEvent,
+  type OpenDialogOptions,
+  type SaveDialogOptions
+} from 'electron';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { initDatabase, closeDatabase } from './db/connection.js';
 import { runMigrations } from './db/migration.js';
@@ -17,7 +26,11 @@ import { FeedRepository } from './db/feed-repository.js';
 import { ArticleRepository } from './db/article-repository.js';
 import { SqliteContentPipelineStore } from './db/content-pipeline-store.js';
 import { ArticleContentService } from './services/content-pipeline/article-content-service.js';
-import { registerContentPipelineIpc } from './services/content-pipeline/ipc-handlers.js';
+import {
+  installNavigationGuards,
+  isTrustedRendererUrl,
+  registerContentPipelineIpc
+} from './services/content-pipeline/ipc-handlers.js';
 import { OpmlApplicationService } from './services/content-pipeline/opml-service.js';
 import { SyncService } from './services/content-pipeline/sync-service.js';
 import { IPC_CHANNELS, type IpcResult } from '../../shared/ipc.js';
@@ -43,7 +56,12 @@ if (process.env['JUHE_SHIVI_SMOKE'] === '1' && configuredUserDataPath) {
 // 窗口创建
 // ============================================================
 
-async function createMainWindow(): Promise<void> {
+function getTrustedRendererUrl(): string {
+  return process.env['ELECTRON_RENDERER_URL'] ??
+    pathToFileURL(path.join(__dirname, '../renderer/index.html')).toString();
+}
+
+async function createMainWindow(trustedRendererUrl: string): Promise<void> {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -65,9 +83,8 @@ async function createMainWindow(): Promise<void> {
     win.show();
   });
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
-    return { action: 'deny' };
+  installNavigationGuards(win.webContents, trustedRendererUrl, (url) => {
+    void shell.openExternal(url).catch(() => undefined);
   });
 
   const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
@@ -98,12 +115,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
   if (smokePhase2) {
     const feedUrl = process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? '';
-    const opmlPath = process.env['JUHE_SHIVI_SMOKE_OPML_PATH'] ?? '';
     probe = `
       (async () => {
         const report = { phase2: { ok: false, error: null, checks: {} } };
         const feedUrl = ${JSON.stringify(feedUrl)};
-        const opmlPath = ${JSON.stringify(opmlPath)};
 
         try {
           const created = await window.api.feed.create({ url: feedUrl, title: 'Phase2 Feed' });
@@ -155,9 +170,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             updatedArticle.data?.isStarred === true &&
             updatedArticle.data?.cleaningStatus === 'done';
 
-          const exported = await window.api.opml.export(opmlPath);
-          const imported = await window.api.opml.import(opmlPath);
-          report.phase2.checks.opmlRoundTrip = exported.success && imported.success &&
+          const exported = await window.api.opml.export();
+          const imported = await window.api.opml.import();
+          report.phase2.checks.opmlRoundTrip = exported.success && exported.data === true &&
+            imported.success && imported.data !== null &&
             imported.data?.feedsSkipped === 1 && imported.data?.feedsImported === 0;
 
           const deleted = await window.api.feed.delete(created.data.id);
@@ -369,10 +385,31 @@ function fail(code: string, message: string, detail?: string): IpcResult<never> 
   return { success: false, error: { code, message, detail } };
 }
 
-function registerIpcHandlers(): void {
+type MainIpcHandler = Parameters<typeof ipcMain.handle>[1];
+
+function registerTrustedHandler(
+  channel: string,
+  trustedRendererUrl: string,
+  handler: MainIpcHandler
+): void {
+  ipcMain.handle(channel, async (event, ...args) => {
+    if (!isTrustedRendererUrl(event.senderFrame?.url ?? '', trustedRendererUrl)) {
+      return fail('UNTRUSTED_IPC_SENDER', '拒绝来自非应用页面的请求');
+    }
+    return handler(event, ...args);
+  });
+}
+
+function registerIpcHandlers(trustedRendererUrl: string): void {
+  const trustedIpcMain = {
+    handle: (channel: string, handler: MainIpcHandler): void => {
+      registerTrustedHandler(channel, trustedRendererUrl, handler);
+    }
+  };
+
   // ============= Feed =============
 
-  ipcMain.handle(IPC_CHANNELS.FEED_LIST, async (): Promise<IpcResult<Feed[]>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_LIST, async (): Promise<IpcResult<Feed[]>> => {
     try {
       return ok(FeedRepository.list());
     } catch (e) {
@@ -380,7 +417,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.FEED_GET, async (_, args): Promise<IpcResult<Feed>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_GET, async (_, args): Promise<IpcResult<Feed>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       const feed = FeedRepository.getById(args.id);
@@ -391,7 +428,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.FEED_CREATE, async (_, args): Promise<IpcResult<Feed>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_CREATE, async (_, args): Promise<IpcResult<Feed>> => {
     try {
       const input = args?.input as FeedCreateInput | undefined;
       if (!input?.url) return fail('INVALID_PARAMS', '缺少 url');
@@ -401,7 +438,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.FEED_UPDATE, async (_, args): Promise<IpcResult<Feed>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_UPDATE, async (_, args): Promise<IpcResult<Feed>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       const input = args?.input as FeedUpdateInput | undefined;
@@ -414,7 +451,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.FEED_DELETE, async (_, args): Promise<IpcResult<void>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_DELETE, async (_, args): Promise<IpcResult<void>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       FeedRepository.delete(args.id);
@@ -426,7 +463,7 @@ function registerIpcHandlers(): void {
 
   // ============= Article =============
 
-  ipcMain.handle(IPC_CHANNELS.ARTICLE_LIST, async (_, args): Promise<IpcResult<{ items: Article[]; total: number }>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_LIST, async (_, args): Promise<IpcResult<{ items: Article[]; total: number }>> => {
     try {
       const filter = (args?.filter ?? {}) as ArticleFilter;
       return ok(ArticleRepository.list(filter));
@@ -435,7 +472,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.ARTICLE_GET, async (_, args): Promise<IpcResult<Article>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_GET, async (_, args): Promise<IpcResult<Article>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       const article = ArticleRepository.getById(args.id);
@@ -446,7 +483,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.ARTICLE_MARK_READ, async (_, args): Promise<IpcResult<void>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_MARK_READ, async (_, args): Promise<IpcResult<void>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       ArticleRepository.markRead(args.id, !!args.isRead);
@@ -456,7 +493,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.ARTICLE_MARK_STARRED, async (_, args): Promise<IpcResult<void>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_MARK_STARRED, async (_, args): Promise<IpcResult<void>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       ArticleRepository.markStarred(args.id, !!args.isStarred);
@@ -466,7 +503,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.ARTICLE_BATCH_MARK_READ, async (_, args): Promise<IpcResult<void>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_BATCH_MARK_READ, async (_, args): Promise<IpcResult<void>> => {
     try {
       if (!args?.ids?.length) return fail('INVALID_PARAMS', '缺少 ids');
       ArticleRepository.batchMarkRead(args.ids, !!args.isRead);
@@ -478,15 +515,55 @@ function registerIpcHandlers(): void {
 
   // ============= Settings (Phase 1.1 已有，保持兼容) =============
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
     return ok(DEFAULT_SETTINGS);
   });
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, async (_, args): Promise<IpcResult<AppSettings>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, async (_, args): Promise<IpcResult<AppSettings>> => {
     // Phase 3 接入 SQLite 持久化设置
     const partial = args?.settings as Partial<AppSettings> | undefined;
     return ok({ ...DEFAULT_SETTINGS, ...partial });
   });
+}
+
+function smokeOpmlPath(): string | null {
+  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] !== '1') return null;
+  const value = process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim();
+  return value || null;
+}
+
+async function selectOpmlImportPath(event: IpcMainInvokeEvent): Promise<string | null> {
+  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1') return smokeOpmlPath();
+
+  const options: OpenDialogOptions = {
+    title: '导入 OPML 订阅',
+    properties: ['openFile'],
+    filters: [
+      { name: 'OPML', extensions: ['opml', 'xml'] }
+    ]
+  };
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const result = owner
+    ? await dialog.showOpenDialog(owner, options)
+    : await dialog.showOpenDialog(options);
+  return result.canceled ? null : result.filePaths[0] ?? null;
+}
+
+async function selectOpmlExportPath(event: IpcMainInvokeEvent): Promise<string | null> {
+  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1') return smokeOpmlPath();
+
+  const options: SaveDialogOptions = {
+    title: '导出 OPML 订阅',
+    defaultPath: path.join(app.getPath('documents'), 'subscriptions.opml'),
+    filters: [
+      { name: 'OPML', extensions: ['opml'] }
+    ]
+  };
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const result = owner
+    ? await dialog.showSaveDialog(owner, options)
+    : await dialog.showSaveDialog(options);
+  return result.canceled ? null : result.filePath ?? null;
 }
 
 // ============================================================
@@ -497,18 +574,23 @@ app.whenReady().then(async () => {
   await initDatabase();
   runMigrations();
 
-  registerIpcHandlers();
+  const trustedRendererUrl = getTrustedRendererUrl();
+  registerIpcHandlers(trustedRendererUrl);
   const contentPipelineStore = new SqliteContentPipelineStore();
   disposeContentPipelineIpc = registerContentPipelineIpc({
     sync: new SyncService(contentPipelineStore),
     content: new ArticleContentService(contentPipelineStore),
     opml: new OpmlApplicationService(contentPipelineStore)
+  }, {
+    trustedRendererUrl,
+    selectOpmlImportPath,
+    selectOpmlExportPath
   });
-  await createMainWindow();
+  await createMainWindow(trustedRendererUrl);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      void createMainWindow();
+      void createMainWindow(trustedRendererUrl);
     }
   });
 });

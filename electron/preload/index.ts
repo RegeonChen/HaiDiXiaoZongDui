@@ -96,11 +96,11 @@ const api = {
 
   // —— OPML ——
   opml: {
-    import: (filePath: string): Promise<IpcResponse<typeof IPC_CHANNELS.OPML_IMPORT>> =>
-      invoke(IPC_CHANNELS.OPML_IMPORT, { filePath }),
+    import: (): Promise<IpcResponse<typeof IPC_CHANNELS.OPML_IMPORT>> =>
+      invokeVoid(IPC_CHANNELS.OPML_IMPORT),
 
-    export: (filePath: string): Promise<IpcResponse<typeof IPC_CHANNELS.OPML_EXPORT>> =>
-      invoke(IPC_CHANNELS.OPML_EXPORT, { filePath })
+    export: (): Promise<IpcResponse<typeof IPC_CHANNELS.OPML_EXPORT>> =>
+      invokeVoid(IPC_CHANNELS.OPML_EXPORT)
   },
 
   // —— Settings ——
