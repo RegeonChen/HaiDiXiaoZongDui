@@ -119,7 +119,7 @@ export const FeedRepository = {
     const ts = now();
     const feed: Feed = {
       id: uid(),
-      title: input.title || '',
+      title: input.title || new URL(input.url).hostname,
       url: input.url,
       siteTitle: '',
       description: '',

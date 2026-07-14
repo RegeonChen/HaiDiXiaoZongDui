@@ -113,6 +113,9 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - **P1**（添加订阅源 UI）完成：header 加 `+ 添加订阅源` 按钮 + `AddFeedDialog` 组件，调 `feed.create` + `sync.feed`，成功后自动刷新侧栏 + 切到新 feed。
   - **P2**（OPML UI）完成：header 加 `↓ 导入 OPML` / `↑ 导出 OPML` 按钮（`OpmlButtons` 组件），调 `window.api.opml.import / export`，结果用底部 `Toast` 提示。
   - 5/5 smoke 全过：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 9/9)。
+  - FeedList 侧栏展示已改为 `f.siteTitle || f.title`，同步后自动显示站点名称。
+  - 同步完成后增加 `refreshFeeds()` 调用，确保 siteTitle 更新即时反映。
+  - `FeedRepository.create()` 在 title 为空时用 URL hostname 兜底。
 - 当前活动里程碑：**Phase 2 集成已通过验收**。下一步进入 Phase 3（AI / 笔记 / 标签 / 多语言 / 日志 / 导出）。
 
 ## 设计决策
@@ -156,6 +159,19 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 所有 handler 统一 `ok<T>()` / `fail()` 返回 `IpcResult<T>`，含入参校验
   - preload 从手动枚举升级为 `invoke<C>(channel, args)` / `invokeVoid<C>(channel)` 泛型封装
   - `npm run smoke:db` 无头烟雾测试全 8 项通过（创建/列表/去重/获取/更新/删除/文章/设置）
+- **2026-07-14**：Phase 2 Integration 完成验收：
+  - 补齐 DataSource 接口的 `createFeed` 方法（IpcDataSource + MockDataSource 双实现）
+  - 在 FeedList 顶部添加「新增订阅源」输入框（URL 输入 + 提交按钮）
+  - `node scripts/smoke-phase2.cjs` 9/9 通过（后端全链路）
+  - `node scripts/smoke-2.4-ui-ipc.cjs` 6/6 通过（UI 端到端 IPC：ipcSeed/listHasData/clickWorks/contentLoaded）
+  - Phase 2 "添加订阅源 → 同步 → 阅读 → 已读/星标" 完整闭环可演示
+
+- **2026-07-14**：修复侧栏空白名称 bug（Issue: 添加订阅源后侧栏不立即显示名称，需重启才出现）：
+  - 根因1：`FeedRepository.create()` 在用户未填 title 时将 `title` 设为空字符串
+  - 根因2：`App.handleSync()` 同步完成后只刷新 articles 不刷新 feeds，导致 sync 写入的 siteTitle 未反映到侧栏
+  - 修复1：`FeedRepository.create()` 在 title 为空时用 URL hostname 兜底（如 sspai.com/feed → 显示 "sspai.com"）
+  - 修复2：`App.handleSync()` 同步完成后增加 `refreshFeeds()` 调用，自动更新侧栏 siteTitle
+  - `npm run build` + `node scripts/test-real-feed.cjs https://sspai.com/feed` 7/7 通过
 - **2026-07-14**：Task 2.2 首版实现位于 `feat/task-2.2-feed-pipeline`：
   - 使用 `rss-parser` 统一 RSS/Atom，原生校验 JSON Feed 1/1.1；
   - 使用 `@mozilla/readability` + `jsdom` 提取正文，`sanitize-html` 白名单清洗，`turndown` + GFM 插件转换 Markdown；

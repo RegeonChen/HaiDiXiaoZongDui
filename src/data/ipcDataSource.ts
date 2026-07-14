@@ -60,6 +60,10 @@ export class IpcDataSource implements DataSource {
     return { ok: false, message: result.error ?? '同步失败' };
   }
 
+  async createFeed(url: string, title?: string): Promise<DataSourceState<Feed>> {
+    return unwrap(await window.api.feed.create({ url, title }));
+  }
+
   async getCleanedHtml(articleId: string): Promise<DataSourceState<string>> {
     return unwrap(await window.api.content.getCleanedHtml(articleId));
   }

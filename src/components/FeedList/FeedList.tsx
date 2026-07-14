@@ -5,7 +5,7 @@
  *  - 下面按 groupName 分组列出所有订阅源
  *  - 显示未读数 / 同步失败标记
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Article, Feed } from '@shared/types';
 import './FeedList.css';
 
@@ -14,6 +14,8 @@ export interface FeedListProps {
   articles: Article[];
   selected: string | 'all' | 'unread' | 'starred';
   onSelect: (id: string | 'all' | 'unread' | 'starred') => void;
+  /** 新增订阅源回调，url 和可选标题 */
+  onAddFeed?: (url: string, title?: string) => void;
 }
 
 interface VirtualEntry {
@@ -23,7 +25,9 @@ interface VirtualEntry {
   count: number;
 }
 
-export function FeedList({ feeds, articles, selected, onSelect }: FeedListProps) {
+export function FeedList({ feeds, articles, selected, onSelect, onAddFeed }: FeedListProps) {
+  const [addUrl, setAddUrl] = useState('');
+  const [adding, setAdding] = useState(false);
   const unreadCount = useMemo(() => articles.filter((a) => !a.isRead).length, [articles]);
   const starredCount = useMemo(() => articles.filter((a) => a.isStarred).length, [articles]);
   const totalCount = articles.length;
@@ -56,6 +60,34 @@ export function FeedList({ feeds, articles, selected, onSelect }: FeedListProps)
 
   return (
     <div className="feed-list">
+      {/* 新增订阅源 */}
+      {onAddFeed && (
+        <form
+          className="feed-list__add"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const trimmed = addUrl.trim();
+            if (!trimmed || adding) return;
+            setAdding(true);
+            onAddFeed(trimmed);
+            setAddUrl('');
+            setAdding(false);
+          }}
+        >
+          <input
+            type="url"
+            className="feed-list__add-input"
+            placeholder="输入 RSS/Atom 订阅地址…"
+            value={addUrl}
+            onChange={(e) => setAddUrl(e.target.value)}
+            disabled={adding}
+          />
+          <button type="submit" className="feed-list__add-btn" disabled={adding || !addUrl.trim()}>
+            ＋
+          </button>
+        </form>
+      )}
+
       <div className="feed-list__section">
         {virtuals.map((v) => (
           <button
@@ -91,7 +123,7 @@ export function FeedList({ feeds, articles, selected, onSelect }: FeedListProps)
                   <span className="feed-list__icon" aria-hidden="true">
                     {f.feedType === 'atom' ? 'Ⓐ' : f.feedType === 'jsonfeed' ? '⌘' : '☰'}
                   </span>
-                  <span className="feed-list__label">{f.title}</span>
+                  <span className="feed-list__label">{f.siteTitle || f.title}</span>
                   {unread > 0 && <span className="feed-list__count">{unread}</span>}
                   {!f.lastSyncSuccess && (
                     <span

@@ -38,6 +38,7 @@ export function App() {
 
   const [feedsState, setFeedsState] = useState<FeedsState>({ kind: 'loading' });
   const [articlesState, setArticlesState] = useState<ArticlesState>({ kind: 'loading' });
+  const [allArticlesState, setAllArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string>('');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -86,7 +87,16 @@ export function App() {
   // 初次拉取 feeds
   useEffect(() => {
     void refreshFeeds();
-  }, [refreshFeeds]);
+    // 拉取全部文章用于侧栏计数
+    void (async () => {
+      const result = await ds.articles({});
+      if (result.kind === 'ready') {
+        setAllArticlesState({ kind: 'ready', data: result.data });
+      } else {
+        setAllArticlesState({ kind: 'ready', data: [] });
+      }
+    })();
+  }, [refreshFeeds, ds]);
 
   // 当 feed 选择变化时拉取对应文章
   useEffect(() => {
@@ -103,6 +113,7 @@ export function App() {
 
   const feeds = feedsState.kind === 'ready' ? feedsState.data : [];
   const articles = articlesState.kind === 'ready' ? articlesState.data : [];
+  const allArticles = allArticlesState.kind === 'ready' ? allArticlesState.data : [];
 
   const selectedArticle = useMemo<Article | null>(() => {
     if (!selection.articleId) return null;
@@ -128,7 +139,16 @@ export function App() {
       const a = articles.find((x) => x.id === id);
       if (a && !a.isRead) {
         void ds.markRead(id, true);
+        // 更新当前文章列表
         setArticlesState((prev) => {
+          if (prev.kind !== 'ready') return prev;
+          return {
+            kind: 'ready',
+            data: prev.data.map((x) => (x.id === id ? { ...x, isRead: true } : x))
+          };
+        });
+        // 同步更新全部文章列表中的 isRead
+        setAllArticlesState((prev) => {
           if (prev.kind !== 'ready') return prev;
           return {
             kind: 'ready',
@@ -144,6 +164,14 @@ export function App() {
     (id: string, isStarred: boolean) => {
       void ds.markStarred(id, isStarred);
       setArticlesState((prev) => {
+        if (prev.kind !== 'ready') return prev;
+        return {
+          kind: 'ready',
+          data: prev.data.map((x) => (x.id === id ? { ...x, isStarred } : x))
+        };
+      });
+      // 同步更新全部文章列表中的 isStarred
+      setAllArticlesState((prev) => {
         if (prev.kind !== 'ready') return prev;
         return {
           kind: 'ready',
@@ -171,6 +199,15 @@ export function App() {
     setSyncMessage(count === 0 ? '没有可同步的源' : `同步完成，共 ${count} 个`);
     setSyncing(false);
     if (count > 0) pushToast(`同步完成，共 ${count} 个源`, 'success');
+    // 同步完成后刷新 feeds（siteTitle 等元数据可能在同步中被更新）
+    void refreshFeeds();
+    // 刷新全部文章用于侧栏计数
+    void (async () => {
+      const result = await ds.articles({});
+      if (result.kind === 'ready') {
+        setAllArticlesState({ kind: 'ready', data: result.data });
+      }
+    })();
     void refreshArticles({
       feedId: selection.feedId === 'all' || selection.feedId === 'unread' || selection.feedId === 'starred'
         ? undefined
@@ -178,7 +215,7 @@ export function App() {
       isRead: selection.feedId === 'unread' ? false : undefined,
       isStarred: selection.feedId === 'starred' ? true : undefined
     });
-  }, [syncing, feeds, ds, refreshArticles, selection.feedId, pushToast]);
+  }, [syncing, feeds, ds, refreshArticles, refreshFeeds, selection.feedId, pushToast]);
 
   // ---- P1: 添加订阅源 ----
   const handleAddFeed = useCallback(
@@ -207,9 +244,16 @@ export function App() {
       // 切到新 feed + refresh
       selectFeed(created.data.id);
       await refreshFeeds();
+      // 刷新全部文章计数
+      void (async () => {
+        const result = await ds.articles({});
+        if (result.kind === 'ready') {
+          setAllArticlesState({ kind: 'ready', data: result.data });
+        }
+      })();
       return { ok: true, message: '添加成功' };
     },
-    [pushToast, refreshFeeds, selectFeed]
+    [pushToast, refreshFeeds, selectFeed, ds]
   );
 
   // ---- P2: OPML ----
@@ -237,8 +281,15 @@ export function App() {
       pushToast(`OPML 导入成功：新增 ${feedsImported}，跳过 ${feedsSkipped}`, 'success');
     }
     await refreshFeeds();
+    // 刷新全部文章计数
+    void (async () => {
+      const result = await ds.articles({});
+      if (result.kind === 'ready') {
+        setAllArticlesState({ kind: 'ready', data: result.data });
+      }
+    })();
     return { ok: true, message: 'done', result: r.data };
-  }, [pushToast, refreshFeeds]);
+  }, [pushToast, refreshFeeds, ds]);
 
   const handleOpmlExport = useCallback(async () => {
     const api = (window as unknown as { api?: { opml?: { export: () => Promise<{ success: boolean; data?: boolean; error?: { message: string } }> } } }).api;
@@ -269,9 +320,10 @@ export function App() {
     ) : (
       <FeedList
         feeds={feeds}
-        articles={articles}
+        articles={allArticles}
         selected={selection.feedId}
         onSelect={selectFeed}
+        onAddFeed={handleAddFeed}
       />
     );
 

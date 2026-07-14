@@ -116,6 +116,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   // Smoke mode — determined by env
   const smokePhase2 = process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1';
   const smokeV2 = process.env['JUHE_SHIVI_SMOKE_V2'] === '1';
+  const smokeRealFeed = process.env['JUHE_SHIVI_SMOKE_REAL_FEED'] === '1';
   const smokeUI = process.env['JUHE_SHIVI_SMOKE_UI'] === '1';
   const smokeUiReal = process.env['JUHE_SHIVI_SMOKE_UI_REAL'] === '1';
   let probe: string;
@@ -359,6 +360,55 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         return JSON.stringify(report);
       })()
     `;
+  } else if (smokeRealFeed) {
+    // Real RSS feed smoke: 用真实公网 RSS 源测试 添加→同步→读文章 闭环
+    const realFeedUrl = process.env['JUHE_SHIVI_SMOKE_FEED_URL'] || 'https://www.ruanyifeng.com/blog/atom.xml';
+    probe = `
+      (async () => {
+        const report = { realFeed: { ok: false, error: null, checks: {} } };
+        const feedUrl = ${JSON.stringify(realFeedUrl)};
+
+        try {
+          // 1) create
+          const created = await window.api.feed.create({ url: feedUrl, title: '实机测试-RSS' });
+          report.realFeed.checks.createFeed = created.success && !!created.data?.id;
+
+          // 2) sync
+          const synced = await window.api.sync.feed(created.data.id);
+          report.realFeed.checks.syncFeed = synced.success;
+          report.realFeed.syncResult = synced.success ? synced.data : null;
+
+          // 3) feed info (siteTitle)
+          const info = await window.api.feed.get(created.data.id);
+          report.realFeed.checks.feedInfo = info.success && info.data?.siteTitle?.length > 0;
+          report.realFeed.siteTitle = info.success ? info.data.siteTitle : null;
+
+          // 4) article list
+          const list = await window.api.article.list({ feedId: created.data.id });
+          report.realFeed.checks.hasArticles = list.success && list.data?.total > 0;
+          report.realFeed.articleCount = list.success ? list.data.total : 0;
+
+          // 5) article content
+          if (list.success && list.data.items.length > 0) {
+            const first = list.data.items[0];
+            report.realFeed.checks.hasTitle = first.title.length > 0;
+            report.realFeed.checks.hasContent = first.rawHtml.length > 0;
+            report.realFeed.firstTitle = first.title;
+
+            // 6) mark read + starred
+            await window.api.article.markRead(first.id, true);
+            await window.api.article.markStarred(first.id, true);
+            const after = await window.api.article.get(first.id);
+            report.realFeed.checks.statePersist = after.success && after.data?.isRead && after.data?.isStarred;
+          }
+
+          report.realFeed.ok = Object.values(report.realFeed.checks).every(function(v) { return v; });
+        } catch(e) {
+          report.realFeed.error = String(e);
+        }
+        return JSON.stringify(report);
+      })()
+    `;
   } else if (smokeUI) {
     // Phase 2.1 smoke: verify three-pane layout + click interaction + theme switch
     probe = `
@@ -477,6 +527,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     let pass: boolean;
     if (smokePhase2) {
       pass = raw.includes('"phase2":{"ok":true');
+    } else if (smokeRealFeed) {
+      pass = raw.includes('"realFeed":{"ok":true');
     } else if (smokeV2) {
       pass = raw.includes('"db":{"ok":true');
     } else if (smokeUiReal) {

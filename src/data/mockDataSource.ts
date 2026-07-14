@@ -72,6 +72,28 @@ export class MockDataSource implements DataSource {
     return { ok: true, message: '同步成功（mock）' };
   }
 
+  async createFeed(url: string, title?: string): Promise<DataSourceState<Feed>> {
+    const feed: Feed = {
+      id: `feed-mock-${Date.now()}`,
+      title: title ?? url,
+      url,
+      siteTitle: '',
+      description: '',
+      link: '',
+      feedType: 'rss',
+      groupName: null,
+      iconUrl: null,
+      lastSyncAt: null,
+      lastSyncSuccess: false,
+      lastSyncError: null,
+      syncIntervalMin: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    this.feedsState = [...this.feedsState, feed];
+    return { kind: 'ready', data: feed };
+  }
+
   async getCleanedHtml(articleId: string): Promise<DataSourceState<string>> {
     // 模拟"按需清洗"：第一次调用 delay 一下，后续立即返回
     const article = this.articlesState.find((a) => a.id === articleId);

@@ -25,8 +25,14 @@ export interface DataSource {
   markRead(articleId: string, isRead: boolean): Promise<void>;
   /** 标记星标/取消 */
   markStarred(articleId: string, isStarred: boolean): Promise<void>;
-  /** 同步一个 feed（占位；Task 2.2 接入真实拉取） */
+  /** 同步一个 feed */
   syncFeed(feedId: string): Promise<{ ok: boolean; message: string }>;
+  /**
+   * 新增订阅源。
+   * - IPC 模式：调 window.api.feed.create({ url, title })
+   * - Mock 模式：返回一个内存中的假 Feed
+   */
+  createFeed(url: string, title?: string): Promise<DataSourceState<Feed>>;
   /**
    * 按需拉取文章的 Cleaned HTML。
    * - IPC 模式：调 window.api.content.getCleanedHtml(articleId)，可能触发服务端清洗
