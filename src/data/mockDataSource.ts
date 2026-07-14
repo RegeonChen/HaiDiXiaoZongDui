@@ -71,4 +71,17 @@ export class MockDataSource implements DataSource {
     }
     return { ok: true, message: '同步成功（mock）' };
   }
+
+  async getCleanedHtml(articleId: string): Promise<DataSourceState<string>> {
+    // 模拟"按需清洗"：第一次调用 delay 一下，后续立即返回
+    const article = this.articlesState.find((a) => a.id === articleId);
+    if (!article) {
+      return { kind: 'error', error: `文章 ${articleId} 不存在` };
+    }
+    if (!article.cleanedHtml) {
+      await delay(300);
+      return { kind: 'ready', data: '<p>（mock 数据：此文章尚未生成 Cleaned HTML）</p>' };
+    }
+    return { kind: 'ready', data: article.cleanedHtml };
+  }
 }

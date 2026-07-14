@@ -27,4 +27,11 @@ export interface DataSource {
   markStarred(articleId: string, isStarred: boolean): Promise<void>;
   /** 同步一个 feed（占位；Task 2.2 接入真实拉取） */
   syncFeed(feedId: string): Promise<{ ok: boolean; message: string }>;
+  /**
+   * 按需拉取文章的 Cleaned HTML。
+   * - IPC 模式：调 window.api.content.getCleanedHtml(articleId)，可能触发服务端清洗
+   * - Mock 模式：直接返回 article.cleanedHtml
+   * - 选 article 时 ArticleReader 会用这个来填正文
+   */
+  getCleanedHtml(articleId: string): Promise<DataSourceState<string>>;
 }

@@ -2,13 +2,19 @@
  * 文章阅读区
  *
  *  - 标题 / 来源 / 作者 / 时间
- *  - 工具栏：星标 / 打开原文 / 模拟 AI 按钮（占位）
- *  - 正文：当前 mock 直接用 cleanedHtml，UI 层仅渲染清洗后的安全 HTML
- *    （切到真实数据时由 IPC `content:getCleanedHtml` 提供）。
+ *  - 工具栏：星标 / 打开原文 / AI 占位按钮
+ *  - 正文：
+ *    - 优先用 article.cleanedHtml（mock 模式或文章已清洗）
+ *    - 否则通过 useDataSource().getCleanedHtml(articleId) 按需拉取（IPC 模式）
+ *    - 拉取过程中显示 LoadingView
+ *    - 失败时显示 ErrorView 并提供重试
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Article, Feed } from '@shared/types';
+import { useDataSource } from '../../context/DataSourceContext';
 import { EmptyView } from '../StatusView/EmptyView';
+import { LoadingView } from '../StatusView/LoadingView';
+import { ErrorView } from '../StatusView/ErrorView';
 import './ArticleReader.css';
 
 export interface ArticleReaderProps {
@@ -24,21 +30,60 @@ function formatAbsolute(iso: string | null): string {
   return new Date(t).toLocaleString('zh-CN', { hour12: false });
 }
 
+interface ContentState {
+  html: string | null;
+  loading: boolean;
+  error: string | null;
+}
+
 export function ArticleReader({ article, feed, onToggleStar }: ArticleReaderProps) {
-  // 当 article 切换时，DOMPurify 等清洗工具将保证 cleanedHtml 安全；
-  // 这里我们额外走一次 text 解析与白名单过滤做兜底（Task 2.2 接入 Readability 后，
-  // 这一层可以移除）。
-  const sanitizedHtml = useMemo(() => {
-    if (!article?.cleanedHtml) return '';
-    return article.cleanedHtml;
-  }, [article?.cleanedHtml]);
+  const ds = useDataSource();
+  const [content, setContent] = useState<ContentState>({ html: null, loading: false, error: null });
 
-  // 切换文章时重置视图
-  const [view] = useState<'cleaned' | 'raw'>('cleaned');
-
+  // article 切换时决定如何取正文
   useEffect(() => {
-    // 文章变化时，调用方应已通过 onToggleRead 标记已读（App.tsx 负责）
-  }, [article?.id]);
+    if (!article) {
+      setContent({ html: null, loading: false, error: null });
+      return;
+    }
+    // 已有 cleanedHtml（mock / 同步时已清洗）
+    if (article.cleanedHtml) {
+      setContent({ html: article.cleanedHtml, loading: false, error: null });
+      return;
+    }
+    // cleaningStatus === 'pending' 或 null —— 按需拉
+    setContent({ html: null, loading: true, error: null });
+    let cancelled = false;
+    void (async () => {
+      const r = await ds.getCleanedHtml(article.id);
+      if (cancelled) return;
+      if (r.kind === 'ready') {
+        setContent({ html: r.data, loading: false, error: null });
+      } else if (r.kind === 'error') {
+        setContent({ html: null, loading: false, error: r.error });
+      } else {
+        setContent({ html: null, loading: true, error: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [article?.id, article?.cleanedHtml, ds]);
+
+  const retry = () => {
+    if (!article) return;
+    setContent({ html: null, loading: true, error: null });
+    void (async () => {
+      const r = await ds.getCleanedHtml(article.id);
+      if (r.kind === 'ready') {
+        setContent({ html: r.data, loading: false, error: null });
+      } else if (r.kind === 'error') {
+        setContent({ html: null, loading: false, error: r.error });
+      } else {
+        setContent({ html: null, loading: true, error: null });
+      }
+    })();
+  };
 
   if (!article) {
     return (
@@ -85,20 +130,23 @@ export function ArticleReader({ article, feed, onToggleStar }: ArticleReaderProp
           </button>
         </div>
       </header>
-      <div className="article-reader__body" data-view={view}>
-        {sanitizedHtml ? (
-          // 安全说明：cleanedHtml 来自后端 Readability + DOMPurify 清洗，
-          // Task 2.1 阶段是 mock 数据，已是干净 HTML；
-          // Task 2.2 接入真实清洗后这里直接显示即可。
+      <div className="article-reader__body">
+        {content.loading ? (
+          <LoadingView message="正在清洗正文…" />
+        ) : content.error ? (
+          <ErrorView message={content.error} onRetry={retry} />
+        ) : content.html ? (
           <div
             className="article-reader__content"
+            // 安全说明：html 来自后端 IPC content.getCleanedHtml
+            // （已经 Readability + DOMPurify 清洗），或者 mock 模式下的 mockData。
             // eslint-disable-next-line react/no-danger
-            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+            dangerouslySetInnerHTML={{ __html: content.html }}
           />
         ) : (
           <EmptyView
-            title="尚未完成正文清洗"
-            hint="此文章还未生成 Cleaned HTML / Markdown。"
+            title="此文章暂无正文"
+            hint="可能还没有内容，或者源站返回为空。"
           />
         )}
       </div>

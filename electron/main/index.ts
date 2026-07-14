@@ -88,13 +88,19 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
   });
 
   const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
+  const smokeUi = process.env['JUHE_SHIVI_SMOKE_UI'] === '1';
+  const smokeUiReal = process.env['JUHE_SHIVI_SMOKE_UI_REAL'] === '1';
+  // smokeUiReal = 走真 IPC；smokeUi = 走 ?mock=1 避免空 DB 干扰
+  const useMock = smokeUi && !smokeUiReal;
   if (devServerUrl) {
-    await win.loadURL(devServerUrl);
+    const url = useMock ? `${devServerUrl}${devServerUrl.includes('?') ? '&' : '?'}mock=1` : devServerUrl;
+    await win.loadURL(url);
   } else {
-    await win.loadFile(path.join(__dirname, '../renderer/index.html'));
+    const opts = useMock ? { search: 'mock=1' } : undefined;
+    await win.loadFile(path.join(__dirname, '../renderer/index.html'), opts);
   }
 
-  if (process.env['JUHE_SHIVI_SMOKE'] === '1' || process.env['JUHE_SHIVI_SMOKE_UI'] === '1') {
+  if (process.env['JUHE_SHIVI_SMOKE'] === '1' || smokeUi) {
     void runSmokeTest(win);
   }
 }
@@ -111,6 +117,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokePhase2 = process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1';
   const smokeV2 = process.env['JUHE_SHIVI_SMOKE_V2'] === '1';
   const smokeUI = process.env['JUHE_SHIVI_SMOKE_UI'] === '1';
+  const smokeUiReal = process.env['JUHE_SHIVI_SMOKE_UI_REAL'] === '1';
   let probe: string;
 
   if (smokePhase2) {
@@ -229,6 +236,79 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.db.ok = Object.values(report.db.checks).every(function(v) { return v; });
         } catch(e) {
           report.db.error = String(e);
+        }
+        return JSON.stringify(report);
+      })()
+    `;
+  } else if (smokeUiReal) {
+    // Phase 2.4 smoke: UI end-to-end via real IPC
+    // 走真 IPC 模式（加载 renderer 不带 ?mock=1），通过 IPC seed 数据后
+    // 验证 React 组件从 IPC 拿数据并展示
+    const feedUrl = process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? '';
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        const report = { uiIpc: { ok: false, error: null, checks: {} } };
+        const feedUrl = ${JSON.stringify(feedUrl)};
+
+        try {
+          // 1) 通过 IPC seed 数据
+          const created = await window.api.feed.create({ url: feedUrl, title: 'UI IPC Smoke Feed' });
+          const synced = await window.api.sync.feed(created.data.id);
+          report.uiIpc.checks.ipcSeed = created.success && !!created.data?.id &&
+            synced.success && synced.data?.success === true;
+
+          // 2) 等 React 第一次 useEffect 跑完（feed 列表渲染稳定）
+          await sleep(1500);
+
+          // 3) 点 sidebar 切到刚创建的 feed，触发 useEffect 重拉 articles
+          //    （selection.feedId 变化 → articles 拉新数据）
+          const feedItems = document.querySelectorAll('.feed-list__item');
+          let targetFeedBtn = null;
+          feedItems.forEach((b) => {
+            const title = b.querySelector('.feed-list__label')?.textContent;
+            if (title === 'UI IPC Smoke Feed' || title === 'Hacker News') {
+              targetFeedBtn = b;
+            }
+          });
+          if (targetFeedBtn) {
+            targetFeedBtn.click();
+          }
+          await sleep(800);
+
+          // 4) UI 端 article 列表渲染了
+          const articleItems = document.querySelectorAll('.article-list__item');
+          report.uiIpc.checks.uiListHasData = articleItems.length >= 1;
+          report.uiIpc.checks.uiListCount = articleItems.length;
+
+          // 5) 点击第一篇
+          const firstTitle = articleItems[0]?.querySelector('.article-list__article-title')?.textContent;
+          if (articleItems[0]) {
+            articleItems[0].click();
+            await sleep(500);
+            const readerTitle = document.querySelector('.article-reader__title')?.textContent;
+            report.uiIpc.checks.uiClickWorks = !!readerTitle && !!firstTitle &&
+              readerTitle.trim() === firstTitle.trim();
+            report.uiIpc.checks.readerTitle = readerTitle ?? null;
+            report.uiIpc.checks.clickedTitle = firstTitle ?? null;
+
+            // 6) ArticleReader 通过 IPC getCleanedHtml 拿到正文
+            await sleep(1000);
+            const content = document.querySelector('.article-reader__content');
+            report.uiIpc.checks.uiContentLoaded = !!content && (content.innerHTML.length > 0);
+            report.uiIpc.checks.uiContentSnippet = content ? content.innerHTML.slice(0, 80) : null;
+
+            // 清理
+            if (created.data?.id) {
+              await window.api.feed.delete(created.data.id);
+            }
+          }
+
+          // OK 判定
+          const boolChecks = ['ipcSeed', 'uiListHasData', 'uiClickWorks', 'uiContentLoaded'];
+          report.uiIpc.ok = boolChecks.every((k) => report.uiIpc.checks[k] === true);
+        } catch (e) {
+          report.uiIpc.error = String(e);
         }
         return JSON.stringify(report);
       })()
@@ -353,6 +433,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"phase2":{"ok":true');
     } else if (smokeV2) {
       pass = raw.includes('"db":{"ok":true');
+    } else if (smokeUiReal) {
+      pass = raw.includes('"uiIpc":{"ok":true');
     } else if (smokeUI) {
       pass = raw.includes('"ui":{"ok":true');
     } else {

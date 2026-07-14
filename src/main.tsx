@@ -2,10 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { DataSourceProvider } from './context/DataSourceContext';
-import { MockDataSource } from './data/mockDataSource';
+import { createDataSource } from './data/dataSourceFactory';
 import './index.css';
 
-const ds = new MockDataSource();
+const ds = createDataSource();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
