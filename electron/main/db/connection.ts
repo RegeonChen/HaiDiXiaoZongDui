@@ -13,7 +13,7 @@
 import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import type initSqlJsModule from 'sql.js';
+import initSqlJsModule from 'sql.js';
 
 // ============================================================
 // 类型别名
@@ -46,8 +46,11 @@ let initialized = false;
 export async function initDatabase(): Promise<void> {
   if (initialized) return;
 
-  // 运行时 require（避免 ESM/CJS 混用问题，sql.js 对两种都支持）
-  const initSqlJs = require('sql.js') as typeof initSqlJsModule;
+  // electron-vite 的 externalizeDepsPlugin 把 sql.js 标为 external，
+  // 运行时由 Node 解析。这里用 ESM dynamic import（避免 require 在 ESM 产物里
+  // 拿到的是 CJS shim 而非真正模块）。
+  const sqlJsModule = await import('sql.js');
+  const initSqlJs = sqlJsModule.default ?? (sqlJsModule as unknown as typeof initSqlJsModule);
   const SQL: SqlJsFactory = await initSqlJs();
 
   dbPath = path.join(app.getPath('userData'), 'juhe-shivi.db');

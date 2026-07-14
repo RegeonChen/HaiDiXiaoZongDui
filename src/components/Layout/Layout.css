@@ -1,0 +1,142 @@
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* ----- Header ----- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 48px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+  flex-shrink: 0;
+}
+
+.app-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-header__logo {
+  font-size: 18px;
+}
+
+.app-header__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.app-header__phase {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-header__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-header__sync-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.app-header__sync-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.app-header__sync-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.app-header__sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
+/* ----- Main 三栏 ----- */
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 240px 340px 1fr;
+}
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pane-feeds {
+  border-right: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+
+.pane-list {
+  border-right: 1px solid var(--border);
+}
+
+.pane-reader {
+  background: var(--bg);
+}
+
+/* ----- 响应式 ----- */
+
+@media (max-width: 1100px) {
+  .app-main {
+    grid-template-columns: 220px 300px 1fr;
+  }
+}
+
+@media (max-width: 960px) {
+  .app-main {
+    grid-template-columns: 200px 280px 1fr;
+  }
+  .app-header__phase {
+    display: none;
+  }
+}

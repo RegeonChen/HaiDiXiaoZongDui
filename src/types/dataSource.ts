@@ -1,0 +1,30 @@
+/**
+ * DataSource — UI 与后端之间的数据契约
+ * Task 2.1: UI Shell
+ *
+ * 设计目的：
+ *   - Phase 2.1 用 mock 实现，等 Task 2.3 + 2.2 完成后切换到真实 IPC
+ *   - 切换时只换 Provider，不改组件代码
+ *   - 所有方法都返回 Result 风格（成功/失败/加载），统一错误处理
+ */
+import type { Article, Feed } from '@shared/types';
+
+export type DataSourceState<T> =
+  | { kind: 'loading' }
+  | { kind: 'ready'; data: T }
+  | { kind: 'error'; error: string };
+
+export interface DataSource {
+  /** 拉取所有订阅源 */
+  feeds(): Promise<DataSourceState<Feed[]>>;
+  /** 按筛选条件拉取文章 */
+  articles(filter: { feedId?: string; isRead?: boolean; isStarred?: boolean }): Promise<
+    DataSourceState<Article[]>
+  >;
+  /** 标记已读/未读 */
+  markRead(articleId: string, isRead: boolean): Promise<void>;
+  /** 标记星标/取消 */
+  markStarred(articleId: string, isStarred: boolean): Promise<void>;
+  /** 同步一个 feed（占位；Task 2.2 接入真实拉取） */
+  syncFeed(feedId: string): Promise<{ ok: boolean; message: string }>;
+}

@@ -68,7 +68,7 @@ async function createMainWindow(): Promise<void> {
     await win.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
 
-  if (process.env['JUHE_SHIVI_SMOKE'] === '1') {
+  if (process.env['JUHE_SHIVI_SMOKE'] === '1' || process.env['JUHE_SHIVI_SMOKE_UI'] === '1') {
     void runSmokeTest(win);
   }
 }
@@ -78,10 +78,12 @@ async function createMainWindow(): Promise<void> {
 // ============================================================
 
 async function runSmokeTest(win: BrowserWindow): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, 500));
+  // 等到 React 把 #root 渲染完 + mock dataSource 拉完
+  await new Promise<void>((resolve) => setTimeout(resolve, 800));
 
-  // Smoke mode 2.3 or 1.1 — determined by env
+  // Smoke mode 2.3 or 1.1 or 2.1 UI — determined by env
   const smokeV2 = process.env['JUHE_SHIVI_SMOKE_V2'] === '1';
+  const smokeUI = process.env['JUHE_SHIVI_SMOKE_UI'] === '1';
   let probe: string;
 
   if (smokeV2) {
@@ -130,6 +132,92 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         return JSON.stringify(report);
       })()
     `;
+  } else if (smokeUI) {
+    // Phase 2.1 smoke: verify three-pane layout + click interaction + theme switch
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        const report = { ui: { ok: false, error: null, checks: {} } };
+
+        try {
+          // 1) 三栏 layout 节点都存在
+          const main = document.querySelector('.app-main');
+          const sidebar = document.querySelector('.pane-feeds');
+          const list = document.querySelector('.pane-list');
+          const reader = document.querySelector('.pane-reader');
+          report.ui.checks.layoutRendered = !!(main && sidebar && list && reader);
+
+          // 2) 三栏宽度加起来约等于 main 宽度（容差 2px）
+          if (main && sidebar && list && reader) {
+            const sumW = sidebar.offsetWidth + list.offsetWidth + reader.offsetWidth;
+            const mainW = main.offsetWidth;
+            report.ui.checks.paneWidths = Math.abs(sumW - mainW) <= 2;
+            report.ui.checks.paneSum = sumW;
+            report.ui.checks.mainW = mainW;
+          }
+
+          // 3) 订阅源侧栏渲染了 ≥ 1 个 FeedList 按钮
+          const feedButtons = document.querySelectorAll('.feed-list__item');
+          report.ui.checks.feedButtonsCount = feedButtons.length;
+          report.ui.checks.feedButtonsOk = feedButtons.length >= 5;
+
+          // 4) 文章列表有 ≥ 1 个 article-list__item
+          const articleButtons = document.querySelectorAll('.article-list__item');
+          report.ui.checks.articleButtonsCount = articleButtons.length;
+          report.ui.checks.articleButtonsOk = articleButtons.length >= 5;
+
+          // 5) 点击第一篇文章
+          const firstArticleTitle = articleButtons[0]?.querySelector('.article-list__article-title')?.textContent;
+          if (articleButtons[0]) {
+            articleButtons[0].click();
+            await sleep(300);
+            const readerTitle = document.querySelector('.article-reader__title')?.textContent;
+            report.ui.checks.clickSelectsArticle = readerTitle && firstArticleTitle && readerTitle.trim() === firstArticleTitle.trim();
+            report.ui.checks.readerTitle = readerTitle ?? null;
+            report.ui.checks.clickedTitle = firstArticleTitle ?? null;
+          } else {
+            report.ui.checks.clickSelectsArticle = false;
+          }
+
+          // 6) 主题切换：找到 ☾ 按钮（dark）点击
+          const themeButtons = document.querySelectorAll('.theme-toggle__btn');
+          let darkBtn = null;
+          themeButtons.forEach((b) => { if (b.title === '深色') darkBtn = b; });
+          if (darkBtn) {
+            darkBtn.click();
+            await sleep(100);
+            report.ui.checks.themeAfterDark = document.documentElement.getAttribute('data-theme');
+          } else {
+            report.ui.checks.themeAfterDark = 'no-button';
+          }
+
+          // 7) 点回 system
+          let systemBtn = null;
+          themeButtons.forEach((b) => { if (b.title === '跟随系统') systemBtn = b; });
+          if (systemBtn) {
+            systemBtn.click();
+            await sleep(100);
+            report.ui.checks.themeAfterSystem = document.documentElement.getAttribute('data-theme');
+          }
+
+          // OK 判定：列出要校验为 boolean 的字段
+          const boolChecks = [
+            'layoutRendered', 'paneWidths', 'feedButtonsOk', 'articleButtonsOk',
+            'clickSelectsArticle'
+          ];
+          const themeChecks = ['themeAfterDark', 'themeAfterSystem'];
+          const boolOk = boolChecks.every((k) => report.ui.checks[k] === true);
+          const themeOk = themeChecks.every((k) => {
+            const v = report.ui.checks[k];
+            return v === 'light' || v === 'dark';
+          });
+          report.ui.ok = boolOk && themeOk;
+        } catch (e) {
+          report.ui.error = String(e);
+        }
+        return JSON.stringify(report);
+      })()
+    `;
   } else {
     // Phase 1.1 smoke: contextIsolation + minimal IPC
     probe = `
@@ -162,6 +250,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     let pass: boolean;
     if (smokeV2) {
       pass = raw.includes('"db":{"ok":true');
+    } else if (smokeUI) {
+      pass = raw.includes('"ui":{"ok":true');
     } else {
       pass =
         !raw.includes('"hasRequire":true') &&

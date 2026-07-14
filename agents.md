@@ -95,17 +95,17 @@
 - `PLAN.md` 已定义五个开发阶段和张晨阳/张宇凡/陈冠中的职责分工。
 - `shared/types.ts` 和 `shared/ipc.ts` 已建立（Task 1.2 完成），定义了核心领域类型和 IPC 通道协议。
 - **Task 1.1（Application Scaffold）已完成**：Electron 31 + electron-vite + React 18 + TypeScript strict，main/preload/renderer 三段式构建。
-- **Task 2.3（Local Database）进行中**：
-  - **2.3.1 完成**：SQLite 驱动选型 `sql.js`（WASM 版本，无需 node-gyp 原生编译），已安装 `sql.js` + `@types/sql.js`。
-  - **2.3.2 完成**：`electron/main/db/connection.ts` — 单例连接管理，数据库文件 `{userData}/juhe-shivi.db`，启动时自动加载/创建，每次写操作后存盘，will-quit 时优雅关闭，WAL 模式 + foreign_keys ON。
-  - **2.3.3 完成**：`electron/main/db/migration.ts` — 版本化迁移机制（db_version 表驱动），v1 定义 feeds 表（url 索引）、articles 表（guid UNIQUE 索引保证去重 + feed/published 复合索引 + is_read/is_starred 索引），已接入主进程 `initDatabase()` 之后自动执行。
-  - **2.3.4 完成**：`electron/main/db/feed-repository.ts` — FeedRepository，实现 list/getById/create/update/delete/recordSync/findByUrl，url 去重忽略末尾 / 和 www. 前缀，幂等创建。
-  - **2.3.5 完成**：`electron/main/db/article-repository.ts` — ArticleRepository，实现 list（分页+筛选）、getById、insertBatch（INSERT OR IGNORE 走 guid 唯一索引导入去重）、markRead/markStarred/batchMarkRead、getExistingGuidsForFeed。
-  - **2.3.6 完成**：同步状态记录已内置在 `FeedRepository.recordSync()`（更新 feeds 表的 lastSyncAt/lastSyncSuccess/lastSyncError），通过 `sync:feed` IPC 通道即可调用。
-  - **2.3.7 完成**：IPC handler 全部注册 — feed:*（5 个通道）、article:*（5 个通道）、sync:*（3 个占位通道，`sync:feed` 已对接 recordSync）、settings:*（2 个通道）。preload 升级为类型安全的 `invoke<>` 封装，暴露 `window.api.feed./article./sync./settings.` 方法。
-  - **2.3.8 完成**：`scripts/smoke-2.3.cjs` 验证脚本，通过 `npm run smoke:db` 运行。验证项：createFeed / listFeeds / dupFeed (幂等) / getFeed / listArticlesEmpty / settings / updateFeed / deleteFeed — 全部 8 项通过。
-- **Task 2.3（Local Database）已完成。**
-- 当前活动里程碑：Phase 2 - Core Reading Workflow（Task 2.1 / 2.2 / 2.3 并行开发中）。
+- **Task 2.3（Local Database）已完成**（陈冠中 / `RegeonChen` 提交）：SQLite (`sql.js` WASM) 连接 + 版本化迁移 + Feed/Article Repository + 15 IPC handler + preload 类型安全封装 + 8/8 烟雾测试通过（`npm run smoke:db`）。**修复**：他的 `connection.ts` 用了 `require('sql.js')` 在 ESM 产物里挂掉，改为 `await import('sql.js')`（合入同一 commit）。
+  - 2.3.1 SQLite 驱动选型 `sql.js`（WASM，无原生编译）
+  - 2.3.2 `electron/main/db/connection.ts` 单例连接 / `userData/juhe-shivi.db` / WAL + foreign_keys ON
+  - 2.3.3 `electron/main/db/migration.ts` 版本化迁移，v1 = feeds / articles + 索引
+  - 2.3.4 `electron/main/db/feed-repository.ts` 幂等 create + CRUD + recordSync，url 去重忽略末尾 / 和 www. 前缀
+  - 2.3.5 `electron/main/db/article-repository.ts` list（分页+筛选）/ insertBatch（走 guid UNIQUE 去重）/ 状态读写
+  - 2.3.6 同步状态记录在 `FeedRepository.recordSync()`，`sync:feed` 通道已对接
+  - 2.3.7 IPC handler 全注册（feed:*/article:*/sync:*/settings:*），preload 类型安全 `invoke<>` 封装
+  - 2.3.8 `scripts/smoke-2.3.cjs` 8/8 通过
+- **Task 2.1（Electron UI and Reader Shell）已完成**（张晨阳）：三栏 layout（订阅源侧栏 / 文章列表 / 阅读区），主题切换（亮 / 暗 / 跟随系统 + `<html data-theme>` + localStorage），点击交互（选 article 自动 markRead、star 切换），同步按钮，Loading/Empty/Error 状态组件。数据用 `MockDataSource` 走 `DataSource` 类型契约，Task 2.2 完成后切到 IPC 实现只换 Provider。`scripts/smoke-2.1.cjs` headless 验证通过：layoutRendered / paneWidths (1266=1266) / 8 个 feed 按钮 / 10 篇文章 / 点击切换阅读区 / 主题切到 dark + 切回 system — 7 项全过。
+- 当前活动里程碑：Phase 2 - Core Reading Workflow，2.1 / 2.3 已完成，等待 Task 2.2（Feed/OPML/同步/清洗 · 张宇凡）落地后做集成。
 
 ## 设计决策
 
