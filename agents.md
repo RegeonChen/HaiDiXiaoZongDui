@@ -108,7 +108,12 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - **2.3.7 完成**：feed/article/settings 及真实 sync/content/opml IPC 均已注册；preload 通过类型安全封装暴露对应 API。
   - **2.3.8 完成**：`scripts/smoke-2.3.cjs` 验证脚本，通过 `npm run smoke:db` 运行。使用隔离的临时 userData，验证 createFeed / listFeeds / dupFeed（幂等）/ getFeed / listArticlesEmpty / settings / updateFeed / deleteFeed，并通过二次启动确认数据持久化。
 - **Task 2.1（Electron UI and Reader Shell）已完成**（张晨阳）：三栏 layout（订阅源侧栏 / 文章列表 / 阅读区）、主题切换、文章选择、已读/星标交互、同步按钮及 Loading/Empty/Error 状态已实现；`npm run smoke:ui` 7 项通过。当前仍通过 `MockDataSource` 展示演示数据。
-- 当前活动里程碑：Phase 2 - Core Reading Workflow；2.1、2.2、2.3 的分项实现已完成，但 **Phase 2 Integration 尚未通过验收**。还需将 UI 从 `MockDataSource` 切换到真实 IPC，补齐添加订阅和按需加载正文的可视化流程。
+- **Phase 2 集成完成**：
+  - **P0**（UI 切真 IPC）完成：写 `IpcDataSource` + `createDataSource` 工厂（URL `?mock=1` 选 mock），`ArticleReader` 按需调 `getCleanedHtml`。新增 `scripts/smoke-2.4-ui-ipc.cjs`。
+  - **P1**（添加订阅源 UI）完成：header 加 `+ 添加订阅源` 按钮 + `AddFeedDialog` 组件，调 `feed.create` + `sync.feed`，成功后自动刷新侧栏 + 切到新 feed。
+  - **P2**（OPML UI）完成：header 加 `↓ 导入 OPML` / `↑ 导出 OPML` 按钮（`OpmlButtons` 组件），调 `window.api.opml.import / export`，结果用底部 `Toast` 提示。
+  - 5/5 smoke 全过：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 9/9)。
+- 当前活动里程碑：**Phase 2 集成已通过验收**。下一步进入 Phase 3（AI / 笔记 / 标签 / 多语言 / 日志 / 导出）。
 
 ## 设计决策
 

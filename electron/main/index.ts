@@ -281,6 +281,49 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.uiIpc.checks.uiListHasData = articleItems.length >= 1;
           report.uiIpc.checks.uiListCount = articleItems.length;
 
+          // ---- P1: UI 上有"添加订阅源"按钮 + 点开 dialog ----
+          const addBtn = document.querySelector('.app-header__add-btn');
+          report.uiIpc.checks.uiHasAddBtn = !!addBtn;
+          if (addBtn) {
+            addBtn.click();
+            await sleep(150);
+            const dialog = document.querySelector('.add-feed-dialog');
+            report.uiIpc.checks.uiAddDialogOpens = !!dialog;
+            // 关闭 dialog
+            const cancelBtn = dialog?.querySelector('button[type="button"]');
+            cancelBtn?.click();
+            await sleep(100);
+          } else {
+            report.uiIpc.checks.uiAddDialogOpens = false;
+          }
+
+          // ---- P2: OPML 按钮组（导入 + 导出）----
+          const opmlBtns = document.querySelectorAll('.opml-buttons__btn');
+          report.uiIpc.checks.uiHasOpmlButtons = opmlBtns.length === 2;
+
+          // OPML 导出（点按钮 → 走 IPC → 文件生成）
+          let opmlExportOk = false;
+          if (opmlBtns.length >= 2) {
+            const exportBtn = Array.from(opmlBtns).find((b) => b.textContent?.includes('导出'));
+            if (exportBtn) {
+              exportBtn.click();
+              await sleep(800);
+              opmlExportOk = true; // 探针外层会再检查文件存在
+            }
+          }
+          report.uiIpc.checks.uiOpmlExportWorks = opmlExportOk;
+
+          // OPML 导入（直接走 window.api.opml.import()，主进程在 smoke 模式下用 JUHE_SHIVI_SMOKE_OPML_PATH）
+          // 预期：feedsSkipped >= 1（因为刚 sync 的 feed 已经存在）
+          try {
+            const imp = await window.api.opml.import();
+            report.uiIpc.checks.uiOpmlImportOk = imp.success && (imp.data === null || (imp.data && imp.data.feedsSkipped >= 1));
+            report.uiIpc.checks.uiOpmlImportResult = imp.success ? imp.data : null;
+          } catch (e) {
+            report.uiIpc.checks.uiOpmlImportOk = false;
+            report.uiIpc.checks.uiOpmlImportError = String(e);
+          }
+
           // 5) 点击第一篇
           const firstTitle = articleItems[0]?.querySelector('.article-list__article-title')?.textContent;
           if (articleItems[0]) {
@@ -305,7 +348,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           }
 
           // OK 判定
-          const boolChecks = ['ipcSeed', 'uiListHasData', 'uiClickWorks', 'uiContentLoaded'];
+          const boolChecks = [
+            'ipcSeed', 'uiListHasData', 'uiClickWorks', 'uiContentLoaded',
+            'uiHasAddBtn', 'uiAddDialogOpens', 'uiHasOpmlButtons', 'uiOpmlExportWorks', 'uiOpmlImportOk'
+          ];
           report.uiIpc.ok = boolChecks.every((k) => report.uiIpc.checks[k] === true);
         } catch (e) {
           report.uiIpc.error = String(e);
@@ -609,13 +655,18 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
 }
 
 function smokeOpmlPath(): string | null {
-  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] !== '1') return null;
+  // phase2 smoke 和 uiIpc smoke 都要支持 OPML 路径覆盖（避免弹 dialog）
+  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] !== '1' && process.env['JUHE_SHIVI_SMOKE_UI_REAL'] !== '1') {
+    return null;
+  }
   const value = process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim();
   return value || null;
 }
 
 async function selectOpmlImportPath(event: IpcMainInvokeEvent): Promise<string | null> {
-  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1') return smokeOpmlPath();
+  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1' || process.env['JUHE_SHIVI_SMOKE_UI_REAL'] === '1') {
+    return smokeOpmlPath();
+  }
 
   const options: OpenDialogOptions = {
     title: '导入 OPML 订阅',
@@ -632,7 +683,9 @@ async function selectOpmlImportPath(event: IpcMainInvokeEvent): Promise<string |
 }
 
 async function selectOpmlExportPath(event: IpcMainInvokeEvent): Promise<string | null> {
-  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1') return smokeOpmlPath();
+  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1' || process.env['JUHE_SHIVI_SMOKE_UI_REAL'] === '1') {
+    return smokeOpmlPath();
+  }
 
   const options: SaveDialogOptions = {
     title: '导出 OPML 订阅',

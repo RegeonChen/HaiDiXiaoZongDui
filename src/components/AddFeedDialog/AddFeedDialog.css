@@ -1,0 +1,125 @@
+.add-feed-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 120ms ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.add-feed-dialog {
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  width: min(440px, calc(100vw - 32px));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.add-feed-dialog__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.add-feed-dialog__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.add-feed-dialog__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+.add-feed-dialog__input {
+  appearance: none;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.add-feed-dialog__input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.add-feed-dialog__input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.add-feed-dialog__error {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--err);
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 6px;
+}
+
+.add-feed-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.add-feed-dialog__btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.add-feed-dialog__btn--ghost {
+  background: transparent;
+  color: var(--fg);
+}
+
+.add-feed-dialog__btn--ghost:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+.add-feed-dialog__btn--primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.add-feed-dialog__btn--primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.add-feed-dialog__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,0 +1,32 @@
+.opml-buttons {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.opml-buttons__btn {
+  appearance: none;
+  border: none;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.opml-buttons__btn + .opml-buttons__btn {
+  border-left: 1px solid var(--border);
+}
+
+.opml-buttons__btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.opml-buttons__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

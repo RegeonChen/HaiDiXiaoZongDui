@@ -1,15 +1,14 @@
 /**
  * App 入口
- * Task 2.1: UI Shell
+ * Task 2.1: UI Shell + Phase 2 集成
  *
  * 数据流：
- *   useDataSource  → 拉 feeds / articles
+ *   useDataSource  → 拉 feeds / articles / content
  *   useSelection   → 当前选中的 feedId / articleId
- *   useTheme       → 主题切换
  *
  * 状态在 App 这一层集中管理，三个栏的子组件保持纯展示。
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Article, Feed } from '@shared/types';
 import { useDataSource } from './context/DataSourceContext';
 import { useSelection } from './hooks/useSelection';
@@ -17,6 +16,8 @@ import { Layout } from './components/Layout/Layout';
 import { FeedList } from './components/FeedList/FeedList';
 import { ArticleList } from './components/ArticleList/ArticleList';
 import { ArticleReader } from './components/ArticleReader/ArticleReader';
+import { AddFeedDialog } from './components/AddFeedDialog/AddFeedDialog';
+import { Toast, type ToastItem } from './components/Toast/Toast';
 import { LoadingView } from './components/StatusView/LoadingView';
 import { ErrorView } from './components/StatusView/ErrorView';
 import './index.css';
@@ -39,6 +40,19 @@ export function App() {
   const [articlesState, setArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string>('');
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const toastIdRef = useRef(0);
+
+  const pushToast = useCallback((message: string, kind: ToastItem['kind'] = 'info') => {
+    toastIdRef.current += 1;
+    const id = toastIdRef.current;
+    setToasts((prev) => [...prev, { id, message, kind }]);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   // 拉 feeds
   const refreshFeeds = useCallback(async () => {
@@ -49,7 +63,6 @@ export function App() {
     } else if (result.kind === 'error') {
       setFeedsState({ kind: 'error', error: result.error });
     } else {
-      // loading 状态只是中间态，理论上不会发生
       setFeedsState({ kind: 'ready', data: [] });
     }
   }, [ds]);
@@ -91,7 +104,6 @@ export function App() {
   const feeds = feedsState.kind === 'ready' ? feedsState.data : [];
   const articles = articlesState.kind === 'ready' ? articlesState.data : [];
 
-  // 选中的 article
   const selectedArticle = useMemo<Article | null>(() => {
     if (!selection.articleId) return null;
     return articles.find((a) => a.id === selection.articleId) ?? null;
@@ -102,7 +114,6 @@ export function App() {
     return feeds.find((f) => f.id === selectedArticle.feedId) ?? null;
   }, [feeds, selectedArticle]);
 
-  // filter label
   const filterLabel = useMemo(() => {
     if (selection.feedId === 'all') return '全部文章';
     if (selection.feedId === 'unread') return '未读';
@@ -111,14 +122,12 @@ export function App() {
     return f?.title ?? '未知';
   }, [feeds, selection.feedId]);
 
-  // 选中文章 → 自动 markRead（仅当未读时）
   const handleSelectArticle = useCallback(
     (id: string) => {
       selectArticle(id);
       const a = articles.find((x) => x.id === id);
       if (a && !a.isRead) {
         void ds.markRead(id, true);
-        // 乐观更新本地状态
         setArticlesState((prev) => {
           if (prev.kind !== 'ready') return prev;
           return {
@@ -161,7 +170,7 @@ export function App() {
     }
     setSyncMessage(count === 0 ? '没有可同步的源' : `同步完成，共 ${count} 个`);
     setSyncing(false);
-    // 同步完成后重新拉一遍 articles（mock 不会真变，但流程上正确）
+    if (count > 0) pushToast(`同步完成，共 ${count} 个源`, 'success');
     void refreshArticles({
       feedId: selection.feedId === 'all' || selection.feedId === 'unread' || selection.feedId === 'starred'
         ? undefined
@@ -169,7 +178,86 @@ export function App() {
       isRead: selection.feedId === 'unread' ? false : undefined,
       isStarred: selection.feedId === 'starred' ? true : undefined
     });
-  }, [syncing, feeds, ds, refreshArticles, selection.feedId]);
+  }, [syncing, feeds, ds, refreshArticles, selection.feedId, pushToast]);
+
+  // ---- P1: 添加订阅源 ----
+  const handleAddFeed = useCallback(
+    async (url: string) => {
+      // IPC 是分两步的：create → sync。这里把它们串起来
+      // 注意 DataSource 接口没有 createFeed，需要走 window.api
+      // 但 DataSource 是抽象——理论上应该扩展
+      // 简化处理：直接用 window.api（IpcDataSource 模式下 window.api 存在）
+      const api = (window as unknown as { api?: { feed?: { create: (i: { url: string; title?: string }) => Promise<{ success: boolean; data?: Feed; error?: { message: string } }> }; sync?: { feed: (id: string) => Promise<{ success: boolean; data?: { success: boolean; newArticles?: number; error?: string }; error?: { message: string } }> } } }).api;
+      if (!api?.feed?.create) {
+        return { ok: false, message: '当前模式不支持添加订阅源（仅 IPC 模式）' };
+      }
+      const created = await api.feed.create({ url, title: url });
+      if (!created.success || !created.data) {
+        return { ok: false, message: created.error?.message ?? '创建失败' };
+      }
+      // 自动同步新 feed
+      if (api.sync?.feed) {
+        const sync = await api.sync.feed(created.data.id);
+        if (sync.success && sync.data?.success) {
+          pushToast(`已添加并同步「${created.data.title || url}」`, 'success');
+        } else {
+          pushToast(`已添加，但同步失败：${sync.data?.error ?? '未知错误'}`, 'error');
+        }
+      }
+      // 切到新 feed + refresh
+      selectFeed(created.data.id);
+      await refreshFeeds();
+      return { ok: true, message: '添加成功' };
+    },
+    [pushToast, refreshFeeds, selectFeed]
+  );
+
+  // ---- P2: OPML ----
+  const handleOpmlImport = useCallback(async () => {
+    const api = (window as unknown as { api?: { opml?: { import: () => Promise<{ success: boolean; data?: { feedsImported: number; feedsSkipped: number; errors: string[] } | null; error?: { message: string } }> } } }).api;
+    if (!api?.opml?.import) {
+      pushToast('当前模式不支持 OPML 操作', 'error');
+      return { ok: false, message: 'no-opml' };
+    }
+    const r = await api.opml.import();
+    if (!r.success) {
+      pushToast(`OPML 导入失败：${r.error?.message ?? '未知错误'}`, 'error');
+      return { ok: false, message: r.error?.message ?? 'failed' };
+    }
+    if (r.data === null || r.data === undefined) {
+      // 用户取消
+      return { ok: true, message: '已取消', result: null };
+    }
+    const { feedsImported, feedsSkipped, errors } = r.data;
+    if (errors.length > 0) {
+      pushToast(`OPML 导入完成：新增 ${feedsImported}，跳过 ${feedsSkipped}，错误 ${errors.length}`, 'error');
+    } else if (feedsImported === 0 && feedsSkipped > 0) {
+      pushToast(`OPML 全部跳过（已存在）：${feedsSkipped} 个`, 'info');
+    } else {
+      pushToast(`OPML 导入成功：新增 ${feedsImported}，跳过 ${feedsSkipped}`, 'success');
+    }
+    await refreshFeeds();
+    return { ok: true, message: 'done', result: r.data };
+  }, [pushToast, refreshFeeds]);
+
+  const handleOpmlExport = useCallback(async () => {
+    const api = (window as unknown as { api?: { opml?: { export: () => Promise<{ success: boolean; data?: boolean; error?: { message: string } }> } } }).api;
+    if (!api?.opml?.export) {
+      pushToast('当前模式不支持 OPML 操作', 'error');
+      return { ok: false, message: 'no-opml' };
+    }
+    const r = await api.opml.export();
+    if (!r.success) {
+      pushToast(`OPML 导出失败：${r.error?.message ?? '未知错误'}`, 'error');
+      return { ok: false, message: r.error?.message ?? 'failed' };
+    }
+    if (r.data === true) {
+      pushToast('OPML 导出成功', 'success');
+    } else {
+      pushToast('已取消导出', 'info');
+    }
+    return { ok: r.data === true, message: r.data ? 'done' : 'cancelled' };
+  }, [pushToast]);
 
   // ----- 渲染 -----
 
@@ -216,19 +304,29 @@ export function App() {
   );
 
   return (
-    <Layout
-      feedsSlot={feedsSlot}
-      articlesSlot={articlesSlot}
-      readerSlot={readerSlot}
-      syncing={syncing}
-      syncLabel={syncMessage}
-      onSync={() => { void handleSync(); }}
-    />
+    <>
+      <Layout
+        feedsSlot={feedsSlot}
+        articlesSlot={articlesSlot}
+        readerSlot={readerSlot}
+        syncing={syncing}
+        syncLabel={syncMessage}
+        onSync={() => { void handleSync(); }}
+        onAddFeed={() => setAddDialogOpen(true)}
+        onOpmlImport={handleOpmlImport}
+        onOpmlExport={handleOpmlExport}
+      />
+      <AddFeedDialog
+        open={addDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+        onSubmit={handleAddFeed}
+      />
+      <Toast items={toasts} onDismiss={dismissToast} />
+    </>
   );
 }
 
 // 默认导出 main.tsx 不变；App 之外包一个 Provider
 export default function AppWithProvider() {
-  // Provider 在 main.tsx 注入到外层即可；这里为了简化让 App 内部读 context
   return <App />;
 }

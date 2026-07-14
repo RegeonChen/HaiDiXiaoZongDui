@@ -1,16 +1,15 @@
 /**
  * 三栏布局
  *
- *  ┌────────────────────────────────────┐
- *  │ Header (logo · 同步状态 · 主题)    │
- *  ├────────┬──────────┬────────────────┤
- *  │ Feeds  │ Articles │ Reader         │
- *  └────────┴──────────┴────────────────┘
- *
- * 响应式：≥ 960px 三栏并排；< 960 时 sidebar 缩到 200px，list 缩到 280px。
+ *  ┌─────────────────────────────────────────────────────────┐
+ *  │ Header (logo · 同步 · +添加 · OPML · 主题)            │
+ *  ├────────┬──────────┬────────────────────────────────────┤
+ *  │ Feeds  │ Articles │ Reader                             │
+ *  └────────┴──────────┴────────────────────────────────────┘
  */
 import { ReactNode } from 'react';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
+import { OpmlButtons } from '../OpmlButtons/OpmlButtons';
 import './Layout.css';
 
 export interface LayoutProps {
@@ -20,18 +19,48 @@ export interface LayoutProps {
   syncing: boolean;
   syncLabel?: string;
   onSync?: () => void;
+  onAddFeed?: () => void;
+  onOpmlImport?: () => Promise<{
+    ok: boolean;
+    message: string;
+    result?: { feedsImported: number; feedsSkipped: number; errors: string[] } | null;
+  }>;
+  onOpmlExport?: () => Promise<{ ok: boolean; message: string }>;
 }
 
-export function Layout({ feedsSlot, articlesSlot, readerSlot, syncing, syncLabel, onSync }: LayoutProps) {
+export function Layout({
+  feedsSlot,
+  articlesSlot,
+  readerSlot,
+  syncing,
+  syncLabel,
+  onSync,
+  onAddFeed,
+  onOpmlImport,
+  onOpmlExport
+}: LayoutProps) {
   return (
     <div className="app-layout">
       <header className="app-header">
         <div className="app-header__brand">
           <span className="app-header__logo" aria-hidden="true">📚</span>
           <h1 className="app-header__title">聚合拾遗</h1>
-          <span className="app-header__phase">Phase 2.1 · 阅读器外壳</span>
+          <span className="app-header__phase">Phase 2 · 集成完成</span>
         </div>
         <div className="app-header__right">
+          {onAddFeed && (
+            <button
+              type="button"
+              className="app-header__add-btn"
+              onClick={onAddFeed}
+              title="添加订阅源"
+            >
+              + 添加订阅源
+            </button>
+          )}
+          {onOpmlImport && onOpmlExport && (
+            <OpmlButtons onImport={onOpmlImport} onExport={onOpmlExport} />
+          )}
           {onSync && (
             <button
               type="button"

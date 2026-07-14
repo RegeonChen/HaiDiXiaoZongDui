@@ -24,6 +24,7 @@ const root = path.resolve(__dirname, '..');
 const electron = require(path.join(root, 'node_modules', 'electron'));
 const mainEntry = path.join(root, 'out', 'main', 'index.js');
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'juhe-shivi-ui-ipc-'));
+const opmlPath = path.join(temporaryDirectory, 'subscriptions.opml');
 
 if (!fs.existsSync(mainEntry)) {
   console.error('[smoke-ui-ipc] out/main/index.js 不存在，请先跑 npm run build');
@@ -91,6 +92,7 @@ server.listen(0, '127.0.0.1', () => {
       JUHE_SHIVI_SMOKE_UI: '1',
       JUHE_SHIVI_SMOKE_UI_REAL: '1',
       JUHE_SHIVI_SMOKE_FEED_URL: `http://127.0.0.1:${address.port}/feed.xml`,
+      JUHE_SHIVI_SMOKE_OPML_PATH: opmlPath,
       JUHE_SHIVI_USER_DATA: temporaryDirectory
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -101,19 +103,24 @@ server.listen(0, '127.0.0.1', () => {
   child.stderr.on('data', (chunk) => process.stderr.write(chunk));
 
   const timer = setTimeout(() => {
-    console.error('[smoke-ui-ipc] 超过 18 秒，强制结束');
+    console.error('[smoke-ui-ipc] 超过 30 秒，强制结束');
     child.kill('SIGKILL');
-  }, 18_000);
+  }, 30_000);
 
   child.on('exit', (code, signal) => {
     clearTimeout(timer);
     console.log(`[smoke-ui-ipc] electron 退出 code=${code} signal=${signal}`);
 
+    const opmlExported = fs.existsSync(opmlPath);
     const passed = stdout.includes('SMOKE_REPORT_PASS') && /"uiListHasData":true/.test(stdout) &&
-      /"uiClickWorks":true/.test(stdout) && /"uiContentLoaded":true/.test(stdout);
+      /"uiClickWorks":true/.test(stdout) && /"uiContentLoaded":true/.test(stdout) &&
+      /"uiHasAddBtn":true/.test(stdout) && /"uiAddDialogOpens":true/.test(stdout) &&
+      /"uiHasOpmlButtons":true/.test(stdout) && /"uiOpmlExportWorks":true/.test(stdout) &&
+      opmlExported;
+    console.log(`[smoke-ui-ipc] OPML 导出文件=${opmlExported}`);
     finish(passed, passed
-      ? '[smoke-ui-ipc] ✓ UI 端到端 IPC 验证全部通过'
-      : '[smoke-ui-ipc] ✗ UI 端到端 IPC 验证失败');
+      ? '[smoke-ui-ipc] ✓ UI 端到端 IPC + P1/P2 验证全部通过'
+      : '[smoke-ui-ipc] ✗ UI 端到端 IPC + P1/P2 验证失败');
   });
 });
 
