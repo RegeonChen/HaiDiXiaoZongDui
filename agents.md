@@ -106,9 +106,9 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - **2.3.5 完成**：`electron/main/db/article-repository.ts` — ArticleRepository，实现 list（分页+筛选）、getById、insertBatch（按 Feed + guid 去重并准确返回新增数）、markRead/markStarred/batchMarkRead、getExistingGuidsForFeed。
   - **2.3.6 完成**：`SqliteContentPipelineStore` 实现 Feed 同步、按需正文和 OPML 三个存储接口，并保存同步成功/失败状态。
   - **2.3.7 完成**：feed/article/settings 及真实 sync/content/opml IPC 均已注册；preload 通过类型安全封装暴露对应 API。
-  - **2.3.8 完成**：`scripts/smoke-2.3.cjs` 验证脚本，通过 `npm run smoke:db` 运行。验证项：createFeed / listFeeds / dupFeed (幂等) / getFeed / listArticlesEmpty / settings / updateFeed / deleteFeed — 全部 8 项通过。
+  - **2.3.8 完成**：`scripts/smoke-2.3.cjs` 验证脚本，通过 `npm run smoke:db` 运行。使用隔离的临时 userData，验证 createFeed / listFeeds / dupFeed（幂等）/ getFeed / listArticlesEmpty / settings / updateFeed / deleteFeed，并通过二次启动确认数据持久化。
 - **Task 2.1（Electron UI and Reader Shell）已完成**（张晨阳）：三栏 layout（订阅源侧栏 / 文章列表 / 阅读区）、主题切换、文章选择、已读/星标交互、同步按钮及 Loading/Empty/Error 状态已实现；`npm run smoke:ui` 7 项通过。当前仍通过 `MockDataSource` 展示演示数据。
-- 当前活动里程碑：Phase 2 - Core Reading Workflow；2.1、2.2、2.3 均已实现，最后待把 UI 的 `DataSource` Provider 从 Mock 切换到真实 IPC。
+- 当前活动里程碑：Phase 2 - Core Reading Workflow；2.1、2.2、2.3 的分项实现已完成，但 **Phase 2 Integration 尚未通过验收**。还需将 UI 从 `MockDataSource` 切换到真实 IPC，补齐添加订阅和按需加载正文的可视化流程。
 
 ## 设计决策
 
@@ -162,7 +162,7 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增 Schema v2，分层保存 Feed 原文、文章页原文、Cleaned HTML/Markdown 和清洗元数据；
   - 文章去重从全局 guid 调整为 `(feed_id, guid)`，修复批量插入新增数量统计；
   - `SqliteContentPipelineStore` 接通同步、按需正文和 OPML，主进程用真实服务替换 sync 占位 handler，preload 增加 content/opml API；
-  - `npm run smoke:phase2` 以本地 HTTP fixture 验证添加 Feed、两次同步去重、同步失败状态、SQLite 落盘、按需抓取且缓存复用、已读/星标和 OPML 往返。
+  - `npm run smoke:phase2` 以本地 HTTP fixture 验证后端闭环：添加 Feed、两次同步去重、同步失败状态、SQLite 落盘、按需抓取且缓存复用、已读/星标和 OPML 往返；该脚本不覆盖 Renderer UI。
 - 具体实现选择应在项目脚手架和共享协议建立后再补充记录。
 
 ## 路线图
@@ -178,7 +178,7 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 ## 已知问题
 
 - UI 组件库、E2E 测试框架、CI 流水线、跨平台打包工具（electron-builder / electron-forge）尚未确定。
-- Task 2.1 正式阅读界面尚待接入真实 feed/article/content IPC，Phase 2 的可视化用户流程还未完成。
+- Task 2.1 正式阅读界面尚待接入真实 feed/article/content IPC，并补齐添加订阅与按需正文加载；**Phase 2 整体尚未验收通过**。
 - 不同 OpenAI-compatible Provider 在 Endpoint、流式响应和用量信息方面可能存在差异，需要进行兼容性测试。
 - 专题匹配和相似报道分组的实现方案尚未确定。
 - 尚未进行跨平台行为测试。

@@ -39,7 +39,8 @@
 | `npm test` | 运行离线单元测试和本地 HTTP 集成测试 |
 | `npm run test:real-feeds` | 验证 NASA RSS、Mozilla Atom 和 JSON Feed 官方源 |
 | `npm run smoke` | 跑 Task 1.1 验收脚本（无头环境也能验证窗口 + IPC + 进程隔离） |
-| `npm run smoke:db` | 跑 Task 2.3 数据库 CRUD 与 IPC 验收脚本 |
+| `npm run smoke:ui` | 跑 Task 2.1 三栏 UI、交互与主题切换验收脚本 |
+| `npm run smoke:db` | 在隔离临时数据库中跑 Task 2.3 CRUD、IPC 与跨重启持久化验收 |
 | `npm run smoke:phase2` | 使用本地测试服务器跑同步、入库、按需清洗、去重、OPML 的离线端到端验收 |
 
 ## 国内装依赖
@@ -88,7 +89,7 @@ SMOKE_REPORT_PASS
 
 三个 Store 已由 `electron/main/db/content-pipeline-store.ts` 实现，Main 已注册同步、正文和 OPML IPC。Schema v2 将 Feed 自带内容与按需获取的文章页分层保存，并以 `(feed_id, guid)` 避免重复文章。
 
-## Phase 2 集成验收
+## Phase 2 后端集成验收（不含 Renderer UI）
 
 运行：
 
@@ -96,7 +97,7 @@ SMOKE_REPORT_PASS
 npm run smoke:phase2
 ```
 
-脚本完全离线，会临时启动本地 Feed 和文章页面，验证以下闭环：
+脚本完全离线，会临时启动本地 Feed 和文章页面，直接通过 preload / IPC 验证以下后端闭环：
 
 1. 添加订阅源并同步文章到 SQLite；
 2. 再次同步不重复写入文章，同步成功/失败状态都能保存；
@@ -104,3 +105,5 @@ npm run smoke:phase2
 4. 后续 HTML/Markdown 请求复用缓存；
 5. 已读、星标和 OPML 导入导出正常；
 6. 临时数据库确实写入磁盘。
+
+`smoke:phase2` 不会验证 React 界面是否已连接真实数据。当前 Renderer 仍使用 `MockDataSource`；完成真实 IPC DataSource、添加订阅交互和按需加载正文后，才能进行 Phase 2 整体验收。
