@@ -87,14 +87,14 @@
 
 ## 当前状态
 
-截至 2026-07-13：
+截至 2026-07-14：
 
 - `INIT.md` 已定义产品范围、功能要求、技术方向和约束。
 - `PLAN.md` 已定义五个开发阶段和张晨阳/张宇凡/陈冠中的职责分工。
 - `shared/types.ts` 和 `shared/ipc.ts` 已建立（Task 1.2 完成），定义了核心领域类型和 IPC 通道协议。
-- Electron/React 项目脚手架尚未创建（Task 1.1 待执行）。
+- **Task 1.1（Application Scaffold）已完成**：Electron 31 + electron-vite + React 18 + TypeScript strict，main/preload/renderer 三段式构建，预加载脚本强制 CJS（sandbox 兼容），安全基线 `contextIsolation + sandbox + nodeIntegration: false` 已通过无头烟雾测试验证（`npm run smoke`）。
 - 应用模块、数据库 Schema、自动化测试和跨平台构建均尚未建立。
-- 当前活动里程碑：Phase 1 - Project Foundation。
+- 当前活动里程碑：Phase 1 - Project Foundation，Task 1.1 验收已通过，等待进入 Phase 2。
 
 ## 设计决策
 
@@ -117,6 +117,15 @@
 - `PLAN.md` 中的成员姓名已替换为张晨阳、张宇凡、陈冠中。
 - **2026-07-13**：Task 1.2 完成。`shared/types.ts` 定义了 Feed、Article、Tag、Note、Digest、Topic、AIProvider、AISummary、AITranslation、AITagSuggestion、SyncResult、AppSettings、LogEntry 等核心领域类型以及默认设置常量。`shared/ipc.ts` 定义了统一的 `IpcResult<T>` 响应格式、40+ 个 IPC 通道常量（按 domain:action 命名）以及完整的请求/响应类型映射 `IpcRequestMap`。三个模块可以基于同一组类型和通道协议独立开发。
 - **2026-07-13**：为 `shared/types.ts` 关键字段补充了格式规范注释，涵盖 cleanedMarkdown（GFM 规范、代码块语言标注、表格对齐、列表缩进等）、cleanedHtml（白名单标签/属性、安全清洗要求）、rawHtml（不可信输入警告）、guid（生成与去重策略）、Briefing.content（结论序号、来源引用、表格对比格式）、Note.markdownContent（导出格式）、LogEntry.level/module/detail（日志级别定义、模块命名、脱敏要求）、AppSettings 的 Prompt 模板（占位符变量列表）、Feed.url/FeedCreateInput.url（URL 去重规则）、IsoTimestamp（UTC 格式）、Tag.color（CSS 颜色）、Topic.keywords（小写匹配）、AIProvider.baseUrl（API 拼接约定）等。
+- **2026-07-14**：Task 1.1 完成（Application Scaffold）。技术选型落地：
+  - 构建工具 **electron-vite**（main / preload / renderer 三段式，HMR 开箱即用）
+  - 包管理器 **npm**（已确认 PowerShell 执行策略限制下 `npm.cmd` 可用）
+  - 渲染层 **React 18 + TypeScript strict**（分 `tsconfig.node.json` 与 `tsconfig.web.json` 两份）
+  - 进程安全：`contextIsolation: true` + `nodeIntegration: false` + `sandbox: true`
+  - **preload 强制 CJS 输出**（`out/preload/index.cjs`）—— Electron sandbox 上下文不支持 ESM preload
+  - IPC 风格：Main handler 直接返回 `IpcResult<T>`，preload 透传 `IpcResponse<C>`，Renderer 端通过 `window.api.*` 访问
+  - 提供 `scripts/smoke-1.1.cjs` 无头烟雾测试：起 Electron、加载 production 产物、注入 JS 探测 `require/process/module/Buffer` 是否泄漏、走一次 `settings.get` IPC 校验主进程 handler，headless 环境也能验收
+  - 修了 `shared/ipc.ts` 的一个 dead import（`TagSuggestion`），**未改动任何类型或通道定义**
 - 具体实现选择应在项目脚手架和共享协议建立后再补充记录。
 
 ## 路线图
@@ -131,11 +140,11 @@
 
 ## 已知问题
 
-- 当前项目目录尚未初始化为新应用的代码仓库。
-- 包管理器、脚手架工具、UI 组件库、测试工具和打包流程尚未确定。
+- UI 组件库、单元/E2E 测试框架、CI 流水线、跨平台打包工具（electron-builder / electron-forge）尚未确定。
 - SQLite Schema 和迁移工具尚未确定。
 - Feed 解析、Readability、HTML 安全清洗和 Markdown 转换使用的具体依赖尚未确定。
 - 不同 OpenAI-compatible Provider 在 Endpoint、流式响应和用量信息方面可能存在差异，需要进行兼容性测试。
 - 专题匹配和相似报道分组的实现方案尚未确定。
 - 尚未进行跨平台行为测试。
 - 尚未选定一组固定且具有代表性的 Feed、HTML、OPML 和 AI 测试样本。
+- electron-builder / electron-forge 等打包方案未引入；`npm run build` 当前只产出 unpacked 三段产物，不含可分发的安装包（Phase 5 验收前需补齐）。

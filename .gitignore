@@ -1,0 +1,20 @@
+# Node / build 输出
+node_modules/
+out/
+dist/
+.vite/
+
+# Electron
+*.log
+*.tsbuildinfo
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 本地环境
+.env
+.env.local
+.env.*.local
