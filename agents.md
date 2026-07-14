@@ -155,7 +155,8 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 使用 `rss-parser` 统一 RSS/Atom，原生校验 JSON Feed 1/1.1；
   - 使用 `@mozilla/readability` + `jsdom` 提取正文，`sanitize-html` 白名单清洗，`turndown` + GFM 插件转换 Markdown；
   - HTTP 抓取具备协议校验、超时、有限重试、HTTP 状态和响应大小限制；
-  - 提供 `SyncService`、OPML 解析/去重/原子导出，以及与数据库解耦的 `FeedSyncStore`、`OpmlFeedStore`；
+  - Feed 同步只保存条目和 Feed 自带内容；Reader/AI 首次请求正文时才抓取文章页并运行 Readability，之后复用持久化的 source HTML、cleaned HTML 和 Markdown；
+  - 提供 `SyncService`、`ArticleContentService`、OPML 解析/去重/原子导出，以及与数据库解耦的 `FeedSyncStore`、`ArticleContentStore`、`OpmlFeedStore`；
   - 引入 Vitest 测试，离线测试覆盖三种 Feed、清洗、同步、HTTP 和 OPML；另提供 NASA RSS、Mozilla Atom 和 JSON Feed 官方源的网络兼容性验证。
 - 具体实现选择应在项目脚手架和共享协议建立后再补充记录。
 
@@ -172,7 +173,7 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 ## 已知问题
 
 - UI 组件库、E2E 测试框架、CI 流水线、跨平台打包工具（electron-builder / electron-forge）尚未确定。
-- Task 2.2 尚待与 Task 2.3 数据库实现连接，连接前同步、正文构建和 OPML IPC 不会在 Main 中注册。
+- Task 2.2 尚待与 Task 2.3 数据库实现连接，连接前同步、按需正文和 OPML IPC 不会在 Main 中注册。
 - 不同 OpenAI-compatible Provider 在 Endpoint、流式响应和用量信息方面可能存在差异，需要进行兼容性测试。
 - 专题匹配和相似报道分组的实现方案尚未确定。
 - 尚未进行跨平台行为测试。

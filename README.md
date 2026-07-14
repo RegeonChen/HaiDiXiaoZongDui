@@ -78,9 +78,10 @@ SMOKE_REPORT_PASS
 
 - RSS、Atom、JSON Feed 解析为统一文章结构；
 - HTTP 超时、有限重试、状态码和响应大小限制；
-- Readability 正文提取、HTML 白名单清洗和 GFM Markdown 转换；
+- 阅读或 AI 首次请求时才执行 Readability 正文提取、HTML 白名单清洗和 GFM Markdown 转换；
+- 持久化原始网页、Cleaned HTML 和 Markdown 后直接复用，Feed 同步不批量抓取文章页；
 - 单个/全部订阅源的手动同步与进度；
 - OPML 分组、去重、导入和原子导出；
-- 通过 `FeedSyncStore`、`OpmlFeedStore` 与 Task 2.3 数据库模块连接。
+- 通过 `FeedSyncStore`、`ArticleContentStore`、`OpmlFeedStore` 与 Task 2.3 数据库模块连接。
 
-在数据库实现两个 Store 接口前，Main 不会注册同步和 OPML IPC；详细交接方式见该模块的 README。
+在数据库实现三个 Store 接口前，Main 不会注册同步、正文和 OPML IPC；详细交接方式见该模块的 README。

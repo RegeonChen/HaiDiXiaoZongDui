@@ -5,11 +5,13 @@ import {
   type IpcResponse
 } from '../../../../shared/ipc';
 import { errorMessage } from './errors';
+import type { ArticleContentService } from './article-content-service';
 import type { OpmlApplicationService } from './opml-service';
 import type { SyncService } from './sync-service';
 
 export interface ContentPipelineIpcServices {
   sync: SyncService;
+  content: ArticleContentService;
   opml: OpmlApplicationService;
 }
 
@@ -29,6 +31,18 @@ export function registerContentPipelineIpc(
 
   handle(IPC_CHANNELS.SYNC_PROGRESS, async () => success(services.sync.getProgress()));
 
+  handle(IPC_CHANNELS.CONTENT_GET_CLEANED_HTML, async (args) => {
+    const articleId = requiredString(args, 'articleId');
+    const result = await services.content.getOrBuild(articleId);
+    return success(result.content.cleanedHtml);
+  });
+
+  handle(IPC_CHANNELS.CONTENT_GET_CLEANED_MARKDOWN, async (args) => {
+    const articleId = requiredString(args, 'articleId');
+    const result = await services.content.getOrBuild(articleId);
+    return success(result.content.cleanedMarkdown);
+  });
+
   handle(IPC_CHANNELS.OPML_IMPORT, async (args) => {
     const filePath = requiredString(args, 'filePath');
     return success(await services.opml.importFile(filePath));
@@ -44,6 +58,8 @@ export function registerContentPipelineIpc(
     IPC_CHANNELS.SYNC_ALL,
     IPC_CHANNELS.SYNC_FEED,
     IPC_CHANNELS.SYNC_PROGRESS,
+    IPC_CHANNELS.CONTENT_GET_CLEANED_HTML,
+    IPC_CHANNELS.CONTENT_GET_CLEANED_MARKDOWN,
     IPC_CHANNELS.OPML_IMPORT,
     IPC_CHANNELS.OPML_EXPORT
   ];

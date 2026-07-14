@@ -30,21 +30,45 @@ export interface CleanedContent {
   cleanedMarkdown: string;
 }
 
-export interface PipelineArticle extends ParsedArticle {
-  cleanedHtml: string | null;
-  cleanedMarkdown: string | null;
-  cleaningStatus: 'done' | 'failed';
-  cleaningError: string | null;
-}
-
 export interface FeedPipelineOutput {
   feedId: string;
   feedUrl: string;
   feed: ParsedFeed;
-  articles: PipelineArticle[];
+  articles: ParsedArticle[];
   warnings: string[];
   startedAt: IsoTimestamp;
   finishedAt: IsoTimestamp;
+}
+
+export type ArticleContentSourceKind = 'article_page' | 'feed_html' | 'feed_text';
+
+/** Input loaded from Task 2.3 when content is requested by Reader or AI. */
+export interface ArticleContentTarget {
+  articleId: string;
+  articleUrl: string;
+  feedRawHtml: string;
+  feedRawText: string | null;
+  sourceHtml: string | null;
+  sourceKind: ArticleContentSourceKind | null;
+  contentTitle: string | null;
+  contentByline: string | null;
+  contentExcerpt: string | null;
+  cleanedHtml: string | null;
+  cleanedMarkdown: string | null;
+  cleaningStatus: 'pending' | 'in_progress' | 'done' | 'failed';
+}
+
+/** Persisted result of the on-demand article content pipeline. */
+export interface ArticleContentOutput extends CleanedContent {
+  articleId: string;
+  articleUrl: string;
+  sourceHtml: string;
+  sourceKind: ArticleContentSourceKind;
+}
+
+export interface ArticleContentResult {
+  content: ArticleContentOutput;
+  fromCache: boolean;
 }
 
 export interface OpmlFeedEntry {
