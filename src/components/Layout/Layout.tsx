@@ -1,20 +1,23 @@
 /**
- * 三栏布局（Mercury 风格 + 拖拽）
+ * 三栏布局（Mercury 风格 + 拖拽 + 页面入口）
  *
  *  ┌────────────────────────────────────────────────────────────┐
- *  │ ⊞   聚合拾遗                              [icons...] [search] │
+ *  │ ⊞   聚合拾遗   [⚙ # ✎ ☷ ★ 📋] [icons...] [search]         │
  *  ├─────────┬────────────┬─────────────────────────────────────┤
  *  │ Feeds   │ Articles   │ Reader                              │
  *  └─────────┴────────────┴─────────────────────────────────────┘
  *     ←─drag─→   ←─drag─→
  *
  * 三栏宽度：百分比 + 拖拽手柄实时调整 + localStorage 持久化
+ * 页面切换：currentPage = 'reader' 显示三栏；其他显示对应 page
  */
 import { ReactNode, useCallback, useRef } from 'react';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
 import { OpmlButtons } from '../OpmlButtons/OpmlButtons';
 import { ResizeHandle } from '../ResizeHandle/ResizeHandle';
 import './Layout.css';
+
+export type AppPage = 'reader' | 'settings' | 'tags' | 'notes' | 'digests' | 'topics' | 'logs';
 
 export interface LayoutProps {
   feedsSlot: ReactNode;
@@ -35,6 +38,11 @@ export interface LayoutProps {
   listPercent: number;
   onResizeSidebar: (percent: number) => void;
   onResizeList: (percent: number) => void;
+  /** 当前页面（Phase 3 Integration 6 个 pages + reader） */
+  currentPage: AppPage;
+  onPageChange: (page: AppPage) => void;
+  /** 页面渲染插槽（reader 之外的页面） */
+  pageSlot?: ReactNode;
 }
 
 export function Layout({
@@ -49,7 +57,10 @@ export function Layout({
   sidebarPercent,
   listPercent,
   onResizeSidebar,
-  onResizeList
+  onResizeList,
+  currentPage,
+  onPageChange,
+  pageSlot
 }: LayoutProps) {
   // 拖拽用：ref 到 main 容器，取真实宽度
   const mainRef = useRef<HTMLElement>(null);
@@ -89,16 +100,51 @@ export function Layout({
   // 阅读区宽度 = 100% - sidebar - list
   const readerPercent = 100 - sidebarPercent - listPercent;
 
+  // 页面入口按钮：⚙ 设置 / # 标签 / ✎ 笔记 / ☷ 文摘 / ★ 专题 / 📋 日志
+  const navItems: Array<{ id: AppPage; label: string; icon: string; title: string }> = [
+    { id: 'settings', label: '设置', icon: '⚙', title: '设置（AI Provider、字体主题、视觉主题、多语言）' },
+    { id: 'tags', label: '标签', icon: '#', title: '标签管理' },
+    { id: 'notes', label: '笔记', icon: '✎', title: '笔记' },
+    { id: 'digests', label: '文摘', icon: '☷', title: '文摘导出' },
+    { id: 'topics', label: '专题', icon: '★', title: '专题追踪（Phase 4 接入）' },
+    { id: 'logs', label: '日志', icon: '📋', title: '本地日志' }
+  ];
+
   return (
     <div className="app-layout">
       <header className="app-header">
         <div className="app-header__left">
-          <span className="app-header__logo" aria-hidden="true">📚</span>
+          <button
+            type="button"
+            className="app-header__logo-btn"
+            onClick={() => onPageChange('reader')}
+            title="回到阅读"
+            aria-label="回到阅读"
+          >
+            <span className="app-header__logo" aria-hidden="true">📚</span>
+          </button>
           <h1 className="app-header__title">聚合拾遗</h1>
-          <span className="app-header__phase">Phase 2.5</span>
+          <span className="app-header__phase">Phase 3.4</span>
         </div>
         <div className="app-header__right">
-          {onAddFeed && (
+          {/* 页面切换（Phase 3 Integration 新增） */}
+          <nav className="app-header__nav" aria-label="页面导航">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`app-header__nav-btn ${currentPage === item.id ? 'is-active' : ''}`}
+                onClick={() => onPageChange(item.id)}
+                title={item.title}
+                aria-current={currentPage === item.id ? 'page' : undefined}
+              >
+                <span className="app-header__nav-icon" aria-hidden="true">{item.icon}</span>
+                <span className="app-header__nav-label">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          {currentPage === 'reader' && onAddFeed && (
             <button
               type="button"
               className="app-header__add-btn"
@@ -108,7 +154,7 @@ export function Layout({
               + 添加订阅源
             </button>
           )}
-          {onSyncAll && (
+          {currentPage === 'reader' && onSyncAll && (
             <button
               type="button"
               className="app-header__sync-btn"
@@ -118,27 +164,32 @@ export function Layout({
               {syncing ? '⏳ 同步中…' : '🔄 同步文章'}
             </button>
           )}
-          {onOpmlImport && onOpmlExport && (
+          {currentPage === 'reader' && onOpmlImport && onOpmlExport && (
             <OpmlButtons onImport={onOpmlImport} onExport={onOpmlExport} />
           )}
           <ThemeToggle />
         </div>
       </header>
 
-      <main
-        ref={mainRef}
-        className="app-main"
-        style={{
-          // fr 只分配扣除两个 4px handle 后的空间，避免百分比轨道额外溢出 8px。
-          gridTemplateColumns: `${sidebarPercent}fr 4px ${listPercent}fr 4px ${readerPercent}fr`
-        }}
-      >
-        <aside className="pane pane-feeds">{feedsSlot}</aside>
-        <ResizeHandle onDrag={handleSidebarDrag} ariaLabel="调整订阅源栏宽度" />
-        <section className="pane pane-list">{articlesSlot}</section>
-        <ResizeHandle onDrag={handleListDrag} ariaLabel="调整文章列表宽度" />
-        <section className="pane pane-reader">{readerSlot}</section>
-      </main>
+      {currentPage === 'reader' ? (
+        <main
+          ref={mainRef}
+          className="app-main"
+          style={{
+            gridTemplateColumns: `${sidebarPercent}fr 4px ${listPercent}fr 4px ${readerPercent}fr`
+          }}
+        >
+          <aside className="pane pane-feeds">{feedsSlot}</aside>
+          <ResizeHandle onDrag={handleSidebarDrag} ariaLabel="调整订阅源栏宽度" />
+          <section className="pane pane-list">{articlesSlot}</section>
+          <ResizeHandle onDrag={handleListDrag} ariaLabel="调整文章列表宽度" />
+          <section className="pane pane-reader">{readerSlot}</section>
+        </main>
+      ) : (
+        <main className="app-page" data-page={currentPage}>
+          {pageSlot}
+        </main>
+      )}
     </div>
   );
 }

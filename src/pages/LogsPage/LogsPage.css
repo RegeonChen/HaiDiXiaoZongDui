@@ -1,0 +1,87 @@
+.logs-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+}
+
+.logs-page__title {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0 0 18px;
+}
+
+.logs-page__placeholder {
+  padding: 24px 28px;
+  background: var(--bg-elev);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.logs-page__placeholder-headline {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 0 0 10px;
+}
+
+.logs-page__placeholder-body {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--fg-soft);
+  margin: 0;
+}
+
+.logs-page__placeholder-body code {
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  font-size: 12px;
+  padding: 1px 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.logs-page__empty {
+  font-size: 13px;
+  color: var(--fg-soft);
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  background: var(--bg-elev);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+}
+
+.logs-page__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+}
+
+.logs-page__table th,
+.logs-page__table td {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.logs-page__table th {
+  background: var(--bg-elev);
+  font-weight: 600;
+}
+
+.logs-page__row--error td {
+  background: rgba(198, 40, 40, 0.08);
+}
+
+.logs-page__row--warn td {
+  background: rgba(255, 152, 0, 0.08);
+}
+
+.logs-page__row--info td {
+  /* 默认 */
+}
+
+.logs-page__row--debug td {
+  opacity: 0.7;
+}

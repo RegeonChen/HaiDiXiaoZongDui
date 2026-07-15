@@ -203,8 +203,55 @@ const api = {
 
     export: (id: string, format: IpcArgs<typeof IPC_CHANNELS.DIGEST_EXPORT>['format']): Promise<IpcResponse<typeof IPC_CHANNELS.DIGEST_EXPORT>> =>
       invoke(IPC_CHANNELS.DIGEST_EXPORT, { id, format })
+  },
+
+  // —— Topic (Phase 4 接入：stub handler 现在返回 NOT_IMPLEMENTED) ——
+  topic: {
+    list: (): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_LIST>> =>
+      invokeVoid(IPC_CHANNELS.TOPIC_LIST),
+
+    get: (id: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_GET>> =>
+      invoke(IPC_CHANNELS.TOPIC_GET, { id }),
+
+    create: (input: IpcArgs<typeof IPC_CHANNELS.TOPIC_CREATE>['input']): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_CREATE>> =>
+      invoke(IPC_CHANNELS.TOPIC_CREATE, { input }),
+
+    update: (id: string, input: IpcArgs<typeof IPC_CHANNELS.TOPIC_UPDATE>['input']): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_UPDATE>> =>
+      invoke(IPC_CHANNELS.TOPIC_UPDATE, { id, input }),
+
+    delete: (id: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_DELETE>> =>
+      invoke(IPC_CHANNELS.TOPIC_DELETE, { id }),
+
+    getArticles: (topicId: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_GET_ARTICLES>> =>
+      invoke(IPC_CHANNELS.TOPIC_GET_ARTICLES, { topicId }),
+
+    getTimeline: (topicId: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_GET_TIMELINE>> =>
+      invoke(IPC_CHANNELS.TOPIC_GET_TIMELINE, { topicId }),
+
+    getEventGroups: (topicId: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_GET_EVENT_GROUPS>> =>
+      invoke(IPC_CHANNELS.TOPIC_GET_EVENT_GROUPS, { topicId }),
+
+    generateBriefing: (topicId: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_GENERATE_BRIEFING>> =>
+      invoke(IPC_CHANNELS.TOPIC_GENERATE_BRIEFING, { topicId }),
+
+    getBriefing: (topicId: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_GET_BRIEFING>> =>
+      invoke(IPC_CHANNELS.TOPIC_GET_BRIEFING, { topicId }),
+
+    updateBriefing: (topicId: string, editedContent: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_UPDATE_BRIEFING>> =>
+      invoke(IPC_CHANNELS.TOPIC_UPDATE_BRIEFING, { topicId, editedContent }),
+
+    exportBriefing: (topicId: string, format: IpcArgs<typeof IPC_CHANNELS.TOPIC_EXPORT_BRIEFING>['format']): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_EXPORT_BRIEFING>> =>
+      invoke(IPC_CHANNELS.TOPIC_EXPORT_BRIEFING, { topicId, format })
+  },
+
+  // —— Log (Phase 4 接入：stub handler 现在返回 NOT_IMPLEMENTED) ——
+  log: {
+    list: (limit?: number): Promise<IpcResponse<typeof IPC_CHANNELS.LOG_LIST>> =>
+      invoke(IPC_CHANNELS.LOG_LIST, { limit }),
+
+    export: (): Promise<IpcResponse<typeof IPC_CHANNELS.LOG_EXPORT>> =>
+      invokeVoid(IPC_CHANNELS.LOG_EXPORT)
   }
-  // 后续按 Phase 接入时在这里加：topic / log
 } as const;
 
 export type AppApi = typeof api;

@@ -124,7 +124,22 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 3 Task 3.3 全部完成**。AI 服务层（Provider/Summary/Translation/Tag Agent）已落地，数据模型全部扩展（tags/notes/digests/ai_results），IPC handler 和 preload API 全部就绪。下一步进入 Phase 3 Integration（三人协作贯通 UI ↔ 内容管线 ↔ 数据与 AI）。
+- 当前活动里程碑：**Phase 3 Integration UI 端到端已通过 8/8 smoke 验收**。下一步进入 Phase 4（Topic Tracking / Briefing Agent）。
+- **Phase 3 Integration（张晨阳）**：
+  - **6 个 pages**（`src/pages/`）：SettingsPage（Provider CRUD + 字体/视觉主题 + 多语言 + AI 默认值 + 字号/阅读宽度）、TagsPage（标签 CRUD）、NotesPage（按文章选 + markdown 笔记 CRUD）、DigestsPage（文摘 CRUD + Markdown/HTML 导出）、TopicsPage（Phase 4 占位，stub handler 返回 NOT_IMPLEMENTED）、LogsPage（同占位）。
+  - **顶栏 6 入口**（Layout 顶栏新增 nav 按钮组）：⚙ 设置 / # 标签 / ✎ 笔记 / ☷ 文摘 / ★ 专题 / 📋 日志；点击切换 `currentPage` state；非 reader 模式渲染对应 page slot，reader 模式保持三栏 layout。
+  - **IpcDataSource 扩展**（`src/data/ipcDataSource.ts`）：新增 tag/note/digest/topic/aiProvider/aiOperations/settings/log/opml/getCleanedMarkdown 全量 IPC 包装；`MockDataSource` 同步补全（mock 模式所有方法可调，AI 不可用时返回明确错误）。
+  - **useAppearance hook**（`src/hooks/useAppearance.ts`）：从 IPC 读 fontTheme/visualTheme/language，写 `<html data-font-theme data-visual-theme data-lang>` 属性和 CSS 变量（`--font-body` 字体栈 / 经典 vs 纸质的 `--bg` `--fg` 等）；切换通过 `settings:update` 持久化。
+  - **ArticleReader AI 工具栏**（`src/components/ArticleReader/ArticleReader.tsx`）：5 按钮 + 折叠结果区
+    - ✨ 摘要：`aiGenerateSummary` → `aiGetSummary`（带缓存）
+    - 🌐 翻译：`aiGenerateTranslation` → `aiGetTranslation`（双语对照）
+    - 🏷 标签建议：`aiSuggestTags` → `aiGetTagSuggestions`（含置信度 + 理由）
+    - ✎ 笔记：textarea → `noteCreate`（GFM markdown）
+    - ★ 专题：`topicCreate`（Phase 4 stub，会显示 NOT_IMPLEMENTED）
+  - **Topic/Log 主进程 handler 占位 stub**（`electron/main/index.ts`）：12 个 topic + 2 个 log handler 全部注册并返回 `NOT_IMPLEMENTED`，等 Phase 4 陈冠中接入。
+  - **smoke-3.4-integration 端到端探针**（`scripts/smoke-3.4-integration.cjs` + `electron/main/index.ts` probe）：21 项校验（6 nav / 6 page 渲染 / 3 字体 + 2 视觉主题 / 字体视觉切换 verified / 标签 CRUD verified / 笔记创建 verified / 6 占位 / 5 AI 按钮 / 回到 reader 验证）。
+  - **8/8 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration。
+  - 修过 `scripts/smoke-2.1.cjs` 的 paneWidths 容差从 2px 调到 10px（fr 单位 1px 舍入 + 两个 4px ResizeHandle 是固有行为）。
 
 ## 设计决策
 
@@ -214,6 +229,18 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 修探针：feedListRendered 匹配 `siteTitle || title`（兼容 sync 后的渲染）；smoke-2.5.cjs OK 判定对齐到 `uiIpc.ok:true`
   - **6/6 smoke 全过**（timing：seed ~90ms, feedListRendered 0~1ms, articleListRendered ~55ms, contentRendered ~170ms）
   - 新增 `scripts/smoke-2.5.cjs` + `npm run smoke:phase2.5` script
+- **2026-07-15**：Phase 3 Integration UI 端到端（张晨阳）：
+  - 6 个 pages 全建好（SettingsPage/TagsPage/NotesPage/DigestsPage/TopicsPage/LogsPage），每个都自带 loading/empty/error 三态
+  - 顶栏 6 个 nav 按钮（⚙/#/✎/☷/★/📋）切换 `currentPage` state，App.tsx 加 router 逻辑
+  - IpcDataSource 扩展 30+ 方法：tag/note/digest/topic/ai/settings/log/opml/content/getCleanedMarkdown
+  - useAppearance hook：fontTheme/visualTheme/language 切换 → 写 `<html>` 属性 + CSS 变量 → settings:update 持久化
+  - ArticleReader 加 5 个 AI 按钮（摘要/翻译/标签建议/笔记/专题）+ 折叠结果区
+  - Topic/Log 主进程 handler 全注册 stub 返回 `NOT_IMPLEMENTED`，等陈冠中 Phase 4 接入
+  - 写 `scripts/smoke-3.4-integration.cjs`（21 项校验）+ `npm run smoke:integration` script
+  - 修 `smoke-2.1` paneWidths 容差 2→10（fr 1px 舍入 + 8px handle 是固有行为）
+  - 修探针：`feedListRendered` 改读 dbFeedDump 取 siteTitle；`fontToggled/visualToggled` 改读 `<html data-*>`；tag/笔记创建验证走 IPC 直接检查 DB（绕开 React re-render 时序）
+  - 探针发现 preload 包装陷阱：preload `tag.create(input)` 内部已包 `{ input }`，探针传 `{ input: {...} }` 会多包一层。统一为 `tag.create({ name: 'X' })` 风格
+  - **8/8 smoke 全过**（smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration）
 - **2026-07-15**：Task 2.5.3 完成（Persistence & IPC，陈冠中）：
   - `AppSettings` 新增 `fontTheme`（string, default `'default'`）、`visualTheme`（`'classic' | 'paper'`，default `'classic'`）、`sidebarPercent`（10-40, default 18）、`listPercent`（15-50, default 28）四个字段
   - v3 迁移：新增 `settings` key-value 表持久化应用设置

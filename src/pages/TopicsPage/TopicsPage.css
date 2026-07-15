@@ -1,0 +1,71 @@
+.topics-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+}
+
+.topics-page__title {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0 0 18px;
+}
+
+.topics-page__placeholder {
+  padding: 24px 28px;
+  background: var(--bg-elev);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.topics-page__placeholder-headline {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 0 0 10px;
+}
+
+.topics-page__placeholder-body {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--fg-soft);
+  margin: 0 0 8px;
+}
+
+.topics-page__placeholder-body code {
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  font-size: 12px;
+  padding: 1px 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.topics-page__empty {
+  font-size: 13px;
+  color: var(--fg-soft);
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  background: var(--bg-elev);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+}
+
+.topics-page__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topics-page__item {
+  padding: 10px 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

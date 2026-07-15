@@ -1,0 +1,110 @@
+.tags-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+}
+
+.tags-page__title {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0 0 18px;
+}
+
+.tags-page__form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  align-items: center;
+}
+
+.tags-page__input {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: inherit;
+}
+
+.tags-page__input--name {
+  flex: 1;
+}
+
+.tags-page__input--color {
+  flex: 0 0 44px;
+  height: 32px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.tags-page__btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tags-page__btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.tags-page__btn--danger {
+  border-color: #c62828;
+  color: #c62828;
+}
+
+.tags-page__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tags-page__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.tags-page__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tags-page__name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tags-page__date {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.tags-page__empty {
+  font-size: 13px;
+  color: var(--fg-soft);
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  background: var(--bg-elev);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+}

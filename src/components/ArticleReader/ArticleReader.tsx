@@ -1,14 +1,20 @@
 /**
- * 文章阅读区（Mercury 风格）
+ * 文章阅读区（Mercury 风格 + AI 工具栏）
  *  - 顶部：URL 链接（带 link 图标）
  *  - 标题：serif 大字
- *  - 工具栏：星标 / 打开原文 / AI 占位
- *  - 正文：默认 sans-serif 字体，line-height 1.7
- *    （Mercury 截图用 monospace——可在设置页加切换；当前用 sans）
- *  - 底部：「摘要」折叠面板（Phase 3.1 落地）
+ *  - 工具栏：星标 / 打开原文 / AI（摘要 / 翻译 / 标签建议 / 笔记 / 专题）
+ *  - 正文：按需清洗的 Cleaned HTML
+ *  - 底部：摘要 / 翻译结果折叠区
+ *
+ * Phase 3 Integration：
+ *  - 摘要：先 aiGenerateSummary 触发 AI 写入缓存，再 aiGetSummary 读取（带缓存）
+ *  - 翻译：同上
+ *  - 标签建议：aiSuggestTags + aiGetTagSuggestions（按 articleId 缓存）
+ *  - 笔记：noteCreate 写入 notes 表
+ *  - 专题：topicCreate 占位（Phase 4 接入后真正生效）
  */
-import { useEffect, useState } from 'react';
-import type { Article, Feed } from '@shared/types';
+import { useCallback, useEffect, useState } from 'react';
+import type { Article, Feed, NoteCreateInput } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { EmptyView } from '../StatusView/EmptyView';
 import { LoadingView } from '../StatusView/LoadingView';
@@ -19,6 +25,7 @@ export interface ArticleReaderProps {
   article: Article | null;
   feed: Feed | null;
   onToggleStar: (articleId: string, isStarred: boolean) => void;
+  onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
 }
 
 function formatAbsolute(iso: string | null): string {
@@ -34,14 +41,26 @@ interface ContentState {
   error: string | null;
 }
 
-export function ArticleReader({ article, feed, onToggleStar }: ArticleReaderProps) {
+type AiPanel = 'summary' | 'translation' | 'tags' | 'note' | null;
+
+export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleReaderProps) {
   const ds = useDataSource();
   const [content, setContent] = useState<ContentState>({ html: null, loading: false, error: null });
-  const [showSummary, setShowSummary] = useState(false);
+  const [activePanel, setActivePanel] = useState<AiPanel>(null);
+  const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState<string>('');
+  const [translationParagraphs, setTranslationParagraphs] = useState<Array<{ index: number; original: string; translated: string }>>([]);
+  const [tagSuggestions, setTagSuggestions] = useState<Array<{ name: string; confidence: number; reason: string }>>([]);
+  const [noteMarkdown, setNoteMarkdown] = useState('');
 
   useEffect(() => {
     if (!article) {
       setContent({ html: null, loading: false, error: null });
+      setActivePanel(null);
+      setSummary('');
+      setTranslationParagraphs([]);
+      setTagSuggestions([]);
+      setNoteMarkdown('');
       return;
     }
     if (article.cleanedHtml) {
@@ -79,6 +98,113 @@ export function ArticleReader({ article, feed, onToggleStar }: ArticleReaderProp
     })();
   };
 
+  // === AI 操作 ===
+
+  const handleSummary = useCallback(async () => {
+    if (!article) return;
+    setBusy(true);
+    setActivePanel('summary');
+    setSummary('');
+    try {
+      const gen = await ds.aiGenerateSummary(article.id);
+      if (!gen.ok) {
+        onToast(`摘要失败：${gen.message}`, 'error');
+        return;
+      }
+      const r = await ds.aiGetSummary(article.id);
+      if (r.kind === 'ready') {
+        setSummary(r.data);
+        onToast('摘要已生成', 'success');
+      } else {
+        onToast(`读取摘要失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [article, ds, onToast]);
+
+  const handleTranslation = useCallback(async () => {
+    if (!article) return;
+    setBusy(true);
+    setActivePanel('translation');
+    setTranslationParagraphs([]);
+    try {
+      const gen = await ds.aiGenerateTranslation(article.id);
+      if (!gen.ok) {
+        onToast(`翻译失败：${gen.message}`, 'error');
+        return;
+      }
+      const r = await ds.aiGetTranslation(article.id);
+      if (r.kind === 'ready') {
+        setTranslationParagraphs(r.data);
+        onToast('翻译已生成', 'success');
+      } else {
+        onToast(`读取翻译失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [article, ds, onToast]);
+
+  const handleSuggestTags = useCallback(async () => {
+    if (!article) return;
+    setBusy(true);
+    setActivePanel('tags');
+    setTagSuggestions([]);
+    try {
+      const gen = await ds.aiSuggestTags(article.id);
+      if (!gen.ok) {
+        onToast(`标签建议失败：${gen.message}`, 'error');
+        return;
+      }
+      const r = await ds.aiGetTagSuggestions(article.id);
+      if (r.kind === 'ready') {
+        setTagSuggestions(r.data);
+        onToast(`生成 ${r.data.length} 条标签建议`, 'success');
+      } else {
+        onToast(`读取标签建议失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [article, ds, onToast]);
+
+  const handleAddNote = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!article || !noteMarkdown.trim()) return;
+      const input: NoteCreateInput = {
+        articleId: article.id,
+        markdownContent: noteMarkdown.trim()
+      };
+      try {
+        const r = await ds.noteCreate(input);
+        if (r.kind === 'ready') {
+          onToast('笔记已添加', 'success');
+          setNoteMarkdown('');
+        } else {
+          onToast(`添加失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        }
+      } catch (err) {
+        onToast(`添加失败：${err instanceof Error ? err.message : String(err)}`, 'error');
+      }
+    },
+    [article, noteMarkdown, ds, onToast]
+  );
+
+  const handleAddToTopic = useCallback(async () => {
+    if (!article) return;
+    // Phase 4 接入前的占位行为
+    const name = window.prompt('输入专题名称（创建新专题）', article.title.slice(0, 30));
+    if (!name) return;
+    const r = await ds.topicCreate({ name, description: `由「${article.title}」触发创建`, keywords: [] });
+    if (r.kind === 'ready') {
+      onToast(`专题「${name}」已创建（Phase 4 接入后可关联文章）`, 'success');
+    } else {
+      onToast(`创建失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+    }
+  }, [article, ds, onToast]);
+
   if (!article) {
     return (
       <div className="article-reader">
@@ -91,6 +217,7 @@ export function ArticleReader({ article, feed, onToggleStar }: ArticleReaderProp
   }
 
   const articleUrl = article.url;
+  const needsContent = !article.cleanedMarkdown;
 
   return (
     <div className="article-reader">
@@ -112,9 +239,7 @@ export function ArticleReader({ article, feed, onToggleStar }: ArticleReaderProp
         <header className="article-reader__header">
           <h1 className="article-reader__title">{article.title}</h1>
           <div className="article-reader__meta">
-            {feed && (
-              <span className="article-reader__feed">{feed.siteTitle || feed.title}</span>
-            )}
+            {feed && <span className="article-reader__feed">{feed.siteTitle || feed.title}</span>}
             {article.author && <span className="article-reader__sep">·</span>}
             {article.author && <span>{article.author}</span>}
             <span className="article-reader__sep">·</span>
@@ -137,11 +262,47 @@ export function ArticleReader({ article, feed, onToggleStar }: ArticleReaderProp
             >
               打开原文 ↗
             </a>
-            <button type="button" className="article-reader__btn" disabled>
-              生成摘要
+            <button
+              type="button"
+              className="article-reader__btn"
+              onClick={() => void handleSummary()}
+              disabled={busy || needsContent}
+              title={needsContent ? '正文未清洗' : '生成 AI 摘要'}
+            >
+              {busy && activePanel === 'summary' ? '⏳ 生成中…' : '✨ 摘要'}
             </button>
-            <button type="button" className="article-reader__btn" disabled>
-              翻译
+            <button
+              type="button"
+              className="article-reader__btn"
+              onClick={() => void handleTranslation()}
+              disabled={busy || needsContent}
+              title={needsContent ? '正文未清洗' : '生成双语翻译'}
+            >
+              {busy && activePanel === 'translation' ? '⏳ 翻译中…' : '🌐 翻译'}
+            </button>
+            <button
+              type="button"
+              className="article-reader__btn"
+              onClick={() => void handleSuggestTags()}
+              disabled={busy || needsContent}
+              title={needsContent ? '正文未清洗' : 'AI 推荐标签'}
+            >
+              {busy && activePanel === 'tags' ? '⏳ 建议中…' : '🏷 标签建议'}
+            </button>
+            <button
+              type="button"
+              className="article-reader__btn"
+              onClick={() => setActivePanel((p) => (p === 'note' ? null : 'note'))}
+            >
+              ✎ 笔记
+            </button>
+            <button
+              type="button"
+              className="article-reader__btn"
+              onClick={() => void handleAddToTopic()}
+              title="加入专题（Phase 4 接入）"
+            >
+              ★ 专题
             </button>
           </div>
         </header>
@@ -157,31 +318,88 @@ export function ArticleReader({ article, feed, onToggleStar }: ArticleReaderProp
               dangerouslySetInnerHTML={{ __html: content.html }}
             />
           ) : (
-            <EmptyView
-              title="此文章暂无正文"
-              hint="可能还没有内容，或者源站返回为空。"
-            />
+            <EmptyView title="此文章暂无正文" hint="可能还没有内容，或者源站返回为空。" />
           )}
         </div>
-      </div>
 
-      {/* 底部「摘要」折叠（Phase 3.1 落地） */}
-      <div className="article-reader__summary" data-open={showSummary}>
-        <button
-          type="button"
-          className="article-reader__summary-toggle"
-          onClick={() => setShowSummary((s) => !s)}
-          aria-expanded={showSummary}
-        >
-          <span>摘要</span>
-          <span className="article-reader__summary-chevron">{showSummary ? '∧' : '∨'}</span>
-        </button>
-        {showSummary && (
-          <div className="article-reader__summary-content">
-            <p className="article-reader__summary-placeholder">
-              摘要功能由 AI Agent 提供（Phase 3 落地）
-            </p>
+        {/* AI 结果区 */}
+        {activePanel === 'summary' && (
+          <div className="article-reader__ai-panel">
+            <h3>✨ 摘要</h3>
+            {summary ? (
+              <div className="article-reader__ai-text">{summary}</div>
+            ) : (
+              <LoadingView message="正在生成摘要…" />
+            )}
           </div>
+        )}
+
+        {activePanel === 'translation' && (
+          <div className="article-reader__ai-panel">
+            <h3>🌐 双语翻译</h3>
+            {translationParagraphs.length > 0 ? (
+              <ol className="article-reader__translation">
+                {translationParagraphs.map((p) => (
+                  <li key={p.index} className="article-reader__translation-item">
+                    <div className="article-reader__translation-original">{p.original}</div>
+                    <div className="article-reader__translation-translated">{p.translated}</div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <LoadingView message="正在翻译…" />
+            )}
+          </div>
+        )}
+
+        {activePanel === 'tags' && (
+          <div className="article-reader__ai-panel">
+            <h3>🏷 标签建议</h3>
+            {tagSuggestions.length > 0 ? (
+              <ul className="article-reader__tag-suggestions">
+                {tagSuggestions.map((s, i) => (
+                  <li key={`${s.name}-${i}`} className="article-reader__tag-suggestion">
+                    <span className="article-reader__tag-name">{s.name}</span>
+                    <span className="article-reader__tag-confidence">
+                      置信度 {Math.round(s.confidence * 100)}%
+                    </span>
+                    <span className="article-reader__tag-reason">{s.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="article-reader__ai-empty">暂无标签建议。</p>
+            )}
+          </div>
+        )}
+
+        {activePanel === 'note' && (
+          <form className="article-reader__ai-panel" onSubmit={handleAddNote}>
+            <h3>✎ 笔记</h3>
+            <textarea
+              className="article-reader__note-input"
+              value={noteMarkdown}
+              onChange={(e) => setNoteMarkdown(e.target.value)}
+              placeholder="Markdown 笔记（GFM：标题、代码块、列表）"
+              rows={5}
+            />
+            <div className="article-reader__note-actions">
+              <button
+                type="submit"
+                className="article-reader__btn article-reader__btn--primary"
+                disabled={!noteMarkdown.trim()}
+              >
+                添加笔记
+              </button>
+              <button
+                type="button"
+                className="article-reader__btn"
+                onClick={() => setNoteMarkdown('')}
+              >
+                清空
+              </button>
+            </div>
+          </form>
         )}
       </div>
     </div>

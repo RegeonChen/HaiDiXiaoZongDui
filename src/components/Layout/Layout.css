@@ -57,6 +57,72 @@
   flex-shrink: 0;
 }
 
+.app-header__logo-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+}
+
+.app-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elev);
+}
+
+.app-header__nav-btn {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-soft);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+
+.app-header__nav-btn:hover {
+  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
+  color: var(--fg);
+}
+
+.app-header__nav-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.app-header__nav-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.app-header__nav-label {
+  font-weight: 500;
+}
+
+.app-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--fg);
+}
+
 .app-header__add-btn {
   appearance: none;
   border: 1px solid var(--accent);

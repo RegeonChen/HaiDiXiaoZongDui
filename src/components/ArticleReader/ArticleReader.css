@@ -273,3 +273,123 @@
   color: var(--muted);
   line-height: 1.5;
 }
+
+/* AI 工具栏结果区（Phase 3 Integration） */
+.article-reader__ai-panel {
+  border-top: 1px solid var(--border-soft);
+  background: var(--bg-elev);
+  padding: 14px 24px 18px;
+  flex-shrink: 0;
+}
+
+.article-reader__ai-panel h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-soft);
+}
+
+.article-reader__ai-text {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--fg);
+}
+
+.article-reader__ai-empty {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.article-reader__translation {
+  list-style: decimal;
+  margin: 0;
+  padding: 0 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.article-reader__translation-item {
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.article-reader__translation-original {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg-soft);
+  margin-bottom: 6px;
+}
+
+.article-reader__translation-translated {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--fg);
+}
+
+.article-reader__tag-suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.article-reader__tag-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.article-reader__tag-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.article-reader__tag-confidence {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.article-reader__tag-reason {
+  font-size: 12px;
+  color: var(--fg-soft);
+  line-height: 1.5;
+}
+
+.article-reader__note-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  resize: vertical;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+.article-reader__note-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.article-reader__btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+

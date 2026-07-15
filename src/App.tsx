@@ -1,21 +1,22 @@
 /**
  * App 入口
- * Task 2.1 + Phase 2.5.1
+ * Task 2.1 + Phase 2.5.1 + Phase 3 Integration
  *
- * 数据流：DataSource 抽象 → feeds / articles / content
- * 状态：useSelection（feedId / articleId）、usePaneWidths（三栏宽度）
+ * 数据流：FullDataSource 抽象 → feeds / articles / content / tag / note / digest / topic / ai / settings / log
+ * 状态：useSelection（feedId / articleId）、usePaneWidths（三栏宽度）、currentPage（页面切换）
  *
- * Phase 2.5.1 新增：
- *  - 三栏拖拽（usePaneWidths → Layout grid 模板列）
- *  - 删除订阅源（FeedList 右键菜单 → ConfirmDialog → IPC feed.delete）
- *  - OPML 导入自动同步（import 成功 → syncFeed 每个新 feed）
+ * Phase 2.5.1：删除订阅源、OPML 导入自动同步、三栏拖拽
+ * Phase 3 Integration：
+ *  - 顶栏 6 个页面入口（设置/标签/笔记/文摘/专题/日志）
+ *  - SettingsPage 含 AI Provider、字体/视觉主题、多语言
+ *  - ArticleReader 接入 AI 工具栏（摘要/翻译/标签建议/笔记/专题）
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Article, Feed } from '@shared/types';
 import { useDataSource } from './context/DataSourceContext';
 import { useSelection } from './hooks/useSelection';
 import { usePaneWidths } from './hooks/usePaneWidths';
-import { Layout } from './components/Layout/Layout';
+import { Layout, type AppPage } from './components/Layout/Layout';
 import { FeedList } from './components/FeedList/FeedList';
 import { ArticleList } from './components/ArticleList/ArticleList';
 import { ArticleReader } from './components/ArticleReader/ArticleReader';
@@ -25,6 +26,12 @@ import { ConfirmDialog, type ConfirmDialogHandle } from './components/ConfirmDia
 import { ContextMenuHost } from './components/ContextMenu/ContextMenu';
 import { LoadingView } from './components/StatusView/LoadingView';
 import { ErrorView } from './components/StatusView/ErrorView';
+import { SettingsPage } from './pages/SettingsPage/SettingsPage';
+import { TagsPage } from './pages/TagsPage/TagsPage';
+import { NotesPage } from './pages/NotesPage/NotesPage';
+import { DigestsPage } from './pages/DigestsPage/DigestsPage';
+import { TopicsPage } from './pages/TopicsPage/TopicsPage';
+import { LogsPage } from './pages/LogsPage/LogsPage';
 import './index.css';
 
 type FeedsState =
@@ -42,6 +49,7 @@ export function App() {
   const { selection, selectFeed, selectArticle } = useSelection();
   const { widths, setSidebar, setList } = usePaneWidths();
 
+  const [currentPage, setCurrentPage] = useState<AppPage>('reader');
   const [feedsState, setFeedsState] = useState<FeedsState>({ kind: 'loading' });
   const [articlesState, setArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   const [allArticlesState, setAllArticlesState] = useState<ArticlesState>({ kind: 'loading' });
@@ -189,7 +197,7 @@ export function App() {
     [ds]
   );
 
-  // 添加订阅源：创建成功后立即返回，慢网络同步放到后台，避免对话框长时间锁死。
+  // 添加订阅源
   const handleAddFeed = useCallback(
     async (url: string) => {
       const created = await ds.createFeed(url, url);
@@ -225,7 +233,7 @@ export function App() {
     [ds, pushToast, refreshFeeds, selectFeed]
   );
 
-  // 同步全部订阅源
+  // 同步全部
   const handleSyncAll = useCallback(async () => {
     if (syncing) return;
     setSyncing(true);
@@ -256,7 +264,7 @@ export function App() {
     }
   }, [syncing, feeds, ds, refreshFeeds, pushToast]);
 
-  // 删除订阅源（Phase 2.5.1-a）
+  // 删除订阅源
   const handleDeleteFeed = useCallback(
     async (feed: Feed) => {
       const ok = await confirmRef.current?.open({
@@ -278,7 +286,6 @@ export function App() {
           pushToast(`删除失败：${r.error?.message ?? '未知错误'}`, 'error');
           return;
         }
-        // 如果当前选中的是被删的 feed，切到 "all"
         if (selection.feedId === feed.id) {
           selectFeed('all');
         }
@@ -295,7 +302,7 @@ export function App() {
     [articles, ds, pushToast, refreshFeeds, selectFeed, selection.feedId]
   );
 
-  // OPML 导入（Phase 2.5.1-b：自动同步新导入的 feed）
+  // OPML 导入
   const handleOpmlImport = useCallback(async () => {
     const api = (window as unknown as { api?: { opml?: { import: () => Promise<{ success: boolean; data?: { feedsImported: number; feedsSkipped: number; errors: string[] } | null; error?: { message: string } }> } } }).api;
     if (!api?.opml?.import) {
@@ -324,7 +331,6 @@ export function App() {
       setAllArticlesState({ kind: 'ready', data: result.data });
     }
 
-    // Phase 2.5.1-b：自动同步新导入的 feed
     if (feedsImported > 0) {
       pushToast(`开始同步 ${feedsImported} 个新订阅源…`, 'info');
       const allFeedsResp = await ds.feeds();
@@ -373,7 +379,7 @@ export function App() {
     return { ok: r.data === true, message: r.data ? 'done' : 'cancelled' };
   }, [pushToast]);
 
-  // ----- 渲染 -----
+  // ----- 渲染三栏（reader 页面） -----
   const feedsSlot =
     feedsState.kind === 'loading' ? (
       <LoadingView message="正在加载订阅源…" />
@@ -415,8 +421,36 @@ export function App() {
       article={selectedArticle}
       feed={selectedFeed}
       onToggleStar={handleToggleStar}
+      onToast={pushToast}
     />
   );
+
+  // ----- 渲染页面（reader 之外的页面） -----
+  let pageSlot: JSX.Element;
+  switch (currentPage) {
+    case 'settings':
+      pageSlot = <SettingsPage onToast={pushToast} />;
+      break;
+    case 'tags':
+      pageSlot = <TagsPage onToast={pushToast} />;
+      break;
+    case 'notes':
+      pageSlot = <NotesPage onToast={pushToast} />;
+      break;
+    case 'digests':
+      pageSlot = <DigestsPage onToast={pushToast} />;
+      break;
+    case 'topics':
+      pageSlot = <TopicsPage />;
+      break;
+    case 'logs':
+      pageSlot = <LogsPage />;
+      break;
+    case 'reader':
+    default:
+      pageSlot = <></>;
+      break;
+  }
 
   return (
     <>
@@ -433,6 +467,9 @@ export function App() {
         listPercent={widths.listPercent}
         onResizeSidebar={setSidebar}
         onResizeList={setList}
+        currentPage={currentPage}
+        onPageChange={setCurrentPage}
+        pageSlot={pageSlot}
       />
       <AddFeedDialog
         open={addDialogOpen}
