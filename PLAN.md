@@ -55,32 +55,66 @@
 - 张宇凡将同步和清洗结果交给陈冠中保存，张晨阳通过约定接口读取并展示数据。
 - **Verification:** 用户可以添加真实订阅源、完成同步、选择文章阅读，并修改已读和星标状态。
 
+## Phase 2.5: Enhanced Feed Management
+
+**Overall Goal:** 补充订阅源删除功能。
+
+### Task 2.5.1 - Feed Deletion UI (张晨阳)
+
+- **Task Detail:** 实现订阅源右键菜单，包含"删除"选项；点击后弹出确认对话框（"确认删除该订阅源及其所有文章？此操作不可恢复"）；确认后自动切换到"全部文章"视图并从侧栏移除。
+- **Affected Areas:** FeedList 组件（右键事件监听）、确认对话框组件、App 层删除回调。
+- **Verification:** 右击任意订阅源出现菜单；确认后订阅源从侧栏消失、文章列表清空；取消则不做更改。
+
+### Task 2.5.2 - Feed Deletion Content Cleanup (张宇凡)
+
+- **Task Detail:** 确认 Feed 删除后内容管线缓存正确释放；OPML 导出结果不包含已删除的订阅源。
+- **Affected Areas:** Sync Service 缓存清理、OPML Service 导出过滤。
+- **Verification:** 删除订阅源后正文缓存不再被引用；OPML 导出不包含该订阅源。
+
+### Task 2.5.3 - Feed Deletion Persistence (陈冠中)
+
+- **Task Detail:** 在事务中 cascade 删除订阅源及其所有关联文章；提供 `feed:delete` IPC handler；确保不残留孤立文章。
+- **Affected Areas:** FeedRepository（delete 方法级联）、ArticleRepository（按 feedId 批量删除）、IPC handler 注册。
+- **Verification:** 删除后数据库中无孤立的 article（feedId 指向不存在的 feed）；重启后订阅源不恢复。
+
+### Phase 2.5 Integration (张晨阳 + 张宇凡 + 陈冠中)
+
+- 张晨阳触发删除 UI → 通过 IPC 调用陈冠中的 `feed:delete` → 张宇凡确认缓存清理和 OPML 过滤。
+- **Verification:** 右击 → 确认 → 该源及文章从界面和数据库完全移除，重启后不恢复。
+
 ## Phase 3: Required Product Features
 
-**Overall Goal:** 完成课程要求的 AI、笔记、标签、多语言和调试功能。
+**Overall Goal:** 完成课程要求的 AI、笔记、标签、多语言、调试、字体主题切换和全局视觉主题切换功能。
 
 ### Task 3.1 - Feature Interfaces (张晨阳)
 
 - **Task Detail:** 实现 Provider 设置、摘要、双语翻译、标签管理、笔记文摘、导出、多语言切换和日志查看界面。
-- **Affected Areas:** 设置页、阅读器工具区、标签页、笔记与文摘页、本地化资源。
-- **Verification:** 所有功能都有完整的正常、加载、空数据和错误状态，界面能够调用约定的本地接口。
+    追加（字体与视觉主题）：字体主题选择器 UI 组件（至少 3 套预设：宋体/黑体/楷体等中文字体栈 + serif/sans-serif/monospace 英文字体栈）、视觉主题选择器 UI 组件（至少 2 套："经典"白色简约 / "纸质"暖黄护眼）、CSS 变量驱动全局即时切换（字体 + 色彩），无需重启。
+- **Affected Areas:** 设置页、阅读器工具区、标签页、笔记与文摘页、本地化资源、全局 CSS 变量体系（`--bg-primary` / `--text-primary` / `--accent` / `--sidebar-bg` / `--toolbar-bg`）、`AppSettings.fontTheme` 和 `AppSettings.visualTheme` 字段。
+- **Verification:** 所有功能都有完整的正常、加载、空数据和错误状态，界面能够调用约定的本地接口。切换字体/视觉主题后全界面即时刷新，无闪烁或布局错位。
 
 ### Task 3.2 - Content Support and Reliability (张宇凡)
 
 - **Task Detail:** 改进不同 Feed 和网页的兼容性，处理同步失败、重试、内容编码、图片和复杂正文结构，并提供适合 AI 处理的干净内容。
+    追加（字体与视觉主题）：确认 Cleaned HTML/Markdown 在不同字体主题下中英文混排、代码块、表格、列表渲染正常；在不同视觉主题下色彩对比度、图片透明背景、代码高亮可读性均正常。
 - **Affected Areas:** 同步任务、正文清洗、内容转换、错误日志。
 - **Verification:** 选定的测试订阅源可以重复同步，单个源失败不会中断全部同步，AI 输入不包含明显导航和广告内容。
 
 ### Task 3.3 - Database and AI Services (陈冠中)
 
 - **Task Detail:** 扩展笔记、文摘、标签和 AI 结果存储；实现可配置 LLM Provider、Summary Agent、Translation Agent 和 Tag Agent。
-- **Affected Areas:** 数据模型、AI Provider 接口、Agent 服务和结果缓存。
-- **Verification:** 用户可以配置并测试模型；摘要、翻译和标签建议可生成并缓存；笔记和标签在重启后仍然存在。
+    追加（字体与视觉主题）：在 `AppSettings` 中新增 `fontTheme`（string，默认值指向第一套预设）和 `visualTheme`（`'classic' | 'paper'`，默认 `'classic'`）字段；提供 `settings:update` IPC handler 支持两者更新并持久化；在 `shared/types.ts` 中同步更新类型定义。
+- **Affected Areas:** 数据模型、AI Provider 接口、Agent 服务和结果缓存、`shared/types.ts` 的 `AppSettings` 类型。
+- **Verification:** 用户可以配置并测试模型；摘要、翻译和标签建议可生成并缓存；笔记和标签在重启后仍然存在；字体和视觉主题重启后保持用户上次选择。
 
 ### Phase 3 Integration (张晨阳 + 张宇凡 + 陈冠中)
 
 - 将张晨阳的功能界面、张宇凡的清洗内容和陈冠中的数据及 AI 服务连接起来。
-- **Verification:** 从阅读一篇真实文章开始，可以完成摘要、翻译、打标签、添加笔记和导出文摘的完整流程。
+- **Verification:**
+  - 从阅读一篇真实文章开始，可完成摘要、翻译、打标签、添加笔记和导出文摘的完整流程。
+  - 字体主题：切换后正文即时刷新，中英文按各自字体栈渲染，代码块等宽字体，无乱码无布局错位。
+  - 视觉主题：切换后三栏及工具栏即时变色；"经典"白底深字、"纸质"暖黄底深棕字；阅读区对比度达 WCAG AA 级，代码高亮可读。
+  - 两种主题重启后均保持用户上次选择。
 
 ## Phase 4: Topic Tracking
 
