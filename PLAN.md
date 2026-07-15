@@ -55,32 +55,44 @@
 - 张宇凡将同步和清洗结果交给陈冠中保存，张晨阳通过约定接口读取并展示数据。
 - **Verification:** 用户可以添加真实订阅源、完成同步、选择文章阅读，并修改已读和星标状态。
 
-## Phase 2.5: Enhanced Feed Management
+## Phase 2.5: Enhanced Feed Management & UX
 
-**Overall Goal:** 补充订阅源删除功能。
+**Overall Goal:** 补充订阅源删除、OPML 导入自动同步和三栏可拖拽布局功能。
 
-### Task 2.5.1 - Feed Deletion UI (张晨阳)
+### Task 2.5.1 - UI Enhancements (张晨阳)
 
-- **Task Detail:** 实现订阅源右键菜单，包含"删除"选项；点击后弹出确认对话框（"确认删除该订阅源及其所有文章？此操作不可恢复"）；确认后自动切换到"全部文章"视图并从侧栏移除。
-- **Affected Areas:** FeedList 组件（右键事件监听）、确认对话框组件、App 层删除回调。
-- **Verification:** 右击任意订阅源出现菜单；确认后订阅源从侧栏消失、文章列表清空；取消则不做更改。
+- **Task Detail:**
+  - 删除订阅源：右键菜单 → 确认对话框 → 自动切"全部文章"并移除侧栏项。
+  - OPML 导入自动同步：导入成功后自动触发全部订阅源同步，显示同步进度和结果 toast。
+  - 三栏拖拽：在侧栏与文章列表之间、文章列表与阅读区之间添加可拖拽分隔条（resize handle），拖拽时实时调整相邻两栏宽度；当前宽度持久化。
+- **Affected Areas:** FeedList（右键菜单）、确认对话框、OpmlButtons（导入后触发同步）、Layout（resize handle + CSS flex/grid 配合）、AppSettings 宽度字段。
+- **Verification:** 右击删除 → 确认后移除；导入 OPML → 自动同步所有源并显示结果；拖拽分隔条 → 三栏宽度即时变化，刷新/重启后宽度保持。
 
-### Task 2.5.2 - Feed Deletion Content Cleanup (张宇凡)
+### Task 2.5.2 - Content & Reliability (张宇凡)
 
-- **Task Detail:** 确认 Feed 删除后内容管线缓存正确释放；OPML 导出结果不包含已删除的订阅源。
-- **Affected Areas:** Sync Service 缓存清理、OPML Service 导出过滤。
-- **Verification:** 删除订阅源后正文缓存不再被引用；OPML 导出不包含该订阅源。
+- **Task Detail:**
+  - 删除订阅源：确认正文缓存释放、OPML 导出过滤已删除源。
+  - OPML 导入自动同步：Sync Service 支持批量同步所有订阅源（含新导入的和已有的），单个源失败不中断其余同步。
+  - 三栏拖拽：确认 Cleanded HTML/Markdown 在各栏极端宽度下渲染正常（极窄侧栏不影响文字截断、极窄阅读区不破坏代码块/表格布局）。
+- **Affected Areas:** Sync Service（批量同步）、OPML Service（导出过滤）、Content Cleaner（宽度兼容性验证）。
+- **Verification:** 删除后缓存不可达、OPML 不含已删源；导入 OPML 后所有源依次同步，失败源计入 SyncResult；拖拽至 200px~800px 范围内正文不丢内容。
 
-### Task 2.5.3 - Feed Deletion Persistence (陈冠中)
+### Task 2.5.3 - Persistence & IPC (陈冠中)
 
-- **Task Detail:** 在事务中 cascade 删除订阅源及其所有关联文章；提供 `feed:delete` IPC handler；确保不残留孤立文章。
-- **Affected Areas:** FeedRepository（delete 方法级联）、ArticleRepository（按 feedId 批量删除）、IPC handler 注册。
-- **Verification:** 删除后数据库中无孤立的 article（feedId 指向不存在的 feed）；重启后订阅源不恢复。
+- **Task Detail:**
+  - 删除订阅源：事务内 cascade 删除 feed + articles；提供 `feed:delete` IPC handler。
+  - OPML 导入自动同步：确保 OPML 导入的 feeds 先持久化到数据库，再触发同步（避免同步时 feed 尚未写入）；提供 `opml:importAndSync` 聚合 IPC 或 preload 端组合调用 `opml:import` + `sync:all`。
+  - 三栏拖拽：在 `AppSettings` 中新增 `sidebarWidth` / `articleListWidth`（number，百分比或像素默认值）；提供 `settings:update` IPC 持久化；在 `shared/types.ts` 同步更新类型。
+- **Affected Areas:** FeedRepository / ArticleRepository（级联删除）、OPML import handler、Sync handler、AppSettings 类型、`shared/types.ts`、`settings:update` IPC。
+- **Verification:** 删除后无孤立文章；导入 OPML 后 feeds 先入库再同步；拖拽后重启宽度不变、数据库中 settings 已更新。
 
 ### Phase 2.5 Integration (张晨阳 + 张宇凡 + 陈冠中)
 
-- 张晨阳触发删除 UI → 通过 IPC 调用陈冠中的 `feed:delete` → 张宇凡确认缓存清理和 OPML 过滤。
-- **Verification:** 右击 → 确认 → 该源及文章从界面和数据库完全移除，重启后不恢复。
+- 张晨阳的 UI（右键删除 / OPML 导入按钮 / 拖拽分隔条）→ 陈冠中的 IPC + 持久化 → 张宇凡的内容管线配合。
+- **Verification:**
+  - 右键删除 → 确认 → 源及文章从界面和 DB 消失，重启不恢复。
+  - 导入 OPML 文件 → 自动同步 → 侧栏显示所有源的 siteTitle，中间栏显示最新文章。
+  - 拖拽分隔条 → 三栏宽度即时变化 → 重启后宽度保持 → 极端宽度下正文可读。
 
 ## Phase 3: Required Product Features
 
