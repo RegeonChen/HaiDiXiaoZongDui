@@ -106,4 +106,4 @@ npm run smoke:phase2
 5. 已读、星标和 OPML 导入导出正常；
 6. 临时数据库确实写入磁盘。
 
-`smoke:phase2` 不会验证 React 界面是否已连接真实数据。当前 Renderer 仍使用 `MockDataSource`；完成真实 IPC DataSource、添加订阅交互和按需加载正文后，才能进行 Phase 2 整体验收。
+`smoke:phase2` 不会验证 React 界面是否已连接真实数据。`smoke:ui-ipc`（即 `npm run smoke:ui-ipc`）专做这件事：起 Electron + 走真 IPC 模式 + seed 数据 + 验证 React 组件从 IPC 拿到数据并展示。

@@ -47,10 +47,27 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let disposeContentPipelineIpc: (() => void) | null = null;
 
+// Electron 31 在 app.whenReady() 之后会清掉 process.env 里的部分变量。
+// 把所有 smoke 相关 env 在 ready 之前一次性 snapshot 下来。
 const configuredUserDataPath = process.env['JUHE_SHIVI_USER_DATA'];
-if (process.env['JUHE_SHIVI_SMOKE'] === '1' && configuredUserDataPath) {
-  app.setPath('userData', configuredUserDataPath);
-}
+const SMOKE_FLAGS = {
+  smoke: process.env['JUHE_SHIVI_SMOKE'] === '1',
+  smokeUi: process.env['JUHE_SHIVI_SMOKE_UI'] === '1',
+  smokeUiReal: process.env['JUHE_SHIVI_SMOKE_UI_REAL'] === '1',
+  smokeV2: process.env['JUHE_SHIVI_SMOKE_V2'] === '1',
+  smokePhase2: process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1',
+  smokeRealFeed: process.env['JUHE_SHIVI_SMOKE_REAL_FEED'] === '1',
+  opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
+  feedUrl: process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? ''
+};
+// Debug: 任何 smoke 模式都 dump 实际生效的 userData 路径
+const dumpUserData = (): void => {
+  if (SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) {
+    process.stdout.write(`[main] userData path = ${app.getPath('userData')}\n`);
+    process.stdout.write(`[main] JUHE_SHIVI_USER_DATA env = ${configuredUserDataPath ?? '(not set)'}\n`);
+  }
+};
+dumpUserData();
 
 // ============================================================
 // 窗口创建
@@ -88,10 +105,9 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
   });
 
   const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
-  const smokeUi = process.env['JUHE_SHIVI_SMOKE_UI'] === '1';
-  const smokeUiReal = process.env['JUHE_SHIVI_SMOKE_UI_REAL'] === '1';
-  // smokeUiReal = 走真 IPC；smokeUi = 走 ?mock=1 避免空 DB 干扰
-  const useMock = smokeUi && !smokeUiReal;
+  // 注意：createMainWindow 在 app.whenReady 之后被调，process.env 可能已被清。
+  // smokeUi / smokeUiReal 通过 SMOKE_FLAGS 读（ready 之前 snapshot）。
+  const useMock = SMOKE_FLAGS.smokeUi && !SMOKE_FLAGS.smokeUiReal;
   if (devServerUrl) {
     const url = useMock ? `${devServerUrl}${devServerUrl.includes('?') ? '&' : '?'}mock=1` : devServerUrl;
     await win.loadURL(url);
@@ -100,7 +116,7 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
     await win.loadFile(path.join(__dirname, '../renderer/index.html'), opts);
   }
 
-  if (process.env['JUHE_SHIVI_SMOKE'] === '1' || smokeUi) {
+  if (SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) {
     void runSmokeTest(win);
   }
 }
@@ -113,16 +129,16 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   // 等到 React 把 #root 渲染完 + mock dataSource 拉完
   await new Promise<void>((resolve) => setTimeout(resolve, 800));
 
-  // Smoke mode — determined by env
-  const smokePhase2 = process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1';
-  const smokeV2 = process.env['JUHE_SHIVI_SMOKE_V2'] === '1';
-  const smokeRealFeed = process.env['JUHE_SHIVI_SMOKE_REAL_FEED'] === '1';
-  const smokeUI = process.env['JUHE_SHIVI_SMOKE_UI'] === '1';
-  const smokeUiReal = process.env['JUHE_SHIVI_SMOKE_UI_REAL'] === '1';
+  // Smoke mode — 全部用 SMOKE_FLAGS（process.env 在 ready 后已被清）
+  const smokePhase2 = SMOKE_FLAGS.smokePhase2;
+  const smokeV2 = SMOKE_FLAGS.smokeV2;
+  const smokeRealFeed = SMOKE_FLAGS.smokeRealFeed;
+  const smokeUI = SMOKE_FLAGS.smokeUi;
+  const smokeUiReal = SMOKE_FLAGS.smokeUiReal;
+  const feedUrl = SMOKE_FLAGS.feedUrl;
   let probe: string;
 
   if (smokePhase2) {
-    const feedUrl = process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? '';
     probe = `
       (async () => {
         const report = { phase2: { ok: false, error: null, checks: {} } };
@@ -245,80 +261,139 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     // Phase 2.4 smoke: UI end-to-end via real IPC
     // 走真 IPC 模式（加载 renderer 不带 ?mock=1），通过 IPC seed 数据后
     // 验证 React 组件从 IPC 拿数据并展示
-    const feedUrl = process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? '';
+    //
+    // 时序：用 waitFor 轮询 DOM 条件，避免依赖固定 sleep 长度
     probe = `
       (async () => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-        const report = { uiIpc: { ok: false, error: null, checks: {} } };
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 6000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          let lastValue = null;
+          while (Date.now() - start < timeout) {
+            try {
+              lastValue = checkFn();
+              if (lastValue) return lastValue;
+            } catch (e) { /* ignore — checkFn may throw on partial render */ }
+            await sleep(interval);
+          }
+          return lastValue;
+        }
+
+        const report = { uiIpc: { ok: false, error: null, checks: {}, timing: {} } };
         const feedUrl = ${JSON.stringify(feedUrl)};
 
         try {
           // 1) 通过 IPC seed 数据
+          const seedStart = Date.now();
+          // 把 userData 路径塞进报告，便于排查是否 fresh tempDir
+          try {
+            const { ipcRenderer } = require ? null : null; // no-op guard
+          } catch {}
           const created = await window.api.feed.create({ url: feedUrl, title: 'UI IPC Smoke Feed' });
           const synced = await window.api.sync.feed(created.data.id);
           report.uiIpc.checks.ipcSeed = created.success && !!created.data?.id &&
             synced.success && synced.data?.success === true;
+          report.uiIpc.timing.seed = Date.now() - seedStart;
+          report.uiIpc.checks.syncNewArticles = synced.data?.newArticles;
+          report.uiIpc.checks.syncUpdatedArticles = synced.data?.updatedArticles;
+          report.uiIpc.checks.syncError = synced.data?.error;
 
-          // 2) 等 React 第一次 useEffect 跑完（feed 列表渲染稳定）
-          await sleep(1500);
+          // 通知 React 端刷新 feeds/articles（DB 变了，但 React mount 时 useEffect 已经跑过）
+          window.dispatchEvent(new Event('juhe:refresh'));
+
+          // dump DB 实际 article 数量（调试用）
+          try {
+            const allArts = await window.api.article.list({});
+            report.uiIpc.checks.dbAllSuccess = allArts.success;
+            report.uiIpc.checks.dbAllError = allArts.success ? null : JSON.stringify(allArts.error);
+            report.uiIpc.checks.dbTotalAfterSeed = allArts.success ? allArts.data?.total : -1;
+            report.uiIpc.checks.dbItemCountAfterSeed = allArts.success ? allArts.data?.items?.length : -1;
+            const allFeeds = await window.api.feed.list();
+            if (allFeeds.success && allFeeds.data) {
+              report.uiIpc.checks.dbFeedDump = allFeeds.data.map((f) => ({
+                id: f.id,
+                title: f.title,
+                siteTitle: f.siteTitle,
+                lastSyncSuccess: f.lastSyncSuccess
+              }));
+            }
+          } catch (e) { report.uiIpc.checks.dbDumpError = String(e); }
+
+          // 2) 等 React 第一次 useEffect 跑完：feed 列表里出现 "UI IPC Smoke Feed"
+          //    这个由 IPC 推 → useEffect 拉 feeds → setState → DOM，没有固定时长。
+          //    waitFor 轮询直到条件满足或 6s 超时（失败时记下耗时）
+          const renderStart = Date.now();
+          const seedFeedVisible = await waitFor(() => {
+            const labels = Array.from(document.querySelectorAll('.feed-list__label'))
+              .map((el) => el.textContent);
+            return labels.includes('UI IPC Smoke Feed');
+          });
+          report.uiIpc.timing.feedListRenderedMs = Date.now() - renderStart;
+          report.uiIpc.checks.feedListRendered = !!seedFeedVisible;
 
           // 3) 点 sidebar 切到刚创建的 feed，触发 useEffect 重拉 articles
-          //    （selection.feedId 变化 → articles 拉新数据）
-          const feedItems = document.querySelectorAll('.feed-list__item');
-          let targetFeedBtn = null;
-          feedItems.forEach((b) => {
-            const title = b.querySelector('.feed-list__label')?.textContent;
-            if (title === 'UI IPC Smoke Feed' || title === 'Hacker News') {
-              targetFeedBtn = b;
-            }
+          const targetFeedBtn = await waitFor(() => {
+            return Array.from(document.querySelectorAll('.feed-list__item')).find((b) => {
+              const t = b.querySelector('.feed-list__label')?.textContent;
+              return t === 'UI IPC Smoke Feed';
+            });
           });
-          if (targetFeedBtn) {
-            targetFeedBtn.click();
-          }
-          await sleep(800);
+          if (targetFeedBtn) targetFeedBtn.click();
 
-          // 4) UI 端 article 列表渲染了
-          const articleItems = document.querySelectorAll('.article-list__item');
-          report.uiIpc.checks.uiListHasData = articleItems.length >= 1;
-          report.uiIpc.checks.uiListCount = articleItems.length;
+          // 4) 等 article 列表渲染（等 .article-list__item >= 1）
+          const articleStart = Date.now();
+          const articleItems = await waitFor(() => {
+            const items = document.querySelectorAll('.article-list__item');
+            return items.length >= 1 ? items : null;
+          }, { timeout: 8000 });
+          report.uiIpc.timing.articleListRenderedMs = Date.now() - articleStart;
+          report.uiIpc.checks.uiListHasData = !!articleItems && articleItems.length >= 1;
+          report.uiIpc.checks.uiListCount = articleItems ? articleItems.length : 0;
 
           // ---- P1: UI 上有"添加订阅源"按钮 + 点开 dialog ----
-          const addBtn = document.querySelector('.app-header__add-btn');
+          const addBtn = await waitFor(() => document.querySelector('.app-header__add-btn'));
           report.uiIpc.checks.uiHasAddBtn = !!addBtn;
           if (addBtn) {
             addBtn.click();
-            await sleep(150);
-            const dialog = document.querySelector('.add-feed-dialog');
+            const dialog = await waitFor(() => document.querySelector('.add-feed-dialog'), { timeout: 1500 });
             report.uiIpc.checks.uiAddDialogOpens = !!dialog;
             // 关闭 dialog
             const cancelBtn = dialog?.querySelector('button[type="button"]');
             cancelBtn?.click();
-            await sleep(100);
+            await sleep(100); // 关闭动画
           } else {
             report.uiIpc.checks.uiAddDialogOpens = false;
           }
 
           // ---- P2: OPML 按钮组（导入 + 导出）----
-          const opmlBtns = document.querySelectorAll('.opml-buttons__btn');
-          report.uiIpc.checks.uiHasOpmlButtons = opmlBtns.length === 2;
+          const opmlBtns = await waitFor(() => {
+            const btns = document.querySelectorAll('.opml-buttons__btn');
+            return btns.length === 2 ? btns : null;
+          }, { timeout: 1500 });
+          report.uiIpc.checks.uiHasOpmlButtons = !!opmlBtns;
 
-          // OPML 导出（点按钮 → 走 IPC → 文件生成）
+          // OPML 导出：点按钮 → 走 IPC → 文件生成
+          // 文件存在与否由 smoke-2.4-ui-ipc.cjs 脚本外层检查 opmlPath
           let opmlExportOk = false;
-          if (opmlBtns.length >= 2) {
+          if (opmlBtns) {
             const exportBtn = Array.from(opmlBtns).find((b) => b.textContent?.includes('导出'));
             if (exportBtn) {
               exportBtn.click();
-              await sleep(800);
-              opmlExportOk = true; // 探针外层会再检查文件存在
+              // 等 IPC 走完：主进程 smoke 模式下走 smokeOpmlPath()，
+              // 等几秒让 export 真正落盘
+              await sleep(1500);
+              opmlExportOk = true;
             }
           }
           report.uiIpc.checks.uiOpmlExportWorks = opmlExportOk;
 
-          // OPML 导入（直接走 window.api.opml.import()，主进程在 smoke 模式下用 JUHE_SHIVI_SMOKE_OPML_PATH）
-          // 预期：feedsSkipped >= 1（因为刚 sync 的 feed 已经存在）
+          // OPML 导入
           try {
             const imp = await window.api.opml.import();
-            report.uiIpc.checks.uiOpmlImportOk = imp.success && (imp.data === null || (imp.data && imp.data.feedsSkipped >= 1));
+            report.uiIpc.checks.uiOpmlImportOk = imp.success &&
+              (imp.data === null || (imp.data && imp.data.feedsSkipped >= 1));
             report.uiIpc.checks.uiOpmlImportResult = imp.success ? imp.data : null;
           } catch (e) {
             report.uiIpc.checks.uiOpmlImportOk = false;
@@ -326,31 +401,42 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           }
 
           // 5) 点击第一篇
-          const firstTitle = articleItems[0]?.querySelector('.article-list__article-title')?.textContent;
-          if (articleItems[0]) {
+          if (articleItems && articleItems[0]) {
+            const firstTitle = articleItems[0].querySelector('.article-list__article-title')?.textContent;
             articleItems[0].click();
-            await sleep(500);
-            const readerTitle = document.querySelector('.article-reader__title')?.textContent;
-            report.uiIpc.checks.uiClickWorks = !!readerTitle && !!firstTitle &&
-              readerTitle.trim() === firstTitle.trim();
+
+            // 等阅读区标题更新
+            const readerTitle = await waitFor(() => {
+              const t = document.querySelector('.article-reader__title')?.textContent;
+              return t && firstTitle && t.trim() === firstTitle.trim() ? t : null;
+            }, { timeout: 3000 });
+            report.uiIpc.checks.uiClickWorks = !!readerTitle;
             report.uiIpc.checks.readerTitle = readerTitle ?? null;
             report.uiIpc.checks.clickedTitle = firstTitle ?? null;
 
-            // 6) ArticleReader 通过 IPC getCleanedHtml 拿到正文
-            await sleep(1000);
-            const content = document.querySelector('.article-reader__content');
-            report.uiIpc.checks.uiContentLoaded = !!content && (content.innerHTML.length > 0);
+            // 6) 等 ArticleReader 通过 IPC getCleanedHtml 拿到正文
+            //    路径：click → setState → useEffect → getCleanedHtml → setState → render
+            const contentStart = Date.now();
+            const content = await waitFor(() => {
+              const el = document.querySelector('.article-reader__content');
+              return el && el.innerHTML.length > 0 ? el : null;
+            }, { timeout: 6000 });
+            report.uiIpc.timing.contentRenderedMs = Date.now() - contentStart;
+            report.uiIpc.checks.uiContentLoaded = !!content;
             report.uiIpc.checks.uiContentSnippet = content ? content.innerHTML.slice(0, 80) : null;
 
             // 清理
             if (created.data?.id) {
               await window.api.feed.delete(created.data.id);
             }
+          } else {
+            report.uiIpc.checks.uiClickWorks = false;
+            report.uiIpc.checks.uiContentLoaded = false;
           }
 
           // OK 判定
           const boolChecks = [
-            'ipcSeed', 'uiListHasData', 'uiClickWorks', 'uiContentLoaded',
+            'ipcSeed', 'feedListRendered', 'uiListHasData', 'uiClickWorks', 'uiContentLoaded',
             'uiHasAddBtn', 'uiAddDialogOpens', 'uiHasOpmlButtons', 'uiOpmlExportWorks', 'uiOpmlImportOk'
           ];
           report.uiIpc.ok = boolChecks.every((k) => report.uiIpc.checks[k] === true);
@@ -362,7 +448,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     `;
   } else if (smokeRealFeed) {
     // Real RSS feed smoke: 用真实公网 RSS 源测试 添加→同步→读文章 闭环
-    const realFeedUrl = process.env['JUHE_SHIVI_SMOKE_FEED_URL'] || 'https://www.ruanyifeng.com/blog/atom.xml';
+    const realFeedUrl = SMOKE_FLAGS.feedUrl || 'https://www.ruanyifeng.com/blog/atom.xml';
     probe = `
       (async () => {
         const report = { realFeed: { ok: false, error: null, checks: {} } };
@@ -708,15 +794,14 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
 
 function smokeOpmlPath(): string | null {
   // phase2 smoke 和 uiIpc smoke 都要支持 OPML 路径覆盖（避免弹 dialog）
-  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] !== '1' && process.env['JUHE_SHIVI_SMOKE_UI_REAL'] !== '1') {
+  if (!SMOKE_FLAGS.smokePhase2 && !SMOKE_FLAGS.smokeUiReal) {
     return null;
   }
-  const value = process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim();
-  return value || null;
+  return SMOKE_FLAGS.opmlPath;
 }
 
 async function selectOpmlImportPath(event: IpcMainInvokeEvent): Promise<string | null> {
-  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1' || process.env['JUHE_SHIVI_SMOKE_UI_REAL'] === '1') {
+  if (SMOKE_FLAGS.smokePhase2 || SMOKE_FLAGS.smokeUiReal) {
     return smokeOpmlPath();
   }
 
@@ -735,7 +820,7 @@ async function selectOpmlImportPath(event: IpcMainInvokeEvent): Promise<string |
 }
 
 async function selectOpmlExportPath(event: IpcMainInvokeEvent): Promise<string | null> {
-  if (process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1' || process.env['JUHE_SHIVI_SMOKE_UI_REAL'] === '1') {
+  if (SMOKE_FLAGS.smokePhase2 || SMOKE_FLAGS.smokeUiReal) {
     return smokeOpmlPath();
   }
 
@@ -758,6 +843,14 @@ async function selectOpmlExportPath(event: IpcMainInvokeEvent): Promise<string |
 // ============================================================
 
 app.whenReady().then(async () => {
+  // Electron 31 在 Windows 上要求 setPath 在 ready 之后才生效
+  // 否则会 silently ignored，userData 走默认路径（所有 smoke 累积污染）
+  // 触发条件：任何 smoke 模式 + 设了 userData 路径
+  if ((SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) && configuredUserDataPath) {
+    app.setPath('userData', configuredUserDataPath);
+  } else if (SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) {
+    process.stdout.write(`[main] WARN JUHE_SHIVI_USER_DATA not set, smoke data will leak\n`);
+  }
   await initDatabase();
   runMigrations();
 

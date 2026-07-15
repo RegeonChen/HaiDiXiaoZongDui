@@ -98,6 +98,19 @@ export function App() {
     })();
   }, [refreshFeeds, ds]);
 
+  // 监听外部 refresh 信号（smoke 探针在 seed 数据后手动触发；生产中没人 dispatch）
+  useEffect(() => {
+    const handler = () => {
+      void refreshFeeds();
+      void (async () => {
+        const r = await ds.articles({});
+        if (r.kind === 'ready') setAllArticlesState({ kind: 'ready', data: r.data });
+      })();
+    };
+    window.addEventListener('juhe:refresh', handler);
+    return () => window.removeEventListener('juhe:refresh', handler);
+  }, [refreshFeeds, ds]);
+
   // 当 feed 选择变化时拉取对应文章
   useEffect(() => {
     if (selection.feedId === 'all') {
@@ -186,19 +199,37 @@ export function App() {
     if (syncing) return;
     setSyncing(true);
     setSyncMessage('同步中…');
-    let count = 0;
-    for (const f of feeds) {
+    let okCount = 0;
+    let failCount = 0;
+    const failedFeeds: string[] = [];
+    for (let i = 0; i < feeds.length; i += 1) {
+      const f = feeds[i];
       const r = await ds.syncFeed(f.id);
-      count += 1;
-      if (!r.ok) {
-        setSyncMessage(`同步失败：${f.title} (${count}/${feeds.length})`);
+      if (r.ok) {
+        okCount += 1;
+        setSyncMessage(`已同步 ${f.title} (${i + 1}/${feeds.length})`);
       } else {
-        setSyncMessage(`已同步 ${f.title} (${count}/${feeds.length})`);
+        failCount += 1;
+        failedFeeds.push(f.title);
+        setSyncMessage(`同步失败：${f.title} (${i + 1}/${feeds.length})`);
       }
     }
-    setSyncMessage(count === 0 ? '没有可同步的源' : `同步完成，共 ${count} 个`);
     setSyncing(false);
-    if (count > 0) pushToast(`同步完成，共 ${count} 个源`, 'success');
+
+    // 根据实际成败决定最终提示
+    if (feeds.length === 0) {
+      setSyncMessage('没有可同步的源');
+    } else if (failCount === 0) {
+      setSyncMessage(`同步完成，共 ${okCount} 个`);
+      pushToast(`同步完成，共 ${okCount} 个源`, 'success');
+    } else if (okCount === 0) {
+      setSyncMessage(`全部 ${failCount} 个同步失败`);
+      pushToast(`全部 ${failCount} 个同步失败`, 'error');
+    } else {
+      setSyncMessage(`部分失败：成功 ${okCount}，失败 ${failCount}`);
+      pushToast(`部分同步失败：成功 ${okCount}，失败 ${failCount}（${failedFeeds.join('、')}）`, 'error');
+    }
+
     // 同步完成后刷新 feeds（siteTitle 等元数据可能在同步中被更新）
     void refreshFeeds();
     // 刷新全部文章用于侧栏计数
@@ -218,42 +249,32 @@ export function App() {
   }, [syncing, feeds, ds, refreshArticles, refreshFeeds, selection.feedId, pushToast]);
 
   // ---- P1: 添加订阅源 ----
+  // 走 DataSource 抽象，IpcDataSource 调 window.api.feed.create，MockDataSource 返回内存假 Feed
   const handleAddFeed = useCallback(
     async (url: string) => {
-      // IPC 是分两步的：create → sync。这里把它们串起来
-      // 注意 DataSource 接口没有 createFeed，需要走 window.api
-      // 但 DataSource 是抽象——理论上应该扩展
-      // 简化处理：直接用 window.api（IpcDataSource 模式下 window.api 存在）
-      const api = (window as unknown as { api?: { feed?: { create: (i: { url: string; title?: string }) => Promise<{ success: boolean; data?: Feed; error?: { message: string } }> }; sync?: { feed: (id: string) => Promise<{ success: boolean; data?: { success: boolean; newArticles?: number; error?: string }; error?: { message: string } }> } } }).api;
-      if (!api?.feed?.create) {
-        return { ok: false, message: '当前模式不支持添加订阅源（仅 IPC 模式）' };
+      const created = await ds.createFeed(url, url);
+      if (created.kind !== 'ready') {
+        return { ok: false, message: created.kind === 'error' ? created.error : '创建失败' };
       }
-      const created = await api.feed.create({ url, title: url });
-      if (!created.success || !created.data) {
-        return { ok: false, message: created.error?.message ?? '创建失败' };
-      }
+      const feed = created.data;
       // 自动同步新 feed
-      if (api.sync?.feed) {
-        const sync = await api.sync.feed(created.data.id);
-        if (sync.success && sync.data?.success) {
-          pushToast(`已添加并同步「${created.data.title || url}」`, 'success');
-        } else {
-          pushToast(`已添加，但同步失败：${sync.data?.error ?? '未知错误'}`, 'error');
-        }
+      const sync = await ds.syncFeed(feed.id);
+      if (sync.ok) {
+        pushToast(`已添加并同步「${feed.title || url}」`, 'success');
+      } else {
+        pushToast(`已添加，但同步失败：${sync.message}`, 'error');
       }
       // 切到新 feed + refresh
-      selectFeed(created.data.id);
+      selectFeed(feed.id);
       await refreshFeeds();
       // 刷新全部文章计数
-      void (async () => {
-        const result = await ds.articles({});
-        if (result.kind === 'ready') {
-          setAllArticlesState({ kind: 'ready', data: result.data });
-        }
-      })();
+      const result = await ds.articles({});
+      if (result.kind === 'ready') {
+        setAllArticlesState({ kind: 'ready', data: result.data });
+      }
       return { ok: true, message: '添加成功' };
     },
-    [pushToast, refreshFeeds, selectFeed, ds]
+    [ds, pushToast, refreshFeeds, selectFeed]
   );
 
   // ---- P2: OPML ----

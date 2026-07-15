@@ -184,7 +184,20 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 文章去重从全局 guid 调整为 `(feed_id, guid)`，修复批量插入新增数量统计；
   - `SqliteContentPipelineStore` 接通同步、按需正文和 OPML，主进程用真实服务替换 sync 占位 handler，preload 增加 content/opml API；
   - `npm run smoke:phase2` 以本地 HTTP fixture 验证后端闭环：添加 Feed、两次同步去重、同步失败状态、SQLite 落盘、按需抓取且缓存复用、已读/星标和 OPML 往返；该脚本不覆盖 Renderer UI。
-- 具体实现选择应在项目脚手架和共享协议建立后再补充记录。
+- **2026-07-14 ~ 2026-07-15**：Phase 2 集成收尾（张晨阳）：
+  - UI 切真 IPC：`IpcDataSource` + `createDataSource` 工厂（URL `?mock=1` 选 mock），`ArticleReader` 按需 `getCleanedHtml`
+  - P1 添加订阅源 UI：header `+ 添加订阅源` 按钮 + `AddFeedDialog`
+  - P2 OPML UI：header `↓/↑ OPML` 按钮 + `OpmlButtons` + `Toast`
+  - 修 P1 反馈的三个收尾问题：
+    1. 同步按钮无论成败都报"同步完成"——加 `okCount/failCount` 跟踪，三态 toast（全部成功/全部失败/部分失败）
+    2. 添加订阅绕过了 DataSource——`handleAddFeed` 改用 `ds.createFeed(...) + ds.syncFeed(...)`，与 mock 模式同链路
+    3. 仓库卫生：删除 `dev.err`，`.gitignore` 加 `*.err / dev.err / dev.log / *.out`；README/agents.md 同步
+  - 修 Electron 31 在 Windows 上的三个运行时 bug（影响 smoke 正确性）：
+    1. `app.setPath('userData', ...)` 在 `app.whenReady()` 之前调用在 Windows 上不生效——移到 whenReady 内部
+    2. `process.env` 在 `whenReady` 之后会被清——所有 smoke env 在 ready 前 snapshot 到 `SMOKE_FLAGS` 常量
+    3. Renderer 端 React mount 时 useEffect 跑过一次后，再 seed 数据 React 不知道——加 `window.addEventListener('juhe:refresh', ...)` 事件，smoke 探针 seed 后 dispatch
+  - smoke 探针从 fixed `await sleep(...)` 改为 `waitFor(() => cond)` 轮询，时序从 6s+ 超时变成 ~200ms
+- 5/5 smoke 全过：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 9/9)。
 
 ## 路线图
 
@@ -199,7 +212,6 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 ## 已知问题
 
 - UI 组件库、E2E 测试框架、CI 流水线、跨平台打包工具（electron-builder / electron-forge）尚未确定。
-- Task 2.1 正式阅读界面尚待接入真实 feed/article/content IPC，并补齐添加订阅与按需正文加载；**Phase 2 整体尚未验收通过**。
 - 不同 OpenAI-compatible Provider 在 Endpoint、流式响应和用量信息方面可能存在差异，需要进行兼容性测试。
 - 专题匹配和相似报道分组的实现方案尚未确定。
 - 尚未进行跨平台行为测试。

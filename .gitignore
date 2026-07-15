@@ -7,6 +7,11 @@ dist/
 # Electron
 *.log
 *.tsbuildinfo
+# 调试期 redirect-to-file 的 stdout/stderr
+*.err
+dev.err
+dev.log
+*.out
 
 # 编辑器 / 系统
 .DS_Store

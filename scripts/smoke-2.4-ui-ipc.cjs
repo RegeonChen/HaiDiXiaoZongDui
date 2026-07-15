@@ -26,6 +26,9 @@ const mainEntry = path.join(root, 'out', 'main', 'index.js');
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'juhe-shivi-ui-ipc-'));
 const opmlPath = path.join(temporaryDirectory, 'subscriptions.opml');
 
+console.log(`[smoke-ui-ipc] START temporaryDirectory = ${temporaryDirectory}`);
+console.log(`[smoke-ui-ipc] opmlPath = ${opmlPath}`);
+
 if (!fs.existsSync(mainEntry)) {
   console.error('[smoke-ui-ipc] out/main/index.js 不存在，请先跑 npm run build');
   process.exit(2);
@@ -89,6 +92,7 @@ server.listen(0, '127.0.0.1', () => {
     env: {
       ...process.env,
       ELECTRON_DISABLE_GPU: '1',
+      JUHE_SHIVI_SMOKE: '1',
       JUHE_SHIVI_SMOKE_UI: '1',
       JUHE_SHIVI_SMOKE_UI_REAL: '1',
       JUHE_SHIVI_SMOKE_FEED_URL: `http://127.0.0.1:${address.port}/feed.xml`,
