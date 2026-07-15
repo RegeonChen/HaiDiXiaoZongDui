@@ -1,9 +1,8 @@
 /**
- * 文章列表
- *
- *  - 顶部显示当前过滤标题
- *  - 列表项：标题、来源、未读 / 星标小标
- *  - 选中项高亮；点击触发 onSelect
+ * 文章列表（Mercury 风格）
+ *  - 顶部：tab 切换 + 标题 + 计数
+ *  - 列表项：小字标题 + 来源 / 时间 / 未读圆点
+ *  - 选中：灰底 + 左侧 2px 强调线
  */
 import { useMemo } from 'react';
 import type { Article, Feed } from '@shared/types';
@@ -17,7 +16,7 @@ export interface ArticleListProps {
   filterLabel: string;
 }
 
-function formatRelativeTime(iso: string | null): string {
+function formatRelative(iso: string | null): string {
   if (!iso) return '';
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return '';
@@ -26,19 +25,22 @@ function formatRelativeTime(iso: string | null): string {
   if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)} 分钟前`;
   if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)} 小时前`;
   if (deltaSec < 604800) return `${Math.floor(deltaSec / 86400)} 天前`;
-  return iso.slice(0, 10);
+  // 超过一周用月-日
+  const d = new Date(t);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export function ArticleList({
-  feeds,
-  articles,
-  selectedArticleId,
-  onSelect,
-  filterLabel
-}: ArticleListProps) {
+function formatAbsolute(iso: string | null): string {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '';
+  return new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filterLabel }: ArticleListProps) {
   const feedTitleById = useMemo(() => {
     const m = new Map<string, string>();
-    for (const f of feeds) m.set(f.id, f.title);
+    for (const f of feeds) m.set(f.id, f.siteTitle || f.title);
     return m;
   }, [feeds]);
 
@@ -46,7 +48,7 @@ export function ArticleList({
     <div className="article-list">
       <div className="article-list__header">
         <span className="article-list__title">{filterLabel}</span>
-        <span className="article-list__count">{articles.length} 篇</span>
+        <span className="article-list__count">{articles.length}</span>
       </div>
       <ul className="article-list__items" role="listbox" aria-label="文章列表">
         {articles.length === 0 ? (
@@ -58,28 +60,21 @@ export function ArticleList({
               <li key={a.id} role="option" aria-selected={isSelected}>
                 <button
                   type="button"
-                  className={`article-list__item ${isSelected ? 'is-active' : ''} ${
-                    a.isRead ? '' : 'is-unread'
-                  }`}
+                  className={`article-list__item ${isSelected ? 'is-active' : ''}`}
                   onClick={() => onSelect(a.id)}
+                  title={`${a.title}\n${a.author ?? ''}`}
                 >
                   <div className="article-list__row1">
-                    <span className="article-list__feed">
-                      {feedTitleById.get(a.feedId) ?? '未知来源'}
-                    </span>
-                    <span className="article-list__time">
-                      {formatRelativeTime(a.publishedAt)}
-                    </span>
+                    <span className={`article-list__dot ${a.isRead ? 'is-read' : 'is-unread'}`} aria-hidden="true" />
+                    <span className="article-list__article-title">{a.title}</span>
+                    {a.isStarred && <span className="article-list__star" aria-label="已加星标">★</span>}
                   </div>
                   <div className="article-list__row2">
-                    <span className="article-list__article-title">{a.title}</span>
-                    {a.isStarred && (
-                      <span className="article-list__star" aria-label="已加星标">★</span>
-                    )}
+                    <span className="article-list__feed">{feedTitleById.get(a.feedId) ?? '未知'}</span>
+                    <span className="article-list__time" title={formatAbsolute(a.publishedAt)}>
+                      {formatRelative(a.publishedAt)}
+                    </span>
                   </div>
-                  {a.author && (
-                    <div className="article-list__row3">{a.author}</div>
-                  )}
                 </button>
               </li>
             );

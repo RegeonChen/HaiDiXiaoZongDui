@@ -1,0 +1,28 @@
+.resize-handle {
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+  user-select: none;
+  /* 占 Layout grid 的 4px 那一列 */
+  width: 4px;
+  align-self: stretch;
+  transition: background 120ms ease;
+}
+
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--border);
+  transform: translateX(-0.5px);
+  transition: background 120ms ease, width 120ms ease;
+}
+
+.resize-handle:hover::before,
+.resize-handle:active::before {
+  background: var(--accent);
+  width: 2px;
+}

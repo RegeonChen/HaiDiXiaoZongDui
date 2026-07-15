@@ -116,7 +116,15 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - FeedList 侧栏展示已改为 `f.siteTitle || f.title`，同步后自动显示站点名称。
   - 同步完成后增加 `refreshFeeds()` 调用，确保 siteTitle 更新即时反映。
   - `FeedRepository.create()` 在 title 为空时用 URL hostname 兜底。
-- 当前活动里程碑：**Phase 2 集成已通过验收**。下一步进入 Phase 3（AI / 笔记 / 标签 / 多语言 / 日志 / 导出）。
+- **Phase 2.5.1 三个 UI 子任务 + Mercury 风格重塑已完成**（张晨阳）：
+  - **a) 删除订阅源**：右栏订阅源右键弹 `ContextMenu`（删除 / 复制 URL），删除走 `ConfirmDialog`（forwardRef + Promise）+ `window.api.feed.delete` + `juhe:refresh` 事件。
+  - **b) OPML 导入自动同步**：导入成功后 `handleOpmlImport` 对 `lastSyncAt === null || !lastSyncSuccess` 的 feed 调 `syncFeed`，避免重复同步已成功的源。
+  - **c) 三栏拖拽 resize**：`ResizeHandle`（4px 宽，hover 变 2px accent，mousedown 锁 body cursor），`usePaneWidths` hook 持久化到 localStorage（先本地，后续 2.5.3 切到 settings 字段）。
+  - **Mercury（antirez.com）风格重塑**：顶栏 height 44px（紧凑），左栏 tab 切换（订阅源 / 标签占位），左栏底部状态栏（X 源 / X 篇文章 / X 未读），文章列表 4 列网格（dot / title / feed / time），阅读区 serif 标题 + 顶部 URL monospace + 底部摘要折叠。`<html data-theme="light|dark">` + CSS 变量，localStorage 持久化。
+  - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
+  - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
+  - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
+- 当前活动里程碑：**Phase 2.5.1 三个子任务 + Mercury 风格重塑已通过 6/6 smoke 验收**。下一步进入 Phase 3（AI / 笔记 / 标签 / 多语言 / 日志 / 导出）。
 
 ## 设计决策
 
@@ -198,6 +206,14 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
     3. Renderer 端 React mount 时 useEffect 跑过一次后，再 seed 数据 React 不知道——加 `window.addEventListener('juhe:refresh', ...)` 事件，smoke 探针 seed 后 dispatch
   - smoke 探针从 fixed `await sleep(...)` 改为 `waitFor(() => cond)` 轮询，时序从 6s+ 超时变成 ~200ms
 - 5/5 smoke 全过：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 9/9)。
+- **2026-07-15**：Phase 2.5.1 三个子任务 + Mercury 风格重塑（张晨阳）：
+  - 删除订阅源：ContextMenu 右键菜单（删除 / 复制 URL）+ ConfirmDialog forwardRef Promise 化 + IPC feed.delete + juhe:refresh 触发 React 重拉
+  - OPML 导入自动同步：handleOpmlImport 过滤 `lastSyncAt === null || !lastSyncSuccess` 的 feed 调 syncFeed，UI 显示底部 Toast
+  - 三栏拖拽：ResizeHandle（4px→2px hover）+ usePaneWidths hook 持久化到 localStorage
+  - Mercury（antirez.com）视觉重塑：顶栏 44px 紧凑、左栏 tab 切换 + 底部状态栏、文章列表 4 列网格、阅读区 serif 标题 + monospace URL + 摘要折叠、`<html data-theme>` + CSS 变量双主题
+  - 修探针：feedListRendered 匹配 `siteTitle || title`（兼容 sync 后的渲染）；smoke-2.5.cjs OK 判定对齐到 `uiIpc.ok:true`
+  - **6/6 smoke 全过**（timing：seed ~90ms, feedListRendered 0~1ms, articleListRendered ~55ms, contentRendered ~170ms）
+  - 新增 `scripts/smoke-2.5.cjs` + `npm run smoke:phase2.5` script
 
 ## 路线图
 

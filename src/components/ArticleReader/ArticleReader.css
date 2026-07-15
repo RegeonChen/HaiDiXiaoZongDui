@@ -1,44 +1,93 @@
+/* Mercury 风格 ArticleReader */
 .article-reader {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  background: var(--bg);
+}
+
+.article-reader__topbar {
+  display: flex;
+  align-items: center;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0;
+  background: var(--bg-elev);
+}
+
+.article-reader__sourcelink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 11px;
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  max-width: 100%;
+  transition: color 120ms ease;
+}
+
+.article-reader__sourcelink:hover {
+  color: var(--accent);
+}
+
+.article-reader__link-icon {
+  font-size: 12px;
+}
+
+.article-reader__sourcelink-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.article-reader__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .article-reader__header {
   padding: 24px 32px 12px;
   border-bottom: 1px solid var(--border-soft);
-  background: var(--bg-elev);
-  flex-shrink: 0;
+  background: var(--bg);
 }
 
 .article-reader__title {
   margin: 0;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.3;
   color: var(--fg);
+  font-family: Georgia, "Source Han Serif SC", "Songti SC", "SimSun", serif;
 }
 
 .article-reader__meta {
-  margin-top: 8px;
+  margin-top: 10px;
   font-size: 12px;
   color: var(--muted);
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 4px 8px;
 }
 
 .article-reader__feed {
   color: var(--accent);
+  font-weight: 500;
+}
+
+.article-reader__sep {
+  color: var(--border);
 }
 
 .article-reader__toolbar {
   margin-top: 14px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .article-reader__btn {
@@ -46,18 +95,19 @@
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--fg);
-  padding: 5px 12px;
-  border-radius: 6px;
+  padding: 4px 12px;
+  border-radius: 4px;
   font-size: 12px;
   cursor: pointer;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-family: inherit;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.article-reader__btn:hover {
+.article-reader__btn:hover:not(:disabled) {
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
@@ -74,26 +124,25 @@
 }
 
 .article-reader__body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 24px 32px 64px;
+  padding: 24px 32px 48px;
+  min-height: 200px;
 }
 
 .article-reader__content {
   max-width: var(--reading-width, 800px);
   margin: 0 auto;
-  font-size: var(--font-size, 16px);
-  line-height: 1.7;
+  font-size: var(--font-size, 15px);
+  line-height: 1.75;
   color: var(--fg);
 }
 
 .article-reader__content h1,
 .article-reader__content h2,
 .article-reader__content h3 {
-  margin: 1.4em 0 0.6em;
+  margin: 1.5em 0 0.6em;
   font-weight: 700;
   line-height: 1.3;
+  font-family: Georgia, "Source Han Serif SC", "Songti SC", "SimSun", serif;
 }
 
 .article-reader__content h1 { font-size: 1.5em; }
@@ -124,7 +173,7 @@
 
 .article-reader__content code {
   font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
-  font-size: 0.92em;
+  font-size: 0.9em;
   background: var(--bg-elev);
   padding: 1px 4px;
   border-radius: 3px;
@@ -166,4 +215,48 @@
   border: 1px solid var(--border);
   padding: 6px 10px;
   text-align: left;
+}
+
+/* 底部摘要折叠 */
+.article-reader__summary {
+  border-top: 1px solid var(--border-soft);
+  background: var(--bg-elev);
+  flex-shrink: 0;
+}
+
+.article-reader__summary-toggle {
+  width: 100%;
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 10px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.article-reader__summary-toggle:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.article-reader__summary-chevron {
+  font-size: 12px;
+}
+
+.article-reader__summary-content {
+  padding: 0 24px 12px;
+}
+
+.article-reader__summary-placeholder {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
 }

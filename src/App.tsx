@@ -1,23 +1,28 @@
 /**
  * App 入口
- * Task 2.1: UI Shell + Phase 2 集成
+ * Task 2.1 + Phase 2.5.1
  *
- * 数据流：
- *   useDataSource  → 拉 feeds / articles / content
- *   useSelection   → 当前选中的 feedId / articleId
+ * 数据流：DataSource 抽象 → feeds / articles / content
+ * 状态：useSelection（feedId / articleId）、usePaneWidths（三栏宽度）
  *
- * 状态在 App 这一层集中管理，三个栏的子组件保持纯展示。
+ * Phase 2.5.1 新增：
+ *  - 三栏拖拽（usePaneWidths → Layout grid 模板列）
+ *  - 删除订阅源（FeedList 右键菜单 → ConfirmDialog → IPC feed.delete）
+ *  - OPML 导入自动同步（import 成功 → syncFeed 每个新 feed）
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Article, Feed } from '@shared/types';
 import { useDataSource } from './context/DataSourceContext';
 import { useSelection } from './hooks/useSelection';
+import { usePaneWidths } from './hooks/usePaneWidths';
 import { Layout } from './components/Layout/Layout';
 import { FeedList } from './components/FeedList/FeedList';
 import { ArticleList } from './components/ArticleList/ArticleList';
 import { ArticleReader } from './components/ArticleReader/ArticleReader';
 import { AddFeedDialog } from './components/AddFeedDialog/AddFeedDialog';
 import { Toast, type ToastItem } from './components/Toast/Toast';
+import { ConfirmDialog, type ConfirmDialogHandle } from './components/ConfirmDialog/ConfirmDialog';
+import { ContextMenuHost } from './components/ContextMenu/ContextMenu';
 import { LoadingView } from './components/StatusView/LoadingView';
 import { ErrorView } from './components/StatusView/ErrorView';
 import './index.css';
@@ -35,15 +40,15 @@ type ArticlesState =
 export function App() {
   const ds = useDataSource();
   const { selection, selectFeed, selectArticle } = useSelection();
+  const { widths, setSidebar, setList } = usePaneWidths();
 
   const [feedsState, setFeedsState] = useState<FeedsState>({ kind: 'loading' });
   const [articlesState, setArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   const [allArticlesState, setAllArticlesState] = useState<ArticlesState>({ kind: 'loading' });
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string>('');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const toastIdRef = useRef(0);
+  const confirmRef = useRef<ConfirmDialogHandle>(null);
 
   const pushToast = useCallback((message: string, kind: ToastItem['kind'] = 'info') => {
     toastIdRef.current += 1;
@@ -84,10 +89,9 @@ export function App() {
     [ds]
   );
 
-  // 初次拉取 feeds
+  // 初次拉取 feeds + 全部文章（侧栏计数）
   useEffect(() => {
     void refreshFeeds();
-    // 拉取全部文章用于侧栏计数
     void (async () => {
       const result = await ds.articles({});
       if (result.kind === 'ready') {
@@ -96,19 +100,6 @@ export function App() {
         setAllArticlesState({ kind: 'ready', data: [] });
       }
     })();
-  }, [refreshFeeds, ds]);
-
-  // 监听外部 refresh 信号（smoke 探针在 seed 数据后手动触发；生产中没人 dispatch）
-  useEffect(() => {
-    const handler = () => {
-      void refreshFeeds();
-      void (async () => {
-        const r = await ds.articles({});
-        if (r.kind === 'ready') setAllArticlesState({ kind: 'ready', data: r.data });
-      })();
-    };
-    window.addEventListener('juhe:refresh', handler);
-    return () => window.removeEventListener('juhe:refresh', handler);
   }, [refreshFeeds, ds]);
 
   // 当 feed 选择变化时拉取对应文章
@@ -123,6 +114,19 @@ export function App() {
       void refreshArticles({ feedId: selection.feedId });
     }
   }, [selection.feedId, refreshArticles]);
+
+  // 监听外部 refresh 信号
+  useEffect(() => {
+    const handler = () => {
+      void refreshFeeds();
+      void (async () => {
+        const r = await ds.articles({});
+        if (r.kind === 'ready') setAllArticlesState({ kind: 'ready', data: r.data });
+      })();
+    };
+    window.addEventListener('juhe:refresh', handler);
+    return () => window.removeEventListener('juhe:refresh', handler);
+  }, [refreshFeeds, ds]);
 
   const feeds = feedsState.kind === 'ready' ? feedsState.data : [];
   const articles = articlesState.kind === 'ready' ? articlesState.data : [];
@@ -139,11 +143,11 @@ export function App() {
   }, [feeds, selectedArticle]);
 
   const filterLabel = useMemo(() => {
-    if (selection.feedId === 'all') return '全部文章';
+    if (selection.feedId === 'all') return '所有订阅源';
     if (selection.feedId === 'unread') return '未读';
-    if (selection.feedId === 'starred') return '星标';
+    if (selection.feedId === 'starred') return '星标文章';
     const f = feeds.find((x) => x.id === selection.feedId);
-    return f?.title ?? '未知';
+    return f?.siteTitle || f?.title || '未知';
   }, [feeds, selection.feedId]);
 
   const handleSelectArticle = useCallback(
@@ -152,7 +156,6 @@ export function App() {
       const a = articles.find((x) => x.id === id);
       if (a && !a.isRead) {
         void ds.markRead(id, true);
-        // 更新当前文章列表
         setArticlesState((prev) => {
           if (prev.kind !== 'ready') return prev;
           return {
@@ -160,7 +163,6 @@ export function App() {
             data: prev.data.map((x) => (x.id === id ? { ...x, isRead: true } : x))
           };
         });
-        // 同步更新全部文章列表中的 isRead
         setAllArticlesState((prev) => {
           if (prev.kind !== 'ready') return prev;
           return {
@@ -176,80 +178,17 @@ export function App() {
   const handleToggleStar = useCallback(
     (id: string, isStarred: boolean) => {
       void ds.markStarred(id, isStarred);
-      setArticlesState((prev) => {
+      const updateList = (prev: ArticlesState): ArticlesState => {
         if (prev.kind !== 'ready') return prev;
-        return {
-          kind: 'ready',
-          data: prev.data.map((x) => (x.id === id ? { ...x, isStarred } : x))
-        };
-      });
-      // 同步更新全部文章列表中的 isStarred
-      setAllArticlesState((prev) => {
-        if (prev.kind !== 'ready') return prev;
-        return {
-          kind: 'ready',
-          data: prev.data.map((x) => (x.id === id ? { ...x, isStarred } : x))
-        };
-      });
+        return { kind: 'ready', data: prev.data.map((x) => (x.id === id ? { ...x, isStarred } : x)) };
+      };
+      setArticlesState(updateList);
+      setAllArticlesState(updateList);
     },
     [ds]
   );
 
-  const handleSync = useCallback(async () => {
-    if (syncing) return;
-    setSyncing(true);
-    setSyncMessage('同步中…');
-    let okCount = 0;
-    let failCount = 0;
-    const failedFeeds: string[] = [];
-    for (let i = 0; i < feeds.length; i += 1) {
-      const f = feeds[i];
-      const r = await ds.syncFeed(f.id);
-      if (r.ok) {
-        okCount += 1;
-        setSyncMessage(`已同步 ${f.title} (${i + 1}/${feeds.length})`);
-      } else {
-        failCount += 1;
-        failedFeeds.push(f.title);
-        setSyncMessage(`同步失败：${f.title} (${i + 1}/${feeds.length})`);
-      }
-    }
-    setSyncing(false);
-
-    // 根据实际成败决定最终提示
-    if (feeds.length === 0) {
-      setSyncMessage('没有可同步的源');
-    } else if (failCount === 0) {
-      setSyncMessage(`同步完成，共 ${okCount} 个`);
-      pushToast(`同步完成，共 ${okCount} 个源`, 'success');
-    } else if (okCount === 0) {
-      setSyncMessage(`全部 ${failCount} 个同步失败`);
-      pushToast(`全部 ${failCount} 个同步失败`, 'error');
-    } else {
-      setSyncMessage(`部分失败：成功 ${okCount}，失败 ${failCount}`);
-      pushToast(`部分同步失败：成功 ${okCount}，失败 ${failCount}（${failedFeeds.join('、')}）`, 'error');
-    }
-
-    // 同步完成后刷新 feeds（siteTitle 等元数据可能在同步中被更新）
-    void refreshFeeds();
-    // 刷新全部文章用于侧栏计数
-    void (async () => {
-      const result = await ds.articles({});
-      if (result.kind === 'ready') {
-        setAllArticlesState({ kind: 'ready', data: result.data });
-      }
-    })();
-    void refreshArticles({
-      feedId: selection.feedId === 'all' || selection.feedId === 'unread' || selection.feedId === 'starred'
-        ? undefined
-        : selection.feedId,
-      isRead: selection.feedId === 'unread' ? false : undefined,
-      isStarred: selection.feedId === 'starred' ? true : undefined
-    });
-  }, [syncing, feeds, ds, refreshArticles, refreshFeeds, selection.feedId, pushToast]);
-
-  // ---- P1: 添加订阅源 ----
-  // 走 DataSource 抽象，IpcDataSource 调 window.api.feed.create，MockDataSource 返回内存假 Feed
+  // 添加订阅源（走 DataSource.createFeed + syncFeed）
   const handleAddFeed = useCallback(
     async (url: string) => {
       const created = await ds.createFeed(url, url);
@@ -257,17 +196,14 @@ export function App() {
         return { ok: false, message: created.kind === 'error' ? created.error : '创建失败' };
       }
       const feed = created.data;
-      // 自动同步新 feed
       const sync = await ds.syncFeed(feed.id);
       if (sync.ok) {
         pushToast(`已添加并同步「${feed.title || url}」`, 'success');
       } else {
         pushToast(`已添加，但同步失败：${sync.message}`, 'error');
       }
-      // 切到新 feed + refresh
       selectFeed(feed.id);
       await refreshFeeds();
-      // 刷新全部文章计数
       const result = await ds.articles({});
       if (result.kind === 'ready') {
         setAllArticlesState({ kind: 'ready', data: result.data });
@@ -277,7 +213,46 @@ export function App() {
     [ds, pushToast, refreshFeeds, selectFeed]
   );
 
-  // ---- P2: OPML ----
+  // 删除订阅源（Phase 2.5.1-a）
+  const handleDeleteFeed = useCallback(
+    async (feed: Feed) => {
+      const ok = await confirmRef.current?.open({
+        title: '删除订阅源',
+        message: `确定要删除「${feed.siteTitle || feed.title}」？此操作会同时删除其全部 ${articles.filter((a) => a.feedId === feed.id).length} 篇文章，无法撤销。`,
+        confirmLabel: '删除',
+        cancelLabel: '取消',
+        danger: true
+      });
+      if (!ok) return;
+      try {
+        const api = (window as unknown as { api?: { feed?: { delete: (id: string) => Promise<{ success: boolean; error?: { message: string } }> } } }).api;
+        if (!api?.feed?.delete) {
+          pushToast('当前模式不支持删除', 'error');
+          return;
+        }
+        const r = await api.feed.delete(feed.id);
+        if (!r.success) {
+          pushToast(`删除失败：${r.error?.message ?? '未知错误'}`, 'error');
+          return;
+        }
+        // 如果当前选中的是被删的 feed，切到 "all"
+        if (selection.feedId === feed.id) {
+          selectFeed('all');
+        }
+        await refreshFeeds();
+        const result = await ds.articles({});
+        if (result.kind === 'ready') {
+          setAllArticlesState({ kind: 'ready', data: result.data });
+        }
+        pushToast(`已删除「${feed.siteTitle || feed.title}」`, 'success');
+      } catch (e) {
+        pushToast(`删除失败：${String(e)}`, 'error');
+      }
+    },
+    [articles, ds, pushToast, refreshFeeds, selectFeed, selection.feedId]
+  );
+
+  // OPML 导入（Phase 2.5.1-b：自动同步新导入的 feed）
   const handleOpmlImport = useCallback(async () => {
     const api = (window as unknown as { api?: { opml?: { import: () => Promise<{ success: boolean; data?: { feedsImported: number; feedsSkipped: number; errors: string[] } | null; error?: { message: string } }> } } }).api;
     if (!api?.opml?.import) {
@@ -290,7 +265,6 @@ export function App() {
       return { ok: false, message: r.error?.message ?? 'failed' };
     }
     if (r.data === null || r.data === undefined) {
-      // 用户取消
       return { ok: true, message: '已取消', result: null };
     }
     const { feedsImported, feedsSkipped, errors } = r.data;
@@ -302,15 +276,40 @@ export function App() {
       pushToast(`OPML 导入成功：新增 ${feedsImported}，跳过 ${feedsSkipped}`, 'success');
     }
     await refreshFeeds();
-    // 刷新全部文章计数
-    void (async () => {
-      const result = await ds.articles({});
-      if (result.kind === 'ready') {
-        setAllArticlesState({ kind: 'ready', data: result.data });
+    const result = await ds.articles({});
+    if (result.kind === 'ready') {
+      setAllArticlesState({ kind: 'ready', data: result.data });
+    }
+
+    // Phase 2.5.1-b：自动同步新导入的 feed
+    if (feedsImported > 0) {
+      pushToast(`开始同步 ${feedsImported} 个新订阅源…`, 'info');
+      const allFeedsResp = await ds.feeds();
+      if (allFeedsResp.kind === 'ready') {
+        const newFeeds = allFeedsResp.data.filter((f) => f.lastSyncAt === null || !f.lastSyncSuccess);
+        let okCount = 0;
+        let failCount = 0;
+        for (let i = 0; i < newFeeds.length; i += 1) {
+          const f = newFeeds[i];
+          const r2 = await ds.syncFeed(f.id);
+          if (r2.ok) okCount += 1;
+          else failCount += 1;
+        }
+        if (failCount === 0) {
+          pushToast(`自动同步完成：${okCount}/${newFeeds.length} 成功`, 'success');
+        } else {
+          pushToast(`自动同步部分失败：成功 ${okCount}，失败 ${failCount}`, 'error');
+        }
+        await refreshFeeds();
+        const result2 = await ds.articles({});
+        if (result2.kind === 'ready') {
+          setAllArticlesState({ kind: 'ready', data: result2.data });
+        }
       }
-    })();
+    }
+
     return { ok: true, message: 'done', result: r.data };
-  }, [pushToast, refreshFeeds, ds]);
+  }, [ds, pushToast, refreshFeeds]);
 
   const handleOpmlExport = useCallback(async () => {
     const api = (window as unknown as { api?: { opml?: { export: () => Promise<{ success: boolean; data?: boolean; error?: { message: string } }> } } }).api;
@@ -332,7 +331,6 @@ export function App() {
   }, [pushToast]);
 
   // ----- 渲染 -----
-
   const feedsSlot =
     feedsState.kind === 'loading' ? (
       <LoadingView message="正在加载订阅源…" />
@@ -344,7 +342,7 @@ export function App() {
         articles={allArticles}
         selected={selection.feedId}
         onSelect={selectFeed}
-        onAddFeed={handleAddFeed}
+        onDeleteFeed={handleDeleteFeed}
       />
     );
 
@@ -382,24 +380,26 @@ export function App() {
         feedsSlot={feedsSlot}
         articlesSlot={articlesSlot}
         readerSlot={readerSlot}
-        syncing={syncing}
-        syncLabel={syncMessage}
-        onSync={() => { void handleSync(); }}
         onAddFeed={() => setAddDialogOpen(true)}
         onOpmlImport={handleOpmlImport}
         onOpmlExport={handleOpmlExport}
+        sidebarPercent={widths.sidebarPercent}
+        listPercent={widths.listPercent}
+        onResizeSidebar={setSidebar}
+        onResizeList={setList}
       />
       <AddFeedDialog
         open={addDialogOpen}
         onClose={() => setAddDialogOpen(false)}
         onSubmit={handleAddFeed}
       />
+      <ConfirmDialog ref={confirmRef} />
+      <ContextMenuHost />
       <Toast items={toasts} onDismiss={dismissToast} />
     </>
   );
 }
 
-// 默认导出 main.tsx 不变；App 之外包一个 Provider
 export default function AppWithProvider() {
   return <App />;
 }

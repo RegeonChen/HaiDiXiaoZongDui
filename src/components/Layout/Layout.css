@@ -1,3 +1,4 @@
+/* Mercury 风格 + 三栏拖拽 */
 .app-layout {
   display: flex;
   flex-direction: column;
@@ -7,59 +8,53 @@
   color: var(--fg);
 }
 
-/* ----- Header ----- */
-
+/* ----- Header 紧凑 ----- */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  height: 48px;
+  padding: 0 14px;
+  height: 44px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-elev);
+  background: var(--bg);
   flex-shrink: 0;
+  gap: 8px;
 }
 
-.app-header__brand {
+.app-header__left {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .app-header__logo {
-  font-size: 18px;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .app-header__title {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .app-header__phase {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
   background: var(--accent-soft);
   color: var(--accent);
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 .app-header__right {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.app-header__sync-btn {
-  appearance: none;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .app-header__add-btn {
@@ -69,55 +64,24 @@
   color: white;
   font-size: 12px;
   padding: 4px 12px;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   font-weight: 500;
   transition: filter 120ms ease;
 }
 
 .app-header__add-btn:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 
-.app-header__sync-btn:hover:not(:disabled) {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.app-header__sync-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.app-header__sync {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.sync-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.4; }
-  50%      { opacity: 1; }
-}
-
-/* ----- Main 三栏 ----- */
-
+/* ----- Main grid 拖拽列 ----- */
 .app-main {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 240px 340px 1fr;
+  /* grid-template-columns 由 inline style 注入（百分比） */
+  grid-auto-rows: 1fr;
+  overflow: hidden;
 }
 
 .pane {
@@ -129,30 +93,21 @@
 }
 
 .pane-feeds {
-  border-right: 1px solid var(--border);
+  border-right: none; /* 由 resize-handle 视觉承担分隔 */
   background: var(--bg-elev);
 }
 
 .pane-list {
-  border-right: 1px solid var(--border);
+  border-right: none;
+  background: var(--bg);
 }
 
 .pane-reader {
   background: var(--bg);
 }
 
-/* ----- 响应式 ----- */
-
-@media (max-width: 1100px) {
-  .app-main {
-    grid-template-columns: 220px 300px 1fr;
-  }
-}
-
+/* ----- 响应式：< 960 时压缩 ----- */
 @media (max-width: 960px) {
-  .app-main {
-    grid-template-columns: 200px 280px 1fr;
-  }
   .app-header__phase {
     display: none;
   }

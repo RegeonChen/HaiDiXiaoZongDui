@@ -20,7 +20,8 @@
     "smoke:db": "npm run build && node scripts/smoke-2.3.cjs",
     "smoke:ui": "npm run build && node scripts/smoke-2.1.cjs",
     "smoke:ui-ipc": "npm run build && node scripts/smoke-2.4-ui-ipc.cjs",
-    "smoke:phase2": "npm run build && node scripts/smoke-phase2.cjs"
+    "smoke:phase2": "npm run build && node scripts/smoke-phase2.cjs",
+    "smoke:phase2.5": "npm run build && node scripts/smoke-2.5.cjs"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

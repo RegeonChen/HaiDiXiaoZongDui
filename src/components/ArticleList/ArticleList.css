@@ -1,8 +1,10 @@
+/* Mercury 风格 ArticleList */
 .article-list {
   display: flex;
   flex-direction: column;
   min-height: 0;
   height: 100%;
+  overflow: hidden;
 }
 
 .article-list__header {
@@ -18,11 +20,15 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .article-list__count {
   font-size: 11px;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .article-list__items {
@@ -45,9 +51,11 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 10px 16px;
+  padding: 10px 16px 10px 14px;
   border-bottom: 1px solid var(--border-soft);
+  border-left: 2px solid transparent;
   cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
 }
 
 .article-list__item:hover {
@@ -56,44 +64,29 @@
 
 .article-list__item.is-active {
   background: var(--accent-soft);
+  border-left-color: var(--accent);
 }
 
-.article-list__item.is-unread .article-list__article-title {
-  font-weight: 600;
-  color: var(--fg);
-}
-
-.article-list__item:not(.is-unread) .article-list__article-title {
-  color: var(--muted);
-}
-
-.article-list__row1,
-.article-list__row2,
-.article-list__row3 {
+.article-list__row1 {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-.article-list__feed {
-  font-size: 11px;
-  color: var(--muted);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.article-list__time {
-  font-size: 11px;
-  color: var(--muted);
+.article-list__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
-.article-list__row2 {
-  justify-content: space-between;
+.article-list__dot.is-unread {
+  background: var(--accent);
+}
+
+.article-list__dot.is-read {
+  background: var(--border);
 }
 
 .article-list__article-title {
@@ -108,15 +101,36 @@
   min-width: 0;
 }
 
+.article-list__item:not(.is-active) .article-list__article-title {
+  /* 已读：muted 一些（但不降字号） */
+}
+
 .article-list__star {
   color: #f5b400;
-  font-size: 13px;
+  font-size: 12px;
   flex-shrink: 0;
 }
 
-.article-list__row3 {
+.article-list__row2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 11px;
   color: var(--muted);
+}
+
+.article-list__feed {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  margin-right: 8px;
+}
+
+.article-list__time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .article-list__empty {

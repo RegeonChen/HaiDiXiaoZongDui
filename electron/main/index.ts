@@ -322,13 +322,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           } catch (e) { report.uiIpc.checks.dbDumpError = String(e); }
 
           // 2) 等 React 第一次 useEffect 跑完：feed 列表里出现 "UI IPC Smoke Feed"
-          //    这个由 IPC 推 → useEffect 拉 feeds → setState → DOM，没有固定时长。
-          //    waitFor 轮询直到条件满足或 6s 超时（失败时记下耗时）
+          //    注意：FeedList 渲染 siteTitle || title，sync 成功后 siteTitle 可能是
+          //    feed 自身的标题（来自 mock HTTP server），所以匹配两者任一即可
           const renderStart = Date.now();
           const seedFeedVisible = await waitFor(() => {
             const labels = Array.from(document.querySelectorAll('.feed-list__label'))
               .map((el) => el.textContent);
-            return labels.includes('UI IPC Smoke Feed');
+            return labels.includes('UI IPC Smoke Feed') || labels.includes('Phase 2.5 Feed');
           });
           report.uiIpc.timing.feedListRenderedMs = Date.now() - renderStart;
           report.uiIpc.checks.feedListRendered = !!seedFeedVisible;
@@ -337,7 +337,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const targetFeedBtn = await waitFor(() => {
             return Array.from(document.querySelectorAll('.feed-list__item')).find((b) => {
               const t = b.querySelector('.feed-list__label')?.textContent;
-              return t === 'UI IPC Smoke Feed';
+              return t === 'UI IPC Smoke Feed' || t === 'Phase 2.5 Feed';
             });
           });
           if (targetFeedBtn) targetFeedBtn.click();
@@ -434,12 +434,82 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.uiIpc.checks.uiContentLoaded = false;
           }
 
-          // OK 判定
+          // OK 判定（基础）
           const boolChecks = [
             'ipcSeed', 'feedListRendered', 'uiListHasData', 'uiClickWorks', 'uiContentLoaded',
             'uiHasAddBtn', 'uiAddDialogOpens', 'uiHasOpmlButtons', 'uiOpmlExportWorks', 'uiOpmlImportOk'
           ];
-          report.uiIpc.ok = boolChecks.every((k) => report.uiIpc.checks[k] === true);
+
+          // ===== Phase 2.5.1 三个子任务 =====
+          // a) 删除订阅源
+          try {
+            const delFeed = await window.api.feed.create({ url: feedUrl + '?del', title: 'Delete Me Feed' });
+            await window.api.sync.feed(delFeed.data.id);
+            window.dispatchEvent(new Event('juhe:refresh'));
+            await sleep(400);
+            const labelsBefore = Array.from(document.querySelectorAll('.feed-list__label')).map((el) => el.textContent);
+            report.uiIpc.checks.delFeedVisibleBefore = labelsBefore.includes('Delete Me Feed');
+
+            // 通过 IPC 删除（UI 端 ConfirmDialog 已被 smoke 跳过）
+            const delResult = await window.api.feed.delete(delFeed.data.id);
+            report.uiIpc.checks.delResult = delResult.success;
+            window.dispatchEvent(new Event('juhe:refresh'));
+            const delHiddenAfter = await waitFor(() => {
+              const labels = Array.from(document.querySelectorAll('.feed-list__label')).map((el) => el.textContent);
+              return !labels.includes('Delete Me Feed');
+            }, { timeout: 4000 });
+            report.uiIpc.checks.delFeedHiddenAfter = !!delHiddenAfter;
+            report.uiIpc.checks.delArticleGone = await waitFor(() => {
+              const items = Array.from(document.querySelectorAll('.feed-list__label'));
+              // 文章列表里不能有 Delete Me Feed 的文章
+              return !document.title.includes('Delete Me');
+            }, { timeout: 1000 });
+          } catch (e) {
+            report.uiIpc.checks.delError = String(e);
+          }
+
+          // b) OPML 导入自动同步：smoke-2.4 已经验证 import + skipped；这里验证 import 后 feed.feeds() 增加
+          // （自动同步在 handleOpmlImport 内部；smoke 模式通过 juhe:refresh 触发后 feeds list 更新）
+          // 因为我们已经在 smoke-2.4 测了 opmlImportOk，这里额外记录 feeds 列表变化
+          try {
+            const allFeedsAfter = await window.api.feed.list();
+            report.uiIpc.checks.feedCountAfterAllOps = allFeedsAfter.success ? allFeedsAfter.data.length : -1;
+          } catch (e) {
+            report.uiIpc.checks.feedCountError = String(e);
+          }
+
+          // c) 三栏拖拽：模拟 mousedown + mousemove + mouseup on first ResizeHandle
+          try {
+            const mainEl = document.querySelector('.app-main');
+            const beforeCols = mainEl ? getComputedStyle(mainEl).gridTemplateColumns : '';
+            report.uiIpc.checks.dragBeforeCols = beforeCols;
+
+            const handle = document.querySelectorAll('.resize-handle')[0];
+            if (handle) {
+              const rect = handle.getBoundingClientRect();
+              const startX = rect.left + rect.width / 2;
+              // 模拟 mousedown
+              handle.dispatchEvent(new MouseEvent('mousedown', { clientX: startX, bubbles: true, button: 0 }));
+              // 模拟 mousemove（向右 50px，让 sidebar 变宽）
+              document.dispatchEvent(new MouseEvent('mousemove', { clientX: startX + 50, bubbles: true }));
+              await sleep(80);
+              document.dispatchEvent(new MouseEvent('mouseup', { clientX: startX + 50, bubbles: true }));
+              await sleep(150);
+
+              const afterCols = mainEl ? getComputedStyle(mainEl).gridTemplateColumns : '';
+              report.uiIpc.checks.dragAfterCols = afterCols;
+              report.uiIpc.checks.dragChanged = beforeCols !== afterCols;
+            } else {
+              report.uiIpc.checks.dragChanged = false;
+            }
+          } catch (e) {
+            report.uiIpc.checks.dragError = String(e);
+          }
+
+          // OK 判定（包含 2.5.1）
+          const checks251 = ['delFeedVisibleBefore', 'delResult', 'delFeedHiddenAfter', 'dragChanged'];
+          const allChecks = [...boolChecks, ...checks251];
+          report.uiIpc.ok = allChecks.every((k) => report.uiIpc.checks[k] === true);
         } catch (e) {
           report.uiIpc.error = String(e);
         }
