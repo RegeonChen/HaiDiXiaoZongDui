@@ -124,7 +124,7 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 3 已启动**。Task 3.2 第一批可靠性增强已落地：非 UTF-8 中文编码识别、复杂正文窄栏适配与固定回归样本；Phase 2.5 的 settings 类型错误和 IPC 参数校验缺口已修复。AI / 笔记 / 标签 / 多语言 / 日志 / 导出仍待三条职责线继续集成。
+- 当前活动里程碑：**Phase 3 Task 3.3 全部完成**。AI 服务层（Provider/Summary/Translation/Tag Agent）已落地，数据模型全部扩展（tags/notes/digests/ai_results），IPC handler 和 preload API 全部就绪。下一步进入 Phase 3 Integration（三人协作贯通 UI ↔ 内容管线 ↔ 数据与 AI）。
 
 ## 设计决策
 
@@ -219,7 +219,26 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - v3 迁移：新增 `settings` key-value 表持久化应用设置
   - `electron/main/db/sqlite-settings.ts`：`loadSettings()` 从 SQLite 加载已保存值合并到 DEFAULT_SETTINGS；`saveSettings(partial)` 只写变更 key
   - `settings:get` / `settings:update` IPC handler 从 stub 改为真实 SQLite 读写，重启后持久化
-  - `usePaneWidths` 从 localStorage 改为 `window.api.settings.get/update` IPC，拖拽宽度重启保持
+   - `usePaneWidths` 从 localStorage 改为 `window.api.settings.get/update` IPC，拖拽宽度重启保持
+- **2026-07-15**：Task 3.3 AI 服务层完成（陈冠中）：
+  - v4 migration：新增 `ai_providers` 表（id/name/base_url/model_name/api_key/is_default）
+  - `AiProviderRepository`：CRUD + `getByIdWithKey`/`getDefaultWithKey` 内部 API Key 获取
+  - `openai-client.ts`：`chatCompletion(provider, messages, options)` OpenAI-compatible HTTP 调用，超时控制、错误解析；`testConnection(provider, apiKey)` 连接测试
+  - `summary-agent.ts`：内置 brief/standard/detailed 三套默认 Prompt 模板，支持 `customPromptTemplate` 覆盖
+  - `translation-agent.ts`：内置 paragraph-by-paragraph bilingual 翻译 Prompt，解析 `--- ORIGINAL / TRANSLATED ---` 格式输出
+  - 注册 7 个 AI IPC handler：`ai:providerList/create/update/delete/test` + `ai:generateSummary` + `ai:generateTranslation`
+   - preload 暴露 `window.api.ai.*` 类型安全 API
+- **2026-07-15**：Task 3.3 剩余部分完成（陈冠中）：
+  - v5 migration：新增 `tags`、`article_tags`、`notes`、`digests`、`ai_results` 五张表
+  - `TagRepository`：CRUD + addToArticle/removeFromArticle/batchAdd/getByArticle + 同名校验幂等创建
+  - `NoteRepository`：CRUD + 删除时自动从所关联 digests 移除
+  - `DigestRepository`：CRUD + `exportDigest(id, format)` 输出 Markdown（YAML front matter）或 HTML（内联样式 + escape）
+  - `AiResultCache`：key-value 式缓存（按 articleId + resultType 覆盖旧缓存）
+  - `tag-agent.ts`：内置 Prompt → JSON 数组解析 → `TagSuggestion[]`，失败返回空列表
+  - 注册 ai_data 3 个 handler：`ai:suggestTags`、`ai:getSummary`、`ai:getTranslation`、`ai:getTagSuggestions`
+  - 注册 tag 7 个 + note 4 个 + digest 6 个 IPC handler
+  - preload 暴露 `window.api.ai`（补齐 3 通道）、`window.api.tag`、`window.api.note`、`window.api.digest`
+  - summary/translation/tag_suggestions 生成结果自动缓存到 ai_results 表
 - **2026-07-15**：Task 3.2 第一批内容可靠性增强（张宇凡）：
   - HTTP 文本下载支持从响应头、BOM、HTML meta 和 XML encoding 声明识别字符集，并兼容 `gb2312` 到 `gbk` 的常见别名，修复中文旧站无响应头 charset 时的乱码问题。
   - 正文阅读区为长链接、代码块和宽表格补充窄栏自适应与横向滚动，避免三栏拖拽至极端宽度时内容撑破布局。

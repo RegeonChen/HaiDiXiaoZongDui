@@ -120,6 +120,84 @@ const migrations: Migration[] = [
         )
       `);
     }
+  },
+  {
+    version: 4,
+    up(db) {
+      // AI Provider 配置表（API Key 以明文存储于本地 SQLite，Phase 5 改 safeStorage 加密）
+      db.run(`
+        CREATE TABLE IF NOT EXISTS ai_providers (
+          id         TEXT PRIMARY KEY,
+          name       TEXT NOT NULL,
+          base_url   TEXT NOT NULL,
+          model_name TEXT NOT NULL,
+          api_key    TEXT NOT NULL DEFAULT '',
+          is_default INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+    }
+  },
+  {
+    version: 5,
+    up(db) {
+      // 文章标签关联表
+      db.run(`
+        CREATE TABLE IF NOT EXISTS tags (
+          id         TEXT PRIMARY KEY,
+          name       TEXT NOT NULL UNIQUE,
+          color      TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS article_tags (
+          article_id TEXT NOT NULL,
+          tag_id     TEXT NOT NULL,
+          PRIMARY KEY (article_id, tag_id),
+          FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+          FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        )
+      `);
+      // 笔记/摘录表
+      db.run(`
+        CREATE TABLE IF NOT EXISTS notes (
+          id              TEXT PRIMARY KEY,
+          article_id      TEXT NOT NULL,
+          excerpt_text    TEXT,
+          excerpt_offset  INTEGER,
+          markdown_content TEXT NOT NULL DEFAULT '',
+          created_at      TEXT NOT NULL,
+          updated_at      TEXT NOT NULL,
+          FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notes_article ON notes(article_id)`);
+      // 文摘表
+      db.run(`
+        CREATE TABLE IF NOT EXISTS digests (
+          id         TEXT PRIMARY KEY,
+          name       TEXT NOT NULL,
+          note_ids   TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      // AI 结果缓存表
+      db.run(`
+        CREATE TABLE IF NOT EXISTS ai_results (
+          id         TEXT PRIMARY KEY,
+          article_id TEXT NOT NULL,
+          result_type TEXT NOT NULL,
+          data       TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_ai_results_article_type ON ai_results(article_id, result_type)`);
+    }
   }
 ];
 

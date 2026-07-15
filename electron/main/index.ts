@@ -19,10 +19,16 @@ import {
   type SaveDialogOptions
 } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { initDatabase, closeDatabase } from './db/connection.js';
 import { runMigrations } from './db/migration.js';
 import { loadSettings, saveSettings } from './db/sqlite-settings.js';
+import { AiProviderRepository } from './db/ai-provider-repository.js';
+import { TagRepository } from './db/tag-repository.js';
+import { NoteRepository } from './db/note-repository.js';
+import { DigestRepository } from './db/digest-repository.js';
+import { AiResultCache } from './db/ai-result-cache.js';
 import { FeedRepository } from './db/feed-repository.js';
 import { ArticleRepository } from './db/article-repository.js';
 import { SqliteContentPipelineStore } from './db/content-pipeline-store.js';
@@ -42,8 +48,27 @@ import {
   type FeedCreateInput,
   type FeedUpdateInput,
   type Article,
-  type ArticleFilter
+  type ArticleFilter,
+  type AIProviderCreateInput,
+  type AIProviderUpdateInput,
+  type AISummary,
+  type AITranslation,
+  type AITagSuggestion,
+  type Tag,
+  type TagCreateInput,
+  type TagUpdateInput,
+  type Note,
+  type NoteCreateInput,
+  type NoteUpdateInput,
+  type Digest,
+  type DigestCreateInput,
+  type ExportFormat
 } from '../../shared/types.js';
+
+import { generateSummary } from './services/ai/summary-agent.js';
+import { generateTranslation } from './services/ai/translation-agent.js';
+import { suggestTags } from './services/ai/tag-agent.js';
+import { testConnection } from './services/ai/openai-client.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let disposeContentPipelineIpc: (() => void) | null = null;
@@ -58,8 +83,11 @@ const SMOKE_FLAGS = {
   smokeV2: process.env['JUHE_SHIVI_SMOKE_V2'] === '1',
   smokePhase2: process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1',
   smokeRealFeed: process.env['JUHE_SHIVI_SMOKE_REAL_FEED'] === '1',
+  smokeTask33: process.env['JUHE_SHIVI_SMOKE_TASK33'] === '1',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
-  feedUrl: process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? ''
+  feedUrl: process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? '',
+  aiBaseUrl: process.env['JUHE_SHIVI_SMOKE_AI_BASE_URL'] ?? '',
+  aiKey: process.env['JUHE_SHIVI_SMOKE_AI_KEY'] ?? ''
 };
 // Debug: 任何 smoke 模式都 dump 实际生效的 userData 路径
 const dumpUserData = (): void => {
@@ -136,7 +164,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeRealFeed = SMOKE_FLAGS.smokeRealFeed;
   const smokeUI = SMOKE_FLAGS.smokeUi;
   const smokeUiReal = SMOKE_FLAGS.smokeUiReal;
+  const smokeTask33 = SMOKE_FLAGS.smokeTask33;
   const feedUrl = SMOKE_FLAGS.feedUrl;
+  const aiBaseUrl = SMOKE_FLAGS.aiBaseUrl;
+  const aiKey = SMOKE_FLAGS.aiKey;
   let probe: string;
 
   if (smokePhase2) {
@@ -671,6 +702,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         return JSON.stringify(report);
       })()
     `;
+  } else if (smokeTask33) {
+    const { readFileSync: _read33 } = await import('node:fs');
+    const probePath = path.join(__dirname, '../../scripts/smoke-3.3-probe.js');
+    let rawProbe = _read33(probePath, 'utf-8');
+    rawProbe = rawProbe.replace(/__AI_BASE_URL__/g, JSON.stringify(aiBaseUrl));
+    rawProbe = rawProbe.replace(/__AI_KEY__/g, JSON.stringify(aiKey));
+    rawProbe = rawProbe.replace(/__FEED_URL__/g, JSON.stringify(feedUrl));
+    probe = rawProbe;
   } else {
     // Phase 1.1 smoke: contextIsolation + minimal IPC
     probe = `
@@ -711,6 +750,16 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"uiIpc":{"ok":true');
     } else if (smokeUI) {
       pass = raw.includes('"ui":{"ok":true');
+    } else if (smokeTask33) {
+      const report33 = JSON.parse(raw);
+      const sections = ['base', 'sp', 'prov', 'tag', 'note', 'dig', 'ais', 'ait', 'aig', 'aic'];
+      pass = sections.every((s) => {
+        const sec = report33[s];
+        if (!sec) return false;
+        if (sec.skipped) return true;
+        if (s === 'prov' && sec.checks) return sec.checks.create && sec.checks.list && sec.checks.update && sec.checks.delete;
+        return sec.ok === true;
+      });
     } else {
       pass =
         !raw.includes('"hasRequire":true') &&
@@ -867,6 +916,227 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
     } catch (e) {
       return fail('ARTICLE_BATCH_MARK_READ_FAILED', String(e));
     }
+  });
+
+  // ============= AI Provider (Task 3.3) =============
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_PROVIDER_LIST, async (): Promise<IpcResult<AIProvider[]>> => {
+    try { return ok(AiProviderRepository.list()); }
+    catch (e) { return fail('AI_PROVIDER_LIST_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_PROVIDER_CREATE, async (_, args): Promise<IpcResult<AIProvider>> => {
+    try {
+      if (!args?.input) return fail('INVALID_PARAMS', '缺少 input');
+      const input = args.input as AIProviderCreateInput;
+      if (!input.name || !input.baseUrl || !input.modelName) return fail('INVALID_PARAMS', 'name / baseUrl / modelName 为必填项');
+      return ok(AiProviderRepository.create(input));
+    } catch (e) { return fail('AI_PROVIDER_CREATE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_PROVIDER_UPDATE, async (_, args): Promise<IpcResult<AIProvider>> => {
+    try {
+      if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
+      const result = AiProviderRepository.update(args.id, (args.input ?? {}) as AIProviderUpdateInput);
+      if (!result) return fail('NOT_FOUND', 'Provider 不存在');
+      return ok(result);
+    } catch (e) { return fail('AI_PROVIDER_UPDATE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_PROVIDER_DELETE, async (_, args): Promise<IpcResult<void>> => {
+    try {
+      if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
+      if (!AiProviderRepository.delete(args.id)) return fail('NOT_FOUND', 'Provider 不存在');
+      return ok(undefined);
+    } catch (e) { return fail('AI_PROVIDER_DELETE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_PROVIDER_TEST, async (_, args): Promise<IpcResult<{ ok: boolean; message: string }>> => {
+    try {
+      if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
+      const provider = AiProviderRepository.getByIdWithKey(args.id);
+      if (!provider) return fail('NOT_FOUND', 'Provider 不存在');
+      return ok(await testConnection(provider, provider._apiKey));
+    } catch (e) { return fail('AI_PROVIDER_TEST_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_GENERATE_SUMMARY, async (_, args): Promise<IpcResult<AISummary>> => {
+    try {
+      if (!args?.articleId) return fail('INVALID_PARAMS', '缺少 articleId');
+      const article = ArticleRepository.getById(args.articleId);
+      if (!article) return fail('NOT_FOUND', '文章不存在');
+      if (!article.cleanedMarkdown) return fail('CONTENT_NOT_READY', '文章正文尚未清洗完成');
+      const settings = loadSettings();
+      if (!settings.defaultProviderId) return fail('NO_PROVIDER', '未设置默认 AI Provider');
+      const provider = AiProviderRepository.getByIdWithKey(settings.defaultProviderId);
+      if (!provider) return fail('NOT_FOUND', '默认 Provider 不存在');
+      const content = await generateSummary(provider, article.title, article.cleanedMarkdown, {
+        language: args.language ?? settings.defaultSummaryLanguage,
+        detailLevel: args.detailLevel ?? settings.defaultSummaryDetail,
+        customPromptTemplate: settings.summaryPromptTemplate, temperature: 0.3
+      });
+      const result: AISummary = { id: crypto.randomUUID(), articleId: article.id, providerId: provider.id, modelName: provider.modelName, content, language: args.language ?? settings.defaultSummaryLanguage, detailLevel: args.detailLevel ?? settings.defaultSummaryDetail, generatedAt: new Date().toISOString() };
+      AiResultCache.set(article.id, 'summary', result);
+      return ok(result);
+    } catch (e) { return fail('AI_SUMMARY_FAILED', e instanceof Error ? e.message : String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_GENERATE_TRANSLATION, async (_, args): Promise<IpcResult<AITranslation>> => {
+    try {
+      if (!args?.articleId) return fail('INVALID_PARAMS', '缺少 articleId');
+      const article = ArticleRepository.getById(args.articleId);
+      if (!article) return fail('NOT_FOUND', '文章不存在');
+      if (!article.cleanedMarkdown) return fail('CONTENT_NOT_READY', '文章正文尚未清洗完成');
+      const settings = loadSettings();
+      if (!settings.defaultProviderId) return fail('NO_PROVIDER', '未设置默认 AI Provider');
+      const provider = AiProviderRepository.getByIdWithKey(settings.defaultProviderId);
+      if (!provider) return fail('NOT_FOUND', '默认 Provider 不存在');
+      const paragraphs = await generateTranslation(provider, article.cleanedMarkdown, {
+        targetLanguage: args.targetLanguage ?? settings.defaultTranslationTarget,
+        customPromptTemplate: settings.translationPromptTemplate, temperature: 0.3
+      });
+      const result: AITranslation = { id: crypto.randomUUID(), articleId: article.id, providerId: provider.id, modelName: provider.modelName, targetLanguage: args.targetLanguage ?? settings.defaultTranslationTarget, paragraphs, generatedAt: new Date().toISOString() };
+      AiResultCache.set(article.id, 'translation', result);
+      return ok(result);
+    } catch (e) { return fail('AI_TRANSLATION_FAILED', e instanceof Error ? e.message : String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_SUGGEST_TAGS, async (_, args): Promise<IpcResult<AITagSuggestion>> => {
+    try {
+      if (!args?.articleId) return fail('INVALID_PARAMS', '缺少 articleId');
+      const article = ArticleRepository.getById(args.articleId);
+      if (!article) return fail('NOT_FOUND', '文章不存在');
+      if (!article.cleanedMarkdown) return fail('CONTENT_NOT_READY', '文章正文尚未清洗完成');
+      const settings = loadSettings();
+      if (!settings.defaultProviderId) return fail('NO_PROVIDER', '未设置默认 AI Provider');
+      const provider = AiProviderRepository.getByIdWithKey(settings.defaultProviderId);
+      if (!provider) return fail('NOT_FOUND', '默认 Provider 不存在');
+      const suggestions = await suggestTags(provider, article.cleanedMarkdown, settings.tagPromptTemplate);
+      const result: AITagSuggestion = { id: crypto.randomUUID(), articleId: article.id, providerId: provider.id, modelName: provider.modelName, suggestions, generatedAt: new Date().toISOString() };
+      AiResultCache.set(article.id, 'tag_suggestions', result);
+      return ok(result);
+    } catch (e) { return fail('AI_TAG_SUGGEST_FAILED', e instanceof Error ? e.message : String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_GET_SUMMARY, async (_, args): Promise<IpcResult<AISummary | null>> => {
+    try { return ok(AiResultCache.get<AISummary>(args.articleId, 'summary')); }
+    catch (e) { return fail('AI_GET_SUMMARY_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_GET_TRANSLATION, async (_, args): Promise<IpcResult<AITranslation | null>> => {
+    try { return ok(AiResultCache.get<AITranslation>(args.articleId, 'translation')); }
+    catch (e) { return fail('AI_GET_TRANSLATION_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_GET_TAG_SUGGESTIONS, async (_, args): Promise<IpcResult<AITagSuggestion | null>> => {
+    try { return ok(AiResultCache.get<AITagSuggestion>(args.articleId, 'tag_suggestions')); }
+    catch (e) { return fail('AI_GET_TAG_SUGGESTIONS_FAILED', String(e)); }
+  });
+
+  // ============= Tag (Task 3.3) =============
+
+  trustedIpcMain.handle(IPC_CHANNELS.TAG_LIST, async (): Promise<IpcResult<Tag[]>> => {
+    try { return ok(TagRepository.list()); } catch (e) { return fail('TAG_LIST_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.TAG_CREATE, async (_, args): Promise<IpcResult<Tag>> => {
+    try {
+      if (!args?.input?.name?.trim()) return fail('INVALID_PARAMS', '标签名称不能为空');
+      return ok(TagRepository.create(args.input as TagCreateInput));
+    } catch (e) { return fail('TAG_CREATE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.TAG_UPDATE, async (_, args): Promise<IpcResult<Tag>> => {
+    try {
+      if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
+      const r = TagRepository.update(args.id, (args.input ?? {}) as TagUpdateInput);
+      if (!r) return fail('NOT_FOUND', '标签不存在');
+      return ok(r);
+    } catch (e) { return fail('TAG_UPDATE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.TAG_DELETE, async (_, args): Promise<IpcResult<void>> => {
+    try {
+      if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
+      if (!TagRepository.delete(args.id)) return fail('NOT_FOUND', '标签不存在');
+      return ok(undefined);
+    } catch (e) { return fail('TAG_DELETE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.TAG_ADD_TO_ARTICLE, async (_, args): Promise<IpcResult<void>> => {
+    try { TagRepository.addToArticle(args.articleId, args.tagId); return ok(undefined); }
+    catch (e) { return fail('TAG_ADD_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.TAG_REMOVE_FROM_ARTICLE, async (_, args): Promise<IpcResult<void>> => {
+    try { TagRepository.removeFromArticle(args.articleId, args.tagId); return ok(undefined); }
+    catch (e) { return fail('TAG_REMOVE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.TAG_BATCH_ADD, async (_, args): Promise<IpcResult<void>> => {
+    try { TagRepository.batchAdd(args.articleIds, args.tagIds); return ok(undefined); }
+    catch (e) { return fail('TAG_BATCH_FAILED', String(e)); }
+  });
+
+  // ============= Note (Task 3.3) =============
+
+  trustedIpcMain.handle(IPC_CHANNELS.NOTE_LIST_BY_ARTICLE, async (_, args): Promise<IpcResult<Note[]>> => {
+    try { return ok(NoteRepository.listByArticle(args.articleId)); }
+    catch (e) { return fail('NOTE_LIST_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.NOTE_CREATE, async (_, args): Promise<IpcResult<Note>> => {
+    try { return ok(NoteRepository.create(args.input as NoteCreateInput)); }
+    catch (e) { return fail('NOTE_CREATE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.NOTE_UPDATE, async (_, args): Promise<IpcResult<Note>> => {
+    try {
+      const r = NoteRepository.update(args.id, (args.input ?? {}) as NoteUpdateInput);
+      if (!r) return fail('NOT_FOUND', '笔记不存在');
+      return ok(r);
+    } catch (e) { return fail('NOTE_UPDATE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.NOTE_DELETE, async (_, args): Promise<IpcResult<void>> => {
+    try {
+      if (!NoteRepository.delete(args.id)) return fail('NOT_FOUND', '笔记不存在');
+      return ok(undefined);
+    } catch (e) { return fail('NOTE_DELETE_FAILED', String(e)); }
+  });
+
+  // ============= Digest (Task 3.3) =============
+
+  trustedIpcMain.handle(IPC_CHANNELS.DIGEST_LIST, async (): Promise<IpcResult<Digest[]>> => {
+    try { return ok(DigestRepository.list()); } catch (e) { return fail('DIGEST_LIST_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.DIGEST_GET, async (_, args): Promise<IpcResult<Digest>> => {
+    try {
+      const r = DigestRepository.getById(args.id);
+      if (!r) return fail('NOT_FOUND', '文摘不存在');
+      return ok(r);
+    } catch (e) { return fail('DIGEST_GET_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.DIGEST_CREATE, async (_, args): Promise<IpcResult<Digest>> => {
+    try { return ok(DigestRepository.create(args.input as DigestCreateInput)); }
+    catch (e) { return fail('DIGEST_CREATE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.DIGEST_DELETE, async (_, args): Promise<IpcResult<void>> => {
+    try {
+      if (!DigestRepository.delete(args.id)) return fail('NOT_FOUND', '文摘不存在');
+      return ok(undefined);
+    } catch (e) { return fail('DIGEST_DELETE_FAILED', String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.DIGEST_EXPORT, async (_, args): Promise<IpcResult<string>> => {
+    try {
+      const r = DigestRepository.exportDigest(args.id, (args.format ?? 'markdown') as ExportFormat);
+      if (!r) return fail('NOT_FOUND', '文摘不存在');
+      return ok(r);
+    } catch (e) { return fail('DIGEST_EXPORT_FAILED', String(e)); }
   });
 
   // ============= Settings (2.5.3 实际持久化到 SQLite) =============
