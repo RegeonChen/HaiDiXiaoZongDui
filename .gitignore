@@ -7,6 +7,7 @@ dist/
 # Electron
 *.log
 *.tsbuildinfo
+.codex-launch/
 # 调试期 redirect-to-file 的 stdout/stderr
 *.err
 dev.err

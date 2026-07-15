@@ -49,3 +49,12 @@ The default suite is deterministic and offline. The real-feed suite checks live
 RSS, Atom and JSON Feed sources separately because it depends on network access.
 The Phase 2 smoke starts a local HTTP fixture and verifies the complete Electron
 IPC, SQLite, deduplication, lazy cleaning/cache, state, and OPML path.
+
+## Phase 3.2 reliability baseline
+
+- HTTP fetching applies bounded retries, honors `Retry-After`, enforces timeout/body
+  limits, and retains stable pipeline error codes in persisted sync/cleaning errors.
+- Text decoding checks the response header, BOM, HTML meta and XML declaration;
+  legacy `gb2312` declarations are normalized to `gbk`.
+- Reader regression fixtures cover mixed Chinese/English text, long code lines and
+  wide tables at the minimum reader-pane width without overflowing the window.

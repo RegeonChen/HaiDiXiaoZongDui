@@ -189,7 +189,7 @@ export function App() {
     [ds]
   );
 
-  // 添加订阅源（走 DataSource.createFeed + syncFeed）
+  // 添加订阅源：创建成功后立即返回，慢网络同步放到后台，避免对话框长时间锁死。
   const handleAddFeed = useCallback(
     async (url: string) => {
       const created = await ds.createFeed(url, url);
@@ -197,19 +197,30 @@ export function App() {
         return { ok: false, message: created.kind === 'error' ? created.error : '创建失败' };
       }
       const feed = created.data;
-      const sync = await ds.syncFeed(feed.id);
-      if (sync.ok) {
-        pushToast(`已添加并同步「${feed.title || url}」`, 'success');
-      } else {
-        pushToast(`已添加，但同步失败：${sync.message}`, 'error');
-      }
       selectFeed(feed.id);
       await refreshFeeds();
-      const result = await ds.articles({});
-      if (result.kind === 'ready') {
-        setAllArticlesState({ kind: 'ready', data: result.data });
-      }
-      return { ok: true, message: '添加成功' };
+      pushToast(`已添加「${feed.title || url}」，正在后台同步…`, 'info');
+
+      void (async () => {
+        try {
+          const sync = await ds.syncFeed(feed.id);
+          if (sync.ok) {
+            pushToast(`「${feed.title || url}」同步完成`, 'success');
+          } else {
+            pushToast(`「${feed.title || url}」同步失败：${sync.message}`, 'error');
+          }
+          await refreshFeeds();
+          const result = await ds.articles({});
+          if (result.kind === 'ready') {
+            setAllArticlesState({ kind: 'ready', data: result.data });
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '未知错误';
+          pushToast(`「${feed.title || url}」同步失败：${message}`, 'error');
+        }
+      })();
+
+      return { ok: true, message: '已添加，正在后台同步' };
     },
     [ds, pushToast, refreshFeeds, selectFeed]
   );

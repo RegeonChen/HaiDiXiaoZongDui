@@ -239,9 +239,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const al = await window.api.article.list({});
           report.db.checks.listArticlesEmpty = al.success && Array.isArray(al.data?.items);
 
-          // 6) settings still works
+          // 6) settings IPC works；外层脚本会验证第二次启动读到首次写入值
           const s = await window.api.settings.get();
           report.db.checks.settings = s.success;
+          report.db.settingsSidebarBeforeUpdate = s.success ? s.data?.sidebarPercent : null;
+          const su = await window.api.settings.update({ sidebarPercent: 23, listPercent: 31 });
+          report.db.checks.settingsUpdate = su.success &&
+            su.data?.sidebarPercent === 23 && su.data?.listPercent === 31;
 
           // 7) update feed
           const fu = await window.api.feed.update(f1.data.id, { title: 'SmokeFeedUpdated' });
@@ -425,11 +429,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.uiIpc.timing.contentRenderedMs = Date.now() - contentStart;
             report.uiIpc.checks.uiContentLoaded = !!content;
             report.uiIpc.checks.uiContentSnippet = content ? content.innerHTML.slice(0, 80) : null;
+            report.uiIpc.checks.complexContentRendered = !!content &&
+              !!content.querySelector('pre code') && !!content.querySelector('table') &&
+              content.textContent.includes('中文') && content.textContent.includes('English');
 
-            // 清理
-            if (created.data?.id) {
-              await window.api.feed.delete(created.data.id);
-            }
           } else {
             report.uiIpc.checks.uiClickWorks = false;
             report.uiIpc.checks.uiContentLoaded = false;
@@ -479,36 +482,52 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.uiIpc.checks.feedCountError = String(e);
           }
 
-          // c) 三栏拖拽：模拟 mousedown + mousemove + mouseup on first ResizeHandle
+          // c) 三栏拖拽到极端宽度，验证三栏不溢出且复杂正文仍可读
           try {
             const mainEl = document.querySelector('.app-main');
             const beforeCols = mainEl ? getComputedStyle(mainEl).gridTemplateColumns : '';
             report.uiIpc.checks.dragBeforeCols = beforeCols;
 
-            const handle = document.querySelectorAll('.resize-handle')[0];
-            if (handle) {
+            const handles = document.querySelectorAll('.resize-handle');
+            const dragToRightLimit = async (handle) => {
               const rect = handle.getBoundingClientRect();
               const startX = rect.left + rect.width / 2;
-              // 模拟 mousedown
               handle.dispatchEvent(new MouseEvent('mousedown', { clientX: startX, bubbles: true, button: 0 }));
-              // 模拟 mousemove（向右 50px，让 sidebar 变宽）
-              document.dispatchEvent(new MouseEvent('mousemove', { clientX: startX + 50, bubbles: true }));
+              document.dispatchEvent(new MouseEvent('mousemove', { clientX: startX + 1000, bubbles: true }));
               await sleep(80);
-              document.dispatchEvent(new MouseEvent('mouseup', { clientX: startX + 50, bubbles: true }));
-              await sleep(150);
+              document.dispatchEvent(new MouseEvent('mouseup', { clientX: startX + 1000, bubbles: true }));
+              await sleep(120);
+            };
+            if (handles.length === 2) {
+              await dragToRightLimit(handles[0]);
+              await dragToRightLimit(handles[1]);
 
               const afterCols = mainEl ? getComputedStyle(mainEl).gridTemplateColumns : '';
               report.uiIpc.checks.dragAfterCols = afterCols;
               report.uiIpc.checks.dragChanged = beforeCols !== afterCols;
+              report.uiIpc.checks.layoutWithinBounds = !!mainEl &&
+                mainEl.scrollWidth <= mainEl.clientWidth + 1;
+              const content = document.querySelector('.article-reader__content');
+              const table = content?.querySelector('table');
+              const pre = content?.querySelector('pre');
+              report.uiIpc.checks.narrowContentReadable = !!content && !!table && !!pre &&
+                content.scrollWidth <= content.clientWidth + 1 &&
+                getComputedStyle(table).overflowX === 'auto' &&
+                getComputedStyle(pre).overflowX === 'auto';
             } else {
               report.uiIpc.checks.dragChanged = false;
+              report.uiIpc.checks.layoutWithinBounds = false;
+              report.uiIpc.checks.narrowContentReadable = false;
             }
           } catch (e) {
             report.uiIpc.checks.dragError = String(e);
           }
 
           // OK 判定（包含 2.5.1）
-          const checks251 = ['delFeedVisibleBefore', 'delResult', 'delFeedHiddenAfter', 'dragChanged'];
+          const checks251 = [
+            'delFeedVisibleBefore', 'delResult', 'delFeedHiddenAfter', 'dragChanged',
+            'complexContentRendered', 'layoutWithinBounds', 'narrowContentReadable'
+          ];
           const allChecks = [...boolChecks, ...checks251];
           report.uiIpc.ok = allChecks.every((k) => report.uiIpc.checks[k] === true);
         } catch (e) {
@@ -862,10 +881,10 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
 
   trustedIpcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, async (_, args): Promise<IpcResult<AppSettings>> => {
     try {
-      const partial = (args?.settings ?? {}) as Partial<AppSettings>;
-      return ok(saveSettings(partial));
+      if (!args || !('settings' in args)) return fail('INVALID_PARAMS', '缺少 settings');
+      return ok(saveSettings(args.settings));
     } catch (e) {
-      return fail('SETTINGS_UPDATE_FAILED', String(e));
+      return fail('INVALID_PARAMS', e instanceof Error ? e.message : String(e));
     }
   });
 }

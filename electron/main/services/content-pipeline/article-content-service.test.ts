@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ArticleContentPipeline } from './article-content-pipeline';
+import { ContentPipelineError } from './errors';
 import {
   ArticleContentService,
   type ArticleContentStore
@@ -92,5 +93,21 @@ describe('ArticleContentService', () => {
     await expect(new ArticleContentService(store, pipeline).getOrBuild('article-1'))
       .rejects.toThrow('clean failed');
     expect(store.markArticleContentFailed).toHaveBeenCalledWith('article-1', 'clean failed');
+  });
+
+  it('persists stable error codes for failed content cleaning', async () => {
+    const store = storeFor(target());
+    const pipeline = {
+      build: vi.fn(async () => {
+        throw new ContentPipelineError('CONTENT_EMPTY', '正文为空');
+      })
+    } as unknown as ArticleContentPipeline;
+
+    await expect(new ArticleContentService(store, pipeline).getOrBuild('article-1'))
+      .rejects.toThrow('正文为空');
+    expect(store.markArticleContentFailed).toHaveBeenCalledWith(
+      'article-1',
+      '[CONTENT_EMPTY] 正文为空'
+    );
   });
 });

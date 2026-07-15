@@ -48,4 +48,16 @@ describe('real feed compatibility', () => {
     expect(cleaned.cleanedMarkdown.length).toBeGreaterThan(30);
     expect(cleaned.cleanedHtml).not.toContain('<script');
   }, 40_000);
+
+  runRealFeedTest('keeps article identities stable across repeated real-feed fetches', async () => {
+    const url = 'https://www.nasa.gov/news-release/feed/';
+    const first = await parseFeed(await fetchText(url, { timeoutMs: 15_000 }), url);
+    const second = await parseFeed(await fetchText(url, { timeoutMs: 15_000 }), url);
+    const firstGuids = first.articles.slice(0, 10).map((article) => article.guid);
+    const secondGuidSet = new Set(second.articles.map((article) => article.guid));
+
+    expect(firstGuids.length).toBeGreaterThan(0);
+    expect(new Set(firstGuids).size).toBe(firstGuids.length);
+    expect(firstGuids.every((guid) => secondGuidSet.has(guid))).toBe(true);
+  }, 50_000);
 });

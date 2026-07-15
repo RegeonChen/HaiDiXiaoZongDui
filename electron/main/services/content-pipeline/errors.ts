@@ -13,3 +13,9 @@ export class ContentPipelineError extends Error {
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/** 供同步状态和持久化错误使用，保留稳定错误码便于用户反馈与日志检索。 */
+export function diagnosticErrorMessage(error: unknown): string {
+  if (error instanceof ContentPipelineError) return `[${error.code}] ${error.message}`;
+  return errorMessage(error);
+}

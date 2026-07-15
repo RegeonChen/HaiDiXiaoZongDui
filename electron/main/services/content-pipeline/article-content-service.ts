@@ -1,5 +1,5 @@
 import { ArticleContentPipeline } from './article-content-pipeline';
-import { errorMessage } from './errors';
+import { diagnosticErrorMessage } from './errors';
 import type {
   ArticleContentOutput,
   ArticleContentResult,
@@ -55,7 +55,7 @@ export class ArticleContentService {
       await this.store.saveArticleContent(content);
       return { content, fromCache: false };
     } catch (error) {
-      await this.store.markArticleContentFailed(articleId, errorMessage(error));
+      await this.store.markArticleContentFailed(articleId, diagnosticErrorMessage(error));
       throw error;
     }
   }

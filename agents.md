@@ -91,7 +91,7 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 
 ## 当前状态
 
-截至 2026-07-14：
+截至 2026-07-15：
 
 - `INIT.md` 已定义产品范围、功能要求、技术方向和约束。
 - `PLAN.md` 已定义五个开发阶段和张晨阳/张宇凡/陈冠中的职责分工。
@@ -124,7 +124,7 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 2.5 全部完成**。`settings` 从内存 stub 改为 SQLite key-value 持久化；`usePaneWidths` 三栏宽度从 localStorage 切到 `settings:update` IPC。下一步进入 Phase 3（AI / 笔记 / 标签 / 多语言 / 日志 / 导出）。
+- 当前活动里程碑：**Phase 3 已启动**。Task 3.2 第一批可靠性增强已落地：非 UTF-8 中文编码识别、复杂正文窄栏适配与固定回归样本；Phase 2.5 的 settings 类型错误和 IPC 参数校验缺口已修复。AI / 笔记 / 标签 / 多语言 / 日志 / 导出仍待三条职责线继续集成。
 
 ## 设计决策
 
@@ -220,6 +220,14 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - `electron/main/db/sqlite-settings.ts`：`loadSettings()` 从 SQLite 加载已保存值合并到 DEFAULT_SETTINGS；`saveSettings(partial)` 只写变更 key
   - `settings:get` / `settings:update` IPC handler 从 stub 改为真实 SQLite 读写，重启后持久化
   - `usePaneWidths` 从 localStorage 改为 `window.api.settings.get/update` IPC，拖拽宽度重启保持
+- **2026-07-15**：Task 3.2 第一批内容可靠性增强（张宇凡）：
+  - HTTP 文本下载支持从响应头、BOM、HTML meta 和 XML encoding 声明识别字符集，并兼容 `gb2312` 到 `gbk` 的常见别名，修复中文旧站无响应头 charset 时的乱码问题。
+  - 正文阅读区为长链接、代码块和宽表格补充窄栏自适应与横向滚动，避免三栏拖拽至极端宽度时内容撑破布局。
+  - 新增 GBK 页面、中文/英文混排、引用、列表、代码块和表格固定回归样本。
+  - 修复 SQLite settings 的 TypeScript 类型错误；`settings:update` 现在拒绝未知字段、错误类型和越界值，Renderer 统一复用 preload 权威类型。
+  - 第二批补充：HTTP 重试支持 `Retry-After` 与非法资源限制拦截；同步和正文清洗失败持久化稳定错误码，便于日志检索和问题反馈。
+  - 修复极端三栏宽度总和可能超过 100% 的布局问题，改用扣除拖拽手柄后的 `fr` 分配，并联动限制侧栏/列表，为阅读区保留至少 20%。
+  - UI IPC smoke 新增极限拖拽、中英混排、长代码和宽表格验证，确认窗口与正文容器均不横向溢出。
 
 ## 路线图
 

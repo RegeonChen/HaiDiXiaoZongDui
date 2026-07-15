@@ -36,7 +36,11 @@ const server = http.createServer((req, res) => {
   }
   if (req.url === '/a') {
     res.writeHead(200, { 'content-type': 'text/html' });
-    res.end('<html><body><article><p>Body</p></article></body></html>');
+    res.end(`<html><body><article>
+      <p>Body，包含中文与 English mixed text。</p>
+      <pre><code class="language-typescript">const veryLongValue = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";</code></pre>
+      <table><thead><tr><th>名称</th><th>Value</th></tr></thead><tbody><tr><td>长链接</td><td>https://example.com/a/very/long/path/for/narrow/reader/verification</td></tr></tbody></table>
+    </article></body></html>`);
     return;
   }
   res.writeHead(404).end();

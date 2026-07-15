@@ -4,7 +4,7 @@
  * 目的：验证
  *   1) feed CRUD 通过 IPC 正常（创建/列表/去重/更新/删除）
  *   2) article 列表查询正常
- *   3) 数据库使用隔离的临时 userData，二次启动后仍能读取已写入数据
+ *   3) 数据库使用隔离的临时 userData，二次启动后仍能读取 Feed 与 settings
  *
  * 用法：
  *   npm run build && node scripts/smoke-2.3.cjs
@@ -51,12 +51,16 @@ async function run() {
 
   const secondRun = await runElectron('二次启动');
   assertSmokePassed(secondRun, '二次启动');
+  const secondReport = readSmokeReport(secondRun.stdout);
 
   if (!await hasPersistenceMarker()) {
     throw new Error('二次启动后未找到持久化标记');
   }
+  if (secondReport?.db?.settingsSidebarBeforeUpdate !== 23) {
+    throw new Error('二次启动后未恢复 settings:update 写入的栏宽');
+  }
 
-  console.log('[smoke-2.3] ✓ CRUD / IPC 与跨重启持久化验证全部通过');
+  console.log('[smoke-2.3] ✓ CRUD / IPC、Feed 与 settings 跨重启持久化验证全部通过');
 }
 
 function runElectron(label) {
@@ -106,6 +110,12 @@ function assertSmokePassed(result, label) {
   const reportLine = result.stdout.split('\n').find((line) => line.includes('SMOKE_REPORT_JSON'));
   if (reportLine) console.error(`[smoke-2.3] ${label}报告: ${reportLine.trim()}`);
   throw new Error(`${label}未通过 CRUD / IPC 探测`);
+}
+
+function readSmokeReport(stdout) {
+  const line = stdout.split('\n').find((value) => value.includes('SMOKE_REPORT_JSON'));
+  if (!line) return null;
+  return JSON.parse(line.slice(line.indexOf('SMOKE_REPORT_JSON') + 'SMOKE_REPORT_JSON'.length).trim());
 }
 
 async function seedPersistenceMarker() {

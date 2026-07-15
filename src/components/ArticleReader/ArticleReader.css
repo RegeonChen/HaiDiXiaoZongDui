@@ -130,10 +130,13 @@
 
 .article-reader__content {
   max-width: var(--reading-width, 800px);
+  min-width: 0;
   margin: 0 auto;
   font-size: var(--font-size, 15px);
   line-height: 1.75;
   color: var(--fg);
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .article-reader__content h1,
@@ -180,6 +183,7 @@
 }
 
 .article-reader__content pre {
+  max-width: 100%;
   background: var(--bg-elev);
   padding: 12px 14px;
   border-radius: 6px;
@@ -205,9 +209,18 @@
 }
 
 .article-reader__content table {
-  width: 100%;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   margin: 1em 0;
+}
+
+.article-reader__content th,
+.article-reader__content td {
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .article-reader__content th,

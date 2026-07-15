@@ -66,7 +66,9 @@ export function Layout({
       const total = mainRef.current?.clientWidth ?? 0;
       if (total === 0) return;
       const deltaPercent = (deltaPx / total) * 100;
-      const next = Math.max(10, Math.min(40, sidebarRef.current + deltaPercent));
+      // 为阅读区保留至少 20%，避免 sidebar + list + reader 超过 100%。
+      const maxSidebar = Math.min(40, 80 - listRef.current);
+      const next = Math.max(10, Math.min(maxSidebar, sidebarRef.current + deltaPercent));
       onResizeSidebar(next);
     },
     [onResizeSidebar]
@@ -77,14 +79,15 @@ export function Layout({
       const total = mainRef.current?.clientWidth ?? 0;
       if (total === 0) return;
       const deltaPercent = (deltaPx / total) * 100;
-      const next = Math.max(15, Math.min(50, listRef.current + deltaPercent));
+      const maxList = Math.min(50, 80 - sidebarRef.current);
+      const next = Math.max(15, Math.min(maxList, listRef.current + deltaPercent));
       onResizeList(next);
     },
     [onResizeList]
   );
 
   // 阅读区宽度 = 100% - sidebar - list
-  const readerPercent = Math.max(20, 100 - sidebarPercent - listPercent);
+  const readerPercent = 100 - sidebarPercent - listPercent;
 
   return (
     <div className="app-layout">
@@ -126,7 +129,8 @@ export function Layout({
         ref={mainRef}
         className="app-main"
         style={{
-          gridTemplateColumns: `${sidebarPercent}% 4px ${listPercent}% 4px ${readerPercent}%`
+          // fr 只分配扣除两个 4px handle 后的空间，避免百分比轨道额外溢出 8px。
+          gridTemplateColumns: `${sidebarPercent}fr 4px ${listPercent}fr 4px ${readerPercent}fr`
         }}
       >
         <aside className="pane pane-feeds">{feedsSlot}</aside>

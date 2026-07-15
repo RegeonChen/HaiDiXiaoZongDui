@@ -58,4 +58,23 @@ describe('parseFeed', () => {
       code: 'FEED_UNSUPPORTED'
     });
   });
+
+  it('skips malformed items without dropping valid entries', async () => {
+    const result = await parseFeed(`
+      <rss version="2.0"><channel><link>https://example.com</link>
+        <item><title>Missing URL</title><guid>missing-url</guid></item>
+        <item><title>Bad URL</title><link>javascript:alert(1)</link><guid>bad-url</guid></item>
+        <item><link>/valid</link><description>Fallback body</description></item>
+        <item><link>/valid</link><description>Duplicate URL fallback GUID</description></item>
+      </channel></rss>
+    `, 'https://example.com/feed.xml');
+
+    expect(result.title).toBe('example.com');
+    expect(result.articles).toHaveLength(1);
+    expect(result.articles[0]).toMatchObject({
+      title: 'Untitled',
+      url: 'https://example.com/valid'
+    });
+    expect(result.articles[0]?.guid).toMatch(/^[a-f0-9]{16}$/);
+  });
 });

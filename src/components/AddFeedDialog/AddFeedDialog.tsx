@@ -59,13 +59,18 @@ export function AddFeedDialog({ open, onClose, onSubmit }: AddFeedDialogProps) {
     }
     setState('submitting');
     setErrorMsg('');
-    const r = await onSubmit(trimmed);
-    if (r.ok) {
-      // 父组件负责 refresh + 关闭 dialog
-      onClose();
-    } else {
+    try {
+      const r = await onSubmit(trimmed);
+      if (r.ok) {
+        // 父组件负责 refresh + 关闭 dialog
+        onClose();
+        return;
+      }
       setState('error');
       setErrorMsg(r.message);
+    } catch (error) {
+      setState('error');
+      setErrorMsg(error instanceof Error ? error.message : '添加失败，请稍后重试');
     }
   };
 

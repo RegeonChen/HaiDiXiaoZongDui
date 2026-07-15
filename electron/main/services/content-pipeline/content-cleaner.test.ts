@@ -31,6 +31,7 @@ describe('cleanArticleContent', () => {
     expect(result.cleanedHtml).not.toContain('<iframe');
     expect(result.cleanedHtml).not.toContain('onerror');
     expect(result.cleanedHtml).not.toContain('javascript:');
+    expect(result.cleanedHtml).not.toContain('Navigation should disappear');
     expect(result.cleanedMarkdown).toContain('![diagram](https://example.com/image.png)');
     expect(result.cleanedMarkdown).toContain('```typescript');
     expect(result.cleanedMarkdown).toContain('| Name | Value |');
@@ -42,5 +43,25 @@ describe('cleanArticleContent', () => {
     expect(() => cleanArticleContent('<p>text</p>', 'file:///tmp/a.html')).toThrowError(
       /http 或 https/
     );
+  });
+
+  it('preserves mixed-language text and complex structures for narrow readers and AI input', () => {
+    const result = cleanArticleContent(`
+      <article>
+        <h1>中文与 English 混排测试</h1>
+        <p>正文包含中文、English words、数字 2026，以及足够长的语义内容，确保正文提取器能够识别这一段落。</p>
+        <blockquote>引用内容 source quote</blockquote>
+        <ol><li>第一项</li><li>Second item</li></ol>
+        <pre><code class="language-python">print("你好, world")</code></pre>
+        <table><tr><th>名称</th><th>Value</th></tr><tr><td>超长字段</td><td>https://example.com/a/very/long/path/that/must/remain-readable</td></tr></table>
+      </article>
+    `, 'https://example.com/mixed');
+
+    expect(result.cleanedHtml).toContain('中文与 English');
+    expect(result.cleanedHtml).toContain('<blockquote>');
+    expect(result.cleanedHtml).toContain('<table>');
+    expect(result.cleanedMarkdown).toContain('```python');
+    expect(result.cleanedMarkdown).toContain('| 名称 | Value |');
+    expect(result.cleanedMarkdown).toMatch(/1\.\s+第一项/);
   });
 });

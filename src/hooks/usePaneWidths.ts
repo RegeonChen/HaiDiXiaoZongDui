@@ -6,28 +6,6 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 
-declare global {
-  interface Window {
-    api: {
-      settings: {
-        get: () => Promise<{
-          success: boolean;
-          data?: {
-            sidebarPercent?: number;
-            listPercent?: number;
-          };
-          error?: unknown;
-        }>;
-        update: (settings: { sidebarPercent?: number; listPercent?: number }) => Promise<{
-          success: boolean;
-          data?: unknown;
-          error?: unknown;
-        }>;
-      };
-    };
-  }
-}
-
 const DEFAULTS = {
   sidebarPercent: 18,
   listPercent: 28

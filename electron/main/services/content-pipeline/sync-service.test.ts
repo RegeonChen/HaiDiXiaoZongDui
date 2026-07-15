@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FeedPipeline } from './feed-pipeline';
+import { ContentPipelineError } from './errors';
 import { SyncService, type FeedSyncStore } from './sync-service';
 import type { FeedPipelineOutput } from './types';
 
@@ -89,5 +90,27 @@ describe('SyncService', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('network failed');
     expect(result.error).toContain('database unavailable');
+  });
+
+  it('keeps stable pipeline error codes in sync diagnostics', async () => {
+    const store: FeedSyncStore = {
+      listFeedSyncTargets: vi.fn(async () => []),
+      getFeedSyncTarget: vi.fn(async () => ({ id: 'a', url: 'https://example.com/a' })),
+      saveFeedPipelineOutput: vi.fn(async () => ({ newArticles: 0, updatedArticles: 0 })),
+      recordFeedSyncFailure: vi.fn(async () => undefined)
+    };
+    const pipeline = {
+      syncFeed: vi.fn(async () => {
+        throw new ContentPipelineError('HTTP_TIMEOUT', '请求超时：example.com');
+      })
+    } as unknown as FeedPipeline;
+
+    const result = await new SyncService(store, pipeline).syncFeed('a');
+
+    expect(result.error).toBe('[HTTP_TIMEOUT] 请求超时：example.com');
+    expect(store.recordFeedSyncFailure).toHaveBeenCalledWith(
+      'a',
+      '[HTTP_TIMEOUT] 请求超时：example.com'
+    );
   });
 });

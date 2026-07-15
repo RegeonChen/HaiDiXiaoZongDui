@@ -1,5 +1,5 @@
 import type { SyncProgress, SyncResult } from '../../../../shared/types';
-import { errorMessage } from './errors';
+import { diagnosticErrorMessage } from './errors';
 import { FeedPipeline } from './feed-pipeline';
 import type { FeedPipelineOutput } from './types';
 
@@ -87,7 +87,7 @@ export class SyncService {
         finishedAt: new Date().toISOString()
       };
     } catch (error) {
-      const message = errorMessage(error);
+      const message = diagnosticErrorMessage(error);
       try {
         await this.store.recordFeedSyncFailure(target.id, message);
         return failedResult(target.id, startedAt, message);
@@ -95,7 +95,7 @@ export class SyncService {
         return failedResult(
           target.id,
           startedAt,
-          `${message}；同步状态保存失败：${errorMessage(recordError)}`
+          `${message}；同步状态保存失败：${diagnosticErrorMessage(recordError)}`
         );
       }
     }
