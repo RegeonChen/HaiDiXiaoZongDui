@@ -108,6 +108,18 @@ const migrations: Migration[] = [
         ON articles(feed_id, guid)
       `);
     }
+  },
+  {
+    version: 3,
+    up(db) {
+      // 应用设置持久化表（key-value 模式，启动时加载覆盖默认值）
+      db.run(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key   TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )
+      `);
+    }
   }
 ];
 

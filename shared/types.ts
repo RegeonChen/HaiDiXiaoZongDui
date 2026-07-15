@@ -528,6 +528,14 @@ export interface AppSettings {
    * null 时使用应用内置默认模板。
    */
   tagPromptTemplate: string | null;
+  /** 字体主题 ID（指向预设字体方案，默认 "default"） */
+  fontTheme: string;
+  /** 视觉主题（"classic" 白色简约 / "paper" 暖黄护眼） */
+  visualTheme: 'classic' | 'paper';
+  /** 侧栏宽度百分比（10-40），默认 18 */
+  sidebarPercent: number;
+  /** 文章列表宽度百分比（15-50），默认 28 */
+  listPercent: number;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -542,6 +550,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   summaryPromptTemplate: null,
   translationPromptTemplate: null,
   tagPromptTemplate: null,
+  fontTheme: 'default',
+  visualTheme: 'classic',
+  sidebarPercent: 18,
+  listPercent: 28,
 };
 
 // ---- Log（日志） ----

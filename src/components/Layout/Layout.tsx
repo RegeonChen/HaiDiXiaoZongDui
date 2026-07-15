@@ -20,8 +20,10 @@ export interface LayoutProps {
   feedsSlot: ReactNode;
   articlesSlot: ReactNode;
   readerSlot: ReactNode;
-  /** 顶栏：feed 操作 + 主题 */
+  /** 顶栏：feed 操作 + 同步 + 主题 */
   onAddFeed?: () => void;
+  onSyncAll?: () => void;
+  syncing?: boolean;
   onOpmlImport?: () => Promise<{
     ok: boolean;
     message: string;
@@ -40,6 +42,8 @@ export function Layout({
   articlesSlot,
   readerSlot,
   onAddFeed,
+  onSyncAll,
+  syncing = false,
   onOpmlImport,
   onOpmlExport,
   sidebarPercent,
@@ -50,16 +54,22 @@ export function Layout({
   // 拖拽用：ref 到 main 容器，取真实宽度
   const mainRef = useRef<HTMLElement>(null);
 
+  // 用 ref 存当前值以避免 mousemove 闭包过期（stale closure）导致拖拽抖动
+  const sidebarRef = useRef(sidebarPercent);
+  sidebarRef.current = sidebarPercent;
+  const listRef = useRef(listPercent);
+  listRef.current = listPercent;
+
   // 拖拽 sidebar 时，sidebar% 改而 list% 跟着反向变（总和保持）
   const handleSidebarDrag = useCallback(
     (deltaPx: number) => {
       const total = mainRef.current?.clientWidth ?? 0;
       if (total === 0) return;
       const deltaPercent = (deltaPx / total) * 100;
-      const next = Math.max(10, Math.min(40, sidebarPercent + deltaPercent));
+      const next = Math.max(10, Math.min(40, sidebarRef.current + deltaPercent));
       onResizeSidebar(next);
     },
-    [sidebarPercent, onResizeSidebar]
+    [onResizeSidebar]
   );
 
   const handleListDrag = useCallback(
@@ -67,10 +77,10 @@ export function Layout({
       const total = mainRef.current?.clientWidth ?? 0;
       if (total === 0) return;
       const deltaPercent = (deltaPx / total) * 100;
-      const next = Math.max(15, Math.min(50, listPercent + deltaPercent));
+      const next = Math.max(15, Math.min(50, listRef.current + deltaPercent));
       onResizeList(next);
     },
-    [listPercent, onResizeList]
+    [onResizeList]
   );
 
   // 阅读区宽度 = 100% - sidebar - list
@@ -93,6 +103,16 @@ export function Layout({
               title="添加订阅源"
             >
               + 添加订阅源
+            </button>
+          )}
+          {onSyncAll && (
+            <button
+              type="button"
+              className="app-header__sync-btn"
+              onClick={onSyncAll}
+              disabled={syncing}
+            >
+              {syncing ? '⏳ 同步中…' : '🔄 同步文章'}
             </button>
           )}
           {onOpmlImport && onOpmlExport && (

@@ -7,6 +7,49 @@
   overflow: hidden;
 }
 
+/* 内联添加订阅源表单 */
+.feed-list__add-form {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.feed-list__add-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  outline: none;
+}
+
+.feed-list__add-input:focus {
+  border-color: var(--accent);
+}
+
+.feed-list__add-btn {
+  appearance: none;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.feed-list__add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* 顶部 tab + 操作行 */
 .feed-list__topbar {
   display: flex;

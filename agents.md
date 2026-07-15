@@ -124,7 +124,7 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 2.5.1 三个子任务 + Mercury 风格重塑已通过 6/6 smoke 验收**。下一步进入 Phase 3（AI / 笔记 / 标签 / 多语言 / 日志 / 导出）。
+- 当前活动里程碑：**Phase 2.5 全部完成**。`settings` 从内存 stub 改为 SQLite key-value 持久化；`usePaneWidths` 三栏宽度从 localStorage 切到 `settings:update` IPC。下一步进入 Phase 3（AI / 笔记 / 标签 / 多语言 / 日志 / 导出）。
 
 ## 设计决策
 
@@ -214,6 +214,12 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 修探针：feedListRendered 匹配 `siteTitle || title`（兼容 sync 后的渲染）；smoke-2.5.cjs OK 判定对齐到 `uiIpc.ok:true`
   - **6/6 smoke 全过**（timing：seed ~90ms, feedListRendered 0~1ms, articleListRendered ~55ms, contentRendered ~170ms）
   - 新增 `scripts/smoke-2.5.cjs` + `npm run smoke:phase2.5` script
+- **2026-07-15**：Task 2.5.3 完成（Persistence & IPC，陈冠中）：
+  - `AppSettings` 新增 `fontTheme`（string, default `'default'`）、`visualTheme`（`'classic' | 'paper'`，default `'classic'`）、`sidebarPercent`（10-40, default 18）、`listPercent`（15-50, default 28）四个字段
+  - v3 迁移：新增 `settings` key-value 表持久化应用设置
+  - `electron/main/db/sqlite-settings.ts`：`loadSettings()` 从 SQLite 加载已保存值合并到 DEFAULT_SETTINGS；`saveSettings(partial)` 只写变更 key
+  - `settings:get` / `settings:update` IPC handler 从 stub 改为真实 SQLite 读写，重启后持久化
+  - `usePaneWidths` 从 localStorage 改为 `window.api.settings.get/update` IPC，拖拽宽度重启保持
 
 ## 路线图
 

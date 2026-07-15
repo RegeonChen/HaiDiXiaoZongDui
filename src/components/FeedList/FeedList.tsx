@@ -18,6 +18,7 @@ export interface FeedListProps {
   selected: string | 'all' | 'unread' | 'starred';
   onSelect: (id: string | 'all' | 'unread' | 'starred') => void;
   onDeleteFeed: (feed: Feed) => void;
+  onAddFeed?: (url: string) => Promise<{ ok: boolean; message: string }>;
 }
 
 type Tab = 'sources' | 'tags';
@@ -29,9 +30,11 @@ interface VirtualEntry {
   count: number;
 }
 
-export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed }: FeedListProps) {
+export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, onAddFeed }: FeedListProps) {
   const [tab, setTab] = useState<Tab>('sources');
   const [showAll, setShowAll] = useState(true);
+  const [feedUrl, setFeedUrl] = useState('');
+  const [adding, setAdding] = useState(false);
 
   const unreadCount = useMemo(() => articles.filter((a) => !a.isRead).length, [articles]);
   const starredCount = useMemo(() => articles.filter((a) => a.isStarred).length, [articles]);
@@ -81,8 +84,46 @@ export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed }: 
     ]);
   };
 
+  const handleAddSubmit = async () => {
+    if (!onAddFeed || !feedUrl.trim() || adding) return;
+    setAdding(true);
+    try {
+      const result = await onAddFeed(feedUrl.trim());
+      if (result.ok) setFeedUrl('');
+    } finally {
+      setAdding(false);
+    }
+  };
+
   return (
     <div className="feed-list">
+      {/* 内联添加订阅源表单 */}
+      {onAddFeed && (
+        <form
+          className="feed-list__add-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleAddSubmit();
+          }}
+        >
+          <input
+            type="url"
+            className="feed-list__add-input"
+            placeholder="输入 RSS/Atom 订阅地址…"
+            value={feedUrl}
+            onChange={(e) => setFeedUrl(e.target.value)}
+            disabled={adding}
+          />
+          <button
+            type="submit"
+            className="feed-list__add-btn"
+            disabled={adding || !feedUrl.trim()}
+          >
+            {adding ? '…' : '＋'}
+          </button>
+        </form>
+      )}
+
       {/* 顶部 tab + 操作行 */}
       <div className="feed-list__topbar">
         <div className="feed-list__tabs" role="tablist">

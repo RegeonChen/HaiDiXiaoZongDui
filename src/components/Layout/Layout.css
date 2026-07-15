@@ -74,6 +74,28 @@
   filter: brightness(1.08);
 }
 
+.app-header__sync-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: filter 120ms ease;
+}
+
+.app-header__sync-btn:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.app-header__sync-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* ----- Main grid 拖拽列 ----- */
 .app-main {
   flex: 1;

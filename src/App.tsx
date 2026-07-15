@@ -46,6 +46,7 @@ export function App() {
   const [articlesState, setArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   const [allArticlesState, setAllArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const toastIdRef = useRef(0);
   const confirmRef = useRef<ConfirmDialogHandle>(null);
@@ -213,6 +214,37 @@ export function App() {
     [ds, pushToast, refreshFeeds, selectFeed]
   );
 
+  // 同步全部订阅源
+  const handleSyncAll = useCallback(async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      let okCount = 0;
+      let failCount = 0;
+      for (const f of feeds) {
+        const r = await ds.syncFeed(f.id);
+        if (r.ok) okCount += 1;
+        else failCount += 1;
+      }
+      await refreshFeeds();
+      const result = await ds.articles({});
+      if (result.kind === 'ready') {
+        setAllArticlesState({ kind: 'ready', data: result.data });
+      }
+      if (feeds.length === 0) {
+        pushToast('没有可同步的订阅源', 'info');
+      } else if (failCount === 0) {
+        pushToast(`同步完成：${okCount}/${feeds.length} 成功`, 'success');
+      } else {
+        pushToast(`同步部分失败：成功 ${okCount}，失败 ${failCount}`, 'error');
+      }
+    } catch (e) {
+      pushToast(`同步出错：${String(e)}`, 'error');
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, feeds, ds, refreshFeeds, pushToast]);
+
   // 删除订阅源（Phase 2.5.1-a）
   const handleDeleteFeed = useCallback(
     async (feed: Feed) => {
@@ -343,6 +375,7 @@ export function App() {
         selected={selection.feedId}
         onSelect={selectFeed}
         onDeleteFeed={handleDeleteFeed}
+        onAddFeed={handleAddFeed}
       />
     );
 
@@ -381,6 +414,8 @@ export function App() {
         articlesSlot={articlesSlot}
         readerSlot={readerSlot}
         onAddFeed={() => setAddDialogOpen(true)}
+        onSyncAll={handleSyncAll}
+        syncing={syncing}
         onOpmlImport={handleOpmlImport}
         onOpmlExport={handleOpmlExport}
         sidebarPercent={widths.sidebarPercent}

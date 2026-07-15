@@ -22,6 +22,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { initDatabase, closeDatabase } from './db/connection.js';
 import { runMigrations } from './db/migration.js';
+import { loadSettings, saveSettings } from './db/sqlite-settings.js';
 import { FeedRepository } from './db/feed-repository.js';
 import { ArticleRepository } from './db/article-repository.js';
 import { SqliteContentPipelineStore } from './db/content-pipeline-store.js';
@@ -849,16 +850,23 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
     }
   });
 
-  // ============= Settings (Phase 1.1 已有，保持兼容) =============
+  // ============= Settings (2.5.3 实际持久化到 SQLite) =============
 
   trustedIpcMain.handle(IPC_CHANNELS.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
-    return ok(DEFAULT_SETTINGS);
+    try {
+      return ok(loadSettings());
+    } catch (e) {
+      return ok(DEFAULT_SETTINGS);
+    }
   });
 
   trustedIpcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, async (_, args): Promise<IpcResult<AppSettings>> => {
-    // Phase 3 接入 SQLite 持久化设置
-    const partial = args?.settings as Partial<AppSettings> | undefined;
-    return ok({ ...DEFAULT_SETTINGS, ...partial });
+    try {
+      const partial = (args?.settings ?? {}) as Partial<AppSettings>;
+      return ok(saveSettings(partial));
+    } catch (e) {
+      return fail('SETTINGS_UPDATE_FAILED', String(e));
+    }
   });
 }
 
