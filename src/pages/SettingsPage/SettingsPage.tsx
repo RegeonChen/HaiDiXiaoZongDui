@@ -369,7 +369,10 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
 
             {showProviderForm && (
               <ProviderForm
-                onSubmit={handleCreateProvider}
+                onSubmit={(input) => {
+                  if (!input.apiKey) return;
+                  return handleCreateProvider({ ...input, apiKey: input.apiKey });
+                }}
                 onCancel={() => setShowProviderForm(false)}
                 submitLabel="创建"
               />
@@ -404,10 +407,13 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
 
 interface ProviderFormProps {
   initial?: AIProvider;
-  onSubmit: (input: AIProviderCreateInput | AIProviderUpdateInput) => void | Promise<void>;
+  onSubmit: (input: ProviderFormInput) => void | Promise<void>;
   onCancel: () => void;
   submitLabel: string;
 }
+
+type ProviderFormInput = AIProviderUpdateInput &
+  Pick<AIProviderCreateInput, 'name' | 'baseUrl' | 'modelName'>;
 
 function ProviderForm({ initial, onSubmit, onCancel, submitLabel }: ProviderFormProps) {
   const [name, setName] = useState(initial?.name ?? '');
@@ -420,7 +426,7 @@ function ProviderForm({ initial, onSubmit, onCancel, submitLabel }: ProviderForm
     e.preventDefault();
     if (!name.trim() || !baseUrl.trim() || !modelName.trim()) return;
     if (!initial && !apiKey.trim()) return;
-    const input: AIProviderCreateInput | AIProviderUpdateInput = {
+    const input: ProviderFormInput = {
       name: name.trim(),
       baseUrl: baseUrl.trim(),
       modelName: modelName.trim(),

@@ -45,7 +45,7 @@ function unwrap<T>(r: IpcResponse<T>): DataSourceState<T> {
 
 function throwOnError(r: IpcResponse<unknown>, action: string): void {
   if (!r.success) {
-    throw new Error(`${r.error.code}: ${r.error.message}`);
+    throw new Error(`${action} failed: ${r.error.code}: ${r.error.message}`);
   }
 }
 
@@ -300,7 +300,10 @@ export class IpcDataSource implements FullDataSource {
   }
 
   async aiGetSummary(articleId: string): Promise<DataSourceState<string>> {
-    return unwrap(await window.api.ai.getSummary(articleId));
+    const r = await window.api.ai.getSummary(articleId);
+    if (!r.success) return toError(r);
+    if (!r.data) return { kind: 'error', error: 'AI_RESULT_NOT_FOUND: 未找到摘要结果' };
+    return { kind: 'ready', data: r.data.content };
   }
 
   async aiGenerateTranslation(
@@ -313,7 +316,10 @@ export class IpcDataSource implements FullDataSource {
   }
 
   async aiGetTranslation(articleId: string): Promise<DataSourceState<Array<{ index: number; original: string; translated: string }>>> {
-    return unwrap(await window.api.ai.getTranslation(articleId));
+    const r = await window.api.ai.getTranslation(articleId);
+    if (!r.success) return toError(r);
+    if (!r.data) return { kind: 'error', error: 'AI_RESULT_NOT_FOUND: 未找到翻译结果' };
+    return { kind: 'ready', data: r.data.paragraphs };
   }
 
   async aiSuggestTags(articleId: string): Promise<{ ok: boolean; message: string }> {
@@ -323,7 +329,10 @@ export class IpcDataSource implements FullDataSource {
   }
 
   async aiGetTagSuggestions(articleId: string): Promise<DataSourceState<Array<{ name: string; confidence: number; reason: string }>>> {
-    return unwrap(await window.api.ai.getTagSuggestions(articleId));
+    const r = await window.api.ai.getTagSuggestions(articleId);
+    if (!r.success) return toError(r);
+    if (!r.data) return { kind: 'error', error: 'AI_RESULT_NOT_FOUND: 未找到标签建议' };
+    return { kind: 'ready', data: r.data.suggestions };
   }
 
   // ============== Settings ==============
