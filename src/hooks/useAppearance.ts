@@ -59,9 +59,9 @@ export interface UseAppearanceResult {
   visualTheme: 'classic' | 'paper';
   language: 'zh' | 'en';
   loaded: boolean;
-  setFontTheme: (next: string) => Promise<void>;
-  setVisualTheme: (next: 'classic' | 'paper') => Promise<void>;
-  setLanguage: (next: 'zh' | 'en') => Promise<void>;
+  setFontTheme: (next: string) => Promise<boolean>;
+  setVisualTheme: (next: 'classic' | 'paper') => Promise<boolean>;
+  setLanguage: (next: 'zh' | 'en') => Promise<boolean>;
 }
 
 export function useAppearance(): UseAppearanceResult {
@@ -113,8 +113,8 @@ export function useAppearance(): UseAppearanceResult {
     visualTheme: state.visualTheme,
     language: state.language,
     loaded,
-    setFontTheme: (next) => update({ fontTheme: next }).then(() => undefined),
-    setVisualTheme: (next) => update({ visualTheme: next }).then(() => undefined),
-    setLanguage: (next) => update({ language: next }).then(() => undefined)
+    setFontTheme: (next) => update({ fontTheme: next }),
+    setVisualTheme: (next) => update({ visualTheme: next }),
+    setLanguage: (next) => update({ language: next })
   };
 }
