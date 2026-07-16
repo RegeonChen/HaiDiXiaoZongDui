@@ -31,12 +31,17 @@ export const FONT_STACKS: Record<string, string> = {
   kai: `"Kaiti SC", "STKaiti", "KaiTi", "FangSong", "Source Han Serif SC", serif`
 };
 
-function applyToHtml(fontTheme: string, visualTheme: 'classic' | 'paper'): void {
+function applyToHtml(
+  fontTheme: string,
+  visualTheme: 'classic' | 'paper',
+  fontSize?: number,
+  readingWidth?: number
+): void {
   if (typeof document === 'undefined') return;
   const html = document.documentElement;
   html.setAttribute('data-font-theme', fontTheme);
   html.setAttribute('data-visual-theme', visualTheme);
-  // 直接挂 CSS 变量到 :root，避免每次切换都改 index.css
+  // 字体栈
   html.style.setProperty('--font-body', FONT_STACKS[fontTheme] || FONT_STACKS.default);
   // 视觉主题：白底 vs 暖黄底
   if (visualTheme === 'paper') {
@@ -51,6 +56,13 @@ function applyToHtml(fontTheme: string, visualTheme: 'classic' | 'paper'): void 
     html.style.removeProperty('--fg');
     html.style.removeProperty('--fg-soft');
     html.style.removeProperty('--border');
+  }
+  // 正文排版相关的 CSS 变量（Reader 通过 var(--font-size) / var(--reading-width) 读取）
+  if (typeof fontSize === 'number' && fontSize >= 10 && fontSize <= 32) {
+    html.style.setProperty('--font-size', `${fontSize}px`);
+  }
+  if (typeof readingWidth === 'number' && readingWidth >= 320 && readingWidth <= 1600) {
+    html.style.setProperty('--reading-width', `${readingWidth}px`);
   }
 }
 
@@ -81,7 +93,7 @@ export function useAppearance(): UseAppearanceResult {
           visualTheme: r.data.visualTheme,
           language: r.data.language
         });
-        applyToHtml(r.data.fontTheme, r.data.visualTheme);
+        applyToHtml(r.data.fontTheme, r.data.visualTheme, r.data.fontSize, r.data.readingWidth);
       }
       setLoaded(true);
     })();
@@ -91,7 +103,7 @@ export function useAppearance(): UseAppearanceResult {
   }, [ds]);
 
   const update = useCallback(
-    async (patch: Partial<AppearanceSettings>) => {
+    async (patch: Partial<AppearanceSettings & { fontSize?: number; readingWidth?: number }>) => {
       const r = await ds.settingsUpdate(patch);
       if (r.kind === 'ready') {
         const next = {
@@ -100,7 +112,7 @@ export function useAppearance(): UseAppearanceResult {
           language: r.data.language
         };
         setState(next);
-        applyToHtml(next.fontTheme, next.visualTheme);
+        applyToHtml(next.fontTheme, next.visualTheme, r.data.fontSize, r.data.readingWidth);
         return true;
       }
       return false;

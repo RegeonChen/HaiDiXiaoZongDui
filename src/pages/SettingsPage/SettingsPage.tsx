@@ -89,6 +89,13 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
       const r = await ds.settingsUpdate(patch);
       if (r.kind === 'ready') {
         setSettings(r.data);
+        // 同步 CSS 变量到 DOM，使 Reader 的 var(--font-size) / var(--reading-width) 实时生效
+        if ('fontSize' in patch) {
+          document.documentElement.style.setProperty('--font-size', `${r.data.fontSize}px`);
+        }
+        if ('readingWidth' in patch) {
+          document.documentElement.style.setProperty('--reading-width', `${r.data.readingWidth}px`);
+        }
         onToast('设置已保存', 'success');
       } else {
         onToast(`保存失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');

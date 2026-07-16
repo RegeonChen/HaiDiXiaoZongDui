@@ -61,7 +61,7 @@
   font-weight: 700;
   line-height: 1.3;
   color: var(--fg);
-  font-family: Georgia, "Source Han Serif SC", "Songti SC", "SimSun", serif;
+  font-family: var(--font-body);
 }
 
 .article-reader__meta {
@@ -135,6 +135,7 @@
   font-size: var(--font-size, 15px);
   line-height: 1.75;
   color: var(--fg);
+  font-family: var(--font-body);
   overflow-wrap: anywhere;
   word-break: normal;
 }
@@ -145,7 +146,6 @@
   margin: 1.5em 0 0.6em;
   font-weight: 700;
   line-height: 1.3;
-  font-family: Georgia, "Source Han Serif SC", "Songti SC", "SimSun", serif;
 }
 
 .article-reader__content h1 { font-size: 1.5em; }
@@ -274,7 +274,7 @@
   line-height: 1.5;
 }
 
-/* AI ¹¤¾ßÀ¸½á¹ûÇø£¨Phase 3 Integration£© */
+/* AI ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Phase 3 Integrationï¿½ï¿½ */
 .article-reader__ai-panel {
   border-top: 1px solid var(--border-soft);
   background: var(--bg-elev);
