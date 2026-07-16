@@ -113,7 +113,9 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       }
       const r = await ds.aiGetSummary(article.id);
       if (r.kind === 'ready') {
-        setSummary(r.data);
+        // r.data 是 AISummary 对象，摘要文本在 .content 字段
+        const text = r.data as unknown as { content: string };
+        setSummary(text.content);
         onToast('摘要已生成', 'success');
       } else {
         onToast(`读取摘要失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
@@ -136,7 +138,9 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       }
       const r = await ds.aiGetTranslation(article.id);
       if (r.kind === 'ready') {
-        setTranslationParagraphs(r.data);
+        // r.data 是 AITranslation 对象，段落数组在 .paragraphs 字段
+        const obj = r.data as unknown as { paragraphs: Array<{ index: number; original: string; translated: string }> };
+        setTranslationParagraphs(obj.paragraphs);
         onToast('翻译已生成', 'success');
       } else {
         onToast(`读取翻译失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
@@ -159,8 +163,10 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       }
       const r = await ds.aiGetTagSuggestions(article.id);
       if (r.kind === 'ready') {
-        setTagSuggestions(r.data);
-        onToast(`生成 ${r.data.length} 条标签建议`, 'success');
+        // r.data 是 AITagSuggestion 对象，标签数组在 .suggestions 字段
+        const obj = r.data as unknown as { suggestions: Array<{ name: string; confidence: number; reason: string }> };
+        setTagSuggestions(obj.suggestions);
+        onToast(`生成 ${obj.suggestions.length} 条标签建议`, 'success');
       } else {
         onToast(`读取标签建议失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
       }

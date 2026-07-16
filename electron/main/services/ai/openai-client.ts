@@ -86,12 +86,26 @@ export async function chatCompletion(
     }
 
     const data = await response.json() as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { message?: { content?: string; role?: string } }[];
+      error?: { message: string; type?: string };
+      model?: string;
     };
 
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
-      throw new Error('模型返回空内容');
+      // 提供更丰富的诊断信息，帮助用户排查模型/Provider 问题
+      const detail: string[] = [];
+      if (!data.choices || data.choices.length === 0) {
+        detail.push('模型未返回 choices 数组');
+      } else if (!data.choices[0].message) {
+        detail.push('choices[0] 缺少 message 字段');
+      } else if (!data.choices[0].message.content) {
+        detail.push(`message.content 为空字符串或 ${typeof data.choices[0].message.content}`);
+      }
+      if (data.model) detail.push(`模型: ${data.model}`);
+      if (data.error) detail.push(`API 错误: ${data.error.message}`);
+      const suffix = detail.length > 0 ? ` (${detail.join(', ')})` : '';
+      throw new Error(`模型返回空内容${suffix}`);
     }
 
     return content;
