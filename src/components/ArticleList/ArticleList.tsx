@@ -60,7 +60,7 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filt
               <li key={a.id} role="option" aria-selected={isSelected}>
                 <button
                   type="button"
-                  className={`article-list__item ${isSelected ? 'is-active' : ''}`}
+                  className={`article-list__item ${isSelected ? 'is-active' : ''} ${a.isRead ? 'is-read' : 'is-unread'}`}
                   onClick={() => onSelect(a.id)}
                   title={`${a.title}\n${a.author ?? ''}`}
                 >

@@ -12,6 +12,8 @@ export interface ContextMenuItem {
   onClick: () => void;
   danger?: boolean;
   disabled?: boolean;
+  /** 设为 'separator' 显示为分隔线（label 会被忽略） */
+  separator?: boolean;
 }
 
 interface MenuState {
@@ -72,20 +74,24 @@ export function ContextMenuHost() {
         style={{ left: x, top: y }}
         onClick={(e) => e.stopPropagation()}
       >
-        {state.items.map((item, idx) => (
-          <button
-            key={idx}
-            type="button"
-            className={`context-menu__item ${item.danger ? 'is-danger' : ''}`}
-            disabled={item.disabled}
-            onClick={() => {
-              setState(null);
-              item.onClick();
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
+        {state.items.map((item, idx) =>
+          item.separator ? (
+            <div key={idx} className="context-menu__separator" role="separator" />
+          ) : (
+            <button
+              key={idx}
+              type="button"
+              className={`context-menu__item ${item.danger ? 'is-danger' : ''}`}
+              disabled={item.disabled}
+              onClick={() => {
+                setState(null);
+                item.onClick();
+              }}
+            >
+              {item.label}
+            </button>
+          )
+        )}
       </div>
     </div>,
     document.body

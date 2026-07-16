@@ -392,6 +392,19 @@ export function App() {
         selected={selection.feedId}
         onSelect={selectFeed}
         onDeleteFeed={handleDeleteFeed}
+        onSyncFeed={async (feed: Feed) => {
+          pushToast(`正在同步「${feed.siteTitle || feed.title}」…`, 'info');
+          const r = await ds.syncFeed(feed.id);
+          pushToast(r.message, r.ok ? 'success' : 'error');
+          if (r.ok) {
+            await refreshFeeds();
+            const result = await ds.articles({});
+            if (result.kind === 'ready') {
+              setAllArticlesState({ kind: 'ready', data: result.data });
+            }
+          }
+        }}
+        onExportOpml={handleOpmlExport}
         onAddFeed={handleAddFeed}
       />
     );

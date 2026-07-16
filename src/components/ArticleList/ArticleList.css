@@ -75,18 +75,22 @@
 }
 
 .article-list__dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: background 120ms ease;
 }
 
 .article-list__dot.is-unread {
   background: var(--accent);
+  /* Mercury 风格：未读更明显的圆点 */
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .article-list__dot.is-read {
-  background: var(--border);
+  background: transparent;
+  border: 1px solid var(--border);
 }
 
 .article-list__article-title {
@@ -101,8 +105,18 @@
   min-width: 0;
 }
 
-.article-list__item:not(.is-active) .article-list__article-title {
-  /* 已读：muted 一些（但不降字号） */
+/* Mercury 风格：已读文章加删除线 + 透明度降低 */
+.article-list__item.is-read:not(.is-active) .article-list__article-title {
+  text-decoration: line-through;
+  text-decoration-color: var(--muted);
+  text-decoration-thickness: 1px;
+  opacity: 0.55;
+  color: var(--muted);
+}
+
+.article-list__item.is-read:not(.is-active) .article-list__feed,
+.article-list__item.is-read:not(.is-active) .article-list__time {
+  opacity: 0.6;
 }
 
 .article-list__star {

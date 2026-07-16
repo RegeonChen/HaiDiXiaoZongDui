@@ -47,3 +47,10 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.context-menu__separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+  pointer-events: none;
+}

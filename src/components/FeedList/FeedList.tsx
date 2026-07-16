@@ -18,6 +18,8 @@ export interface FeedListProps {
   selected: string | 'all' | 'unread' | 'starred';
   onSelect: (id: string | 'all' | 'unread' | 'starred') => void;
   onDeleteFeed: (feed: Feed) => void;
+  onSyncFeed?: (feed: Feed) => void;
+  onExportOpml?: () => void;
   onAddFeed?: (url: string) => Promise<{ ok: boolean; message: string }>;
 }
 
@@ -30,7 +32,7 @@ interface VirtualEntry {
   count: number;
 }
 
-export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, onAddFeed }: FeedListProps) {
+export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, onSyncFeed, onExportOpml, onAddFeed }: FeedListProps) {
   const [tab, setTab] = useState<Tab>('sources');
   const [showAll, setShowAll] = useState(true);
   const [feedUrl, setFeedUrl] = useState('');
@@ -69,17 +71,39 @@ export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, on
   const handleContextMenu = (e: React.MouseEvent, feed: Feed) => {
     e.preventDefault();
     e.stopPropagation();
+    // Mercury 风格：6 项菜单（导出 OPML / 导出全文 / 刷新 / 同步 / 编辑 / 删除 / 复制 URL）
+    // "导出全文" / "编辑" 当前未实现，用 disabled 标记；右键仍能看到入口，便于 Phase 4/5 扩展
     showContextMenu(e.clientX, e.clientY, [
       {
-        label: '删除订阅源',
-        danger: true,
-        onClick: () => onDeleteFeed(feed)
+        label: '同步此订阅源',
+        onClick: () => onSyncFeed?.(feed)
       },
+      { label: '——', separator: true, onClick: () => undefined },
+      {
+        label: '导出 OPML',
+        onClick: () => onExportOpml?.()
+      },
+      {
+        label: '导出全文…',
+        disabled: true,
+        onClick: () => undefined
+      },
+      {
+        label: '编辑…',
+        disabled: true,
+        onClick: () => undefined
+      },
+      { label: '——', separator: true, onClick: () => undefined },
       {
         label: '复制 RSS URL',
         onClick: () => {
           void navigator.clipboard.writeText(feed.url).catch(() => undefined);
         }
+      },
+      {
+        label: '删除订阅源',
+        danger: true,
+        onClick: () => onDeleteFeed(feed)
       }
     ]);
   };

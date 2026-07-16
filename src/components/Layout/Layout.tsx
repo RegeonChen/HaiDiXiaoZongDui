@@ -100,31 +100,47 @@ export function Layout({
   // 阅读区宽度 = 100% - sidebar - list
   const readerPercent = 100 - sidebarPercent - listPercent;
 
-  // 页面入口按钮：⚙ 设置 / # 标签 / ✎ 笔记 / ☷ 文摘 / ★ 专题 / 📋 日志
+  // Mercury 风格顶栏入口：icon-only + tooltip
+  // 6 个 page 入口 + 1 个 "unread" 过滤（reader 模式下独立）
   const navItems: Array<{ id: AppPage; label: string; icon: string; title: string }> = [
     { id: 'settings', label: '设置', icon: '⚙', title: '设置（AI Provider、字体主题、视觉主题、多语言）' },
     { id: 'tags', label: '标签', icon: '#', title: '标签管理' },
     { id: 'notes', label: '笔记', icon: '✎', title: '笔记' },
     { id: 'digests', label: '文摘', icon: '☷', title: '文摘导出' },
     { id: 'topics', label: '专题', icon: '★', title: '专题追踪（Phase 4 接入）' },
-    { id: 'logs', label: '日志', icon: '📋', title: '本地日志' }
+    { id: 'logs', label: '日志', icon: '☰', title: '本地日志' }
   ];
 
   return (
     <div className="app-layout">
       <header className="app-header">
         <div className="app-header__left">
+          {/* Mercury 风格：左侧 4 块网格图标，hover 提示项目名 */}
           <button
             type="button"
             className="app-header__logo-btn"
             onClick={() => onPageChange('reader')}
-            title="回到阅读"
+            title="聚合拾遗 — 回到阅读"
             aria-label="回到阅读"
           >
-            <span className="app-header__logo" aria-hidden="true">📚</span>
+            <svg
+              className="app-header__logo-svg"
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <rect x="2" y="2" width="5" height="5" rx="0.5" />
+              <rect x="9" y="2" width="5" height="5" rx="0.5" />
+              <rect x="2" y="9" width="5" height="5" rx="0.5" />
+              <rect x="9" y="9" width="5" height="5" rx="0.5" />
+            </svg>
           </button>
           <h1 className="app-header__title">聚合拾遗</h1>
-          <span className="app-header__phase">Phase 3.4</span>
         </div>
         <div className="app-header__right">
           {/* 页面切换（Phase 3 Integration 新增） */}

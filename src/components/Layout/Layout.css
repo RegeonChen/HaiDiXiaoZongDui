@@ -33,6 +33,15 @@
   line-height: 1;
 }
 
+.app-header__logo-svg {
+  display: block;
+  color: var(--fg);
+}
+
+.app-header__logo-btn:hover .app-header__logo-svg {
+  color: var(--accent);
+}
+
 .app-header__title {
   margin: 0;
   font-size: 14px;
@@ -71,10 +80,10 @@
 .app-header__nav {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   padding: 2px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--bg-elev);
 }
 
@@ -83,14 +92,17 @@
   border: 1px solid transparent;
   background: transparent;
   color: var(--fg-soft);
-  font-size: 11px;
-  padding: 2px 8px;
+  font-size: 14px;
+  padding: 2px 6px;
   border-radius: 3px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
   transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+  position: relative;
 }
 
 .app-header__nav-btn:hover {
@@ -105,12 +117,12 @@
 }
 
 .app-header__nav-icon {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1;
 }
 
 .app-header__nav-label {
-  font-weight: 500;
+  display: none;
 }
 
 .app-page {
