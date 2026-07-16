@@ -223,7 +223,11 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   }
 
   const articleUrl = article.url;
-  const needsContent = !article.cleanedMarkdown;
+  // 内容尚未就绪的判断：
+  // - article.cleanedMarkdown 非空 → 之前已清洗过（来自 DB 快照）
+  // - content.html 非空 → 本次刚通过 getCleanedHtml 触发清洗并成功返回
+  // 两者都不满足时才禁用 AI 按钮
+  const needsContent = !article.cleanedMarkdown && !content.html;
 
   return (
     <div className="article-reader">
