@@ -124,12 +124,16 @@ export async function chatCompletion(
  */
 export async function testConnection(provider: AIProvider, apiKey: string): Promise<{ ok: boolean; message: string }> {
   try {
-    await chatCompletion(
+    const reply = await chatCompletion(
       { ...provider, _apiKey: apiKey } as AIProvider & { _apiKey: string },
-      [{ role: 'user', content: 'Reply with just "OK".' }],
-      { maxTokens: 10, temperature: 0, timeoutMs: 15_000 }
+      [{ role: 'user', content: 'Say "OK"' }],
+      { maxTokens: 32, temperature: 0, timeoutMs: 15_000 }
     );
-    return { ok: true, message: '连接成功' };
+    // 有些模型会在 "OK" 前后加空格或引号，只要回复不为空且短就视为成功
+    if (reply.trim().length > 0) {
+      return { ok: true, message: '连接成功' };
+    }
+    return { ok: false, message: `模型返回空文本（reply="${reply}"，${reply.length} 字符）` };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : '未知错误' };
   }
