@@ -78,7 +78,7 @@ export function DigestsPage({ onToast }: DigestsPageProps) {
   );
 
   const handleExport = useCallback(
-    async (id: string, name: string, format: ExportFormat) => {
+    async (id: string, format: ExportFormat) => {
       onToast(`正在导出 ${format.toUpperCase()}…`, 'info');
       const r = await ds.digestExport(id, format);
       if (r.kind === 'ready') {
@@ -132,14 +132,14 @@ export function DigestsPage({ onToast }: DigestsPageProps) {
                 <button
                   type="button"
                   className="digests-page__btn"
-                  onClick={() => void handleExport(d.id, d.name, 'markdown')}
+                  onClick={() => void handleExport(d.id, 'markdown')}
                 >
                   导出 Markdown
                 </button>
                 <button
                   type="button"
                   className="digests-page__btn"
-                  onClick={() => void handleExport(d.id, d.name, 'html')}
+                  onClick={() => void handleExport(d.id, 'html')}
                 >
                   导出 HTML
                 </button>

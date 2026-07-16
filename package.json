@@ -23,7 +23,8 @@
     "smoke:phase2": "npm run build && node scripts/smoke-phase2.cjs",
     "smoke:phase2.5": "npm run build && node scripts/smoke-2.5.cjs",
     "smoke:task33": "npm run build && node scripts/smoke-3.3.cjs",
-    "smoke:integration": "npm run build && node scripts/smoke-3.4-integration.cjs"
+    "smoke:integration": "npm run build && node scripts/smoke-3.4-integration.cjs",
+    "dist:mac": "npm run typecheck && npm run build && electron-builder --mac dmg"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
@@ -48,9 +49,42 @@
     "@types/turndown": "^5.0.5",
     "@vitejs/plugin-react": "^4.3.1",
     "electron": "^31.2.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^2.3.0",
     "typescript": "^5.5.3",
     "vite": "^5.3.3",
     "vitest": "^3.2.6"
+  },
+  "build": {
+    "appId": "com.juheshivi.reader",
+    "productName": "聚合拾遗",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sql.js/dist/sql-wasm.wasm"
+    ],
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.news",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "聚合拾遗-${version}-${arch}.${ext}",
+      "title": "聚合拾遗 ${version}"
+    }
   }
 }

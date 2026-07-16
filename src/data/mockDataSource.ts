@@ -40,10 +40,6 @@ const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 const cloneFeeds = (): Feed[] => MOCK_FEEDS.map((f) => ({ ...f }));
 const cloneArticles = (): Article[] => MOCK_ARTICLES.map((a) => ({ ...a }));
 
-const notImpl = (method: string): never => {
-  throw new Error(`MockDataSource: ${method} 在 mock 模式下不实现`);
-};
-
 export class MockDataSource implements DataSource {
   private feedsState: Feed[] = cloneFeeds();
   private articlesState: Article[] = cloneArticles();
@@ -389,7 +385,7 @@ export class MockDataSource implements DataSource {
   }
 
   async settingsUpdate(_settings: Partial<AppSettings>): Promise<DataSourceState<AppSettings>> {
-    notImpl('settingsUpdate');
+    return { kind: 'error', error: 'mock 模式不保存设置' };
   }
 
   async logList(_limit?: number): Promise<DataSourceState<LogEntry[]>> {
