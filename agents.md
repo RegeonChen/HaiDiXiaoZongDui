@@ -283,6 +283,9 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - **JSON.stringify 双引号冲突修复**：`scripts/smoke-3.3-probe.js` 中 `__AI_BASE_URL__` / `__AI_KEY__` / `__FEED_URL__` 占位符去掉外层单引号，消除 `JSON.stringify` 替换时产生的双重引号导致 URL 解析失败（`Failed to parse URL from "http://..."/chat/completions`）。修复后 Provider test 从 false 变为 true。
   - **note 探针修复**：note 创建改为使用刚创建的 feed ID (`nf.data.id`) 而非 `fl.data[0].id`，避免查错 feed 导致 checks 为空。
   - **persistedFontTheme 补齐**：`sp` section 新增 `persistedFontTheme` 检查，确保字体主题重启持久化也被验证。
+- **2026-07-16**：IpcDataSource 双包层修复（陈冠中，跨模块协助张晨阳）：
+  - **根因**：`src/data/ipcDataSource.ts` 在所有 Tag/Note/Digest/Topic/AI/Settings/Log 方法调用 preload API 时多包了一层对象。例如 `window.api.settings.update({ settings })` → preload 内部再包一层 `{ settings: { settings: {...} } }` → Main handler 收到的是 `{ settings: {...} }` 而非 `Partial<AppSettings>` → 校验失败。
+  - **修复**：移除 IpcDataSource 中 30+ 处调用的多余 `{}` 包裹，参数直接透传给 preload（preload 内部会统一包一层）。涵盖 tag (5 处)、note (4 处)、digest (4 处)、topic (5 处)、ai provider (4 处)、ai operations (6 处)、settings (1 处)、log (1 处)。
 
 ## 路线图
 

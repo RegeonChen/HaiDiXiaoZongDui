@@ -175,24 +175,24 @@ export class IpcDataSource implements FullDataSource {
   }
 
   async tagCreate(input: TagCreateInput): Promise<DataSourceState<Tag>> {
-    return unwrap(await window.api.tag.create({ input }));
+    return unwrap(await window.api.tag.create(input));
   }
 
   async tagUpdate(id: string, input: TagUpdateInput): Promise<DataSourceState<Tag>> {
-    return unwrap(await window.api.tag.update({ id, input }));
+    return unwrap(await window.api.tag.update(id, input));
   }
 
   async tagDelete(id: string): Promise<void> {
-    throwOnError(await window.api.tag.delete({ id }), 'tagDelete');
+    throwOnError(await window.api.tag.delete(id), 'tagDelete');
   }
 
   async tagAddToArticle(articleId: string, tagId: string): Promise<void> {
-    throwOnError(await window.api.tag.addToArticle({ articleId, tagId }), 'tagAddToArticle');
+    throwOnError(await window.api.tag.addToArticle(articleId, tagId), 'tagAddToArticle');
   }
 
   async tagRemoveFromArticle(articleId: string, tagId: string): Promise<void> {
     throwOnError(
-      await window.api.tag.removeFromArticle({ articleId, tagId }),
+      await window.api.tag.removeFromArticle(articleId, tagId),
       'tagRemoveFromArticle'
     );
   }
@@ -200,19 +200,19 @@ export class IpcDataSource implements FullDataSource {
   // ============== Note ==============
 
   async noteListByArticle(articleId: string): Promise<DataSourceState<Note[]>> {
-    return unwrap(await window.api.note.listByArticle({ articleId }));
+    return unwrap(await window.api.note.listByArticle(articleId));
   }
 
   async noteCreate(input: NoteCreateInput): Promise<DataSourceState<Note>> {
-    return unwrap(await window.api.note.create({ input }));
+    return unwrap(await window.api.note.create(input));
   }
 
   async noteUpdate(id: string, input: NoteUpdateInput): Promise<DataSourceState<Note>> {
-    return unwrap(await window.api.note.update({ id, input }));
+    return unwrap(await window.api.note.update(id, input));
   }
 
   async noteDelete(id: string): Promise<void> {
-    throwOnError(await window.api.note.delete({ id }), 'noteDelete');
+    throwOnError(await window.api.note.delete(id), 'noteDelete');
   }
 
   // ============== Digest ==============
@@ -222,19 +222,19 @@ export class IpcDataSource implements FullDataSource {
   }
 
   async digestGet(id: string): Promise<DataSourceState<Digest>> {
-    return unwrap(await window.api.digest.get({ id }));
+    return unwrap(await window.api.digest.get(id));
   }
 
   async digestCreate(input: DigestCreateInput): Promise<DataSourceState<Digest>> {
-    return unwrap(await window.api.digest.create({ input }));
+    return unwrap(await window.api.digest.create(input));
   }
 
   async digestDelete(id: string): Promise<void> {
-    throwOnError(await window.api.digest.delete({ id }), 'digestDelete');
+    throwOnError(await window.api.digest.delete(id), 'digestDelete');
   }
 
   async digestExport(id: string, format: ExportFormat): Promise<DataSourceState<string>> {
-    return unwrap(await window.api.digest.export({ id, format }));
+    return unwrap(await window.api.digest.export(id, format));
   }
 
   // ============== Topic ==============
@@ -244,23 +244,23 @@ export class IpcDataSource implements FullDataSource {
   }
 
   async topicGet(id: string): Promise<DataSourceState<Topic>> {
-    return unwrap(await window.api.topic.get({ id }));
+    return unwrap(await window.api.topic.get(id));
   }
 
   async topicCreate(input: TopicCreateInput): Promise<DataSourceState<Topic>> {
-    return unwrap(await window.api.topic.create({ input }));
+    return unwrap(await window.api.topic.create(input));
   }
 
   async topicUpdate(id: string, input: TopicUpdateInput): Promise<DataSourceState<Topic>> {
-    return unwrap(await window.api.topic.update({ id, input }));
+    return unwrap(await window.api.topic.update(id, input));
   }
 
   async topicDelete(id: string): Promise<void> {
-    throwOnError(await window.api.topic.delete({ id }), 'topicDelete');
+    throwOnError(await window.api.topic.delete(id), 'topicDelete');
   }
 
   async topicGetArticles(topicId: string): Promise<DataSourceState<Article[]>> {
-    return unwrap(await window.api.topic.getArticles({ topicId }));
+    return unwrap(await window.api.topic.getArticles(topicId));
   }
 
   // ============== AI Provider ==============
@@ -270,19 +270,19 @@ export class IpcDataSource implements FullDataSource {
   }
 
   async aiProviderCreate(input: AIProviderCreateInput): Promise<DataSourceState<AIProvider>> {
-    return unwrap(await window.api.ai.providerCreate({ input }));
+    return unwrap(await window.api.ai.providerCreate(input));
   }
 
   async aiProviderUpdate(id: string, input: AIProviderUpdateInput): Promise<DataSourceState<AIProvider>> {
-    return unwrap(await window.api.ai.providerUpdate({ id, input }));
+    return unwrap(await window.api.ai.providerUpdate(id, input));
   }
 
   async aiProviderDelete(id: string): Promise<void> {
-    throwOnError(await window.api.ai.providerDelete({ id }), 'aiProviderDelete');
+    throwOnError(await window.api.ai.providerDelete(id), 'aiProviderDelete');
   }
 
   async aiProviderTest(id: string): Promise<{ ok: boolean; message: string }> {
-    const r = await window.api.ai.providerTest({ id });
+    const r = await window.api.ai.providerTest(id);
     if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
     return r.data;
   }
@@ -294,36 +294,36 @@ export class IpcDataSource implements FullDataSource {
     language?: Language,
     detailLevel?: SummaryDetailLevel
   ): Promise<{ ok: boolean; message: string }> {
-    const r = await window.api.ai.generateSummary({ articleId, language, detailLevel });
+    const r = await window.api.ai.generateSummary(articleId, language, detailLevel);
     if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
     return { ok: true, message: '摘要已生成' };
   }
 
   async aiGetSummary(articleId: string): Promise<DataSourceState<string>> {
-    return unwrap(await window.api.ai.getSummary({ articleId }));
+    return unwrap(await window.api.ai.getSummary(articleId));
   }
 
   async aiGenerateTranslation(
     articleId: string,
     targetLanguage?: Language
   ): Promise<{ ok: boolean; message: string }> {
-    const r = await window.api.ai.generateTranslation({ articleId, targetLanguage });
+    const r = await window.api.ai.generateTranslation(articleId, targetLanguage);
     if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
     return { ok: true, message: '翻译已生成' };
   }
 
   async aiGetTranslation(articleId: string): Promise<DataSourceState<Array<{ index: number; original: string; translated: string }>>> {
-    return unwrap(await window.api.ai.getTranslation({ articleId }));
+    return unwrap(await window.api.ai.getTranslation(articleId));
   }
 
   async aiSuggestTags(articleId: string): Promise<{ ok: boolean; message: string }> {
-    const r = await window.api.ai.suggestTags({ articleId });
+    const r = await window.api.ai.suggestTags(articleId);
     if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
     return { ok: true, message: '标签建议已生成' };
   }
 
   async aiGetTagSuggestions(articleId: string): Promise<DataSourceState<Array<{ name: string; confidence: number; reason: string }>>> {
-    return unwrap(await window.api.ai.getTagSuggestions({ articleId }));
+    return unwrap(await window.api.ai.getTagSuggestions(articleId));
   }
 
   // ============== Settings ==============
@@ -333,13 +333,13 @@ export class IpcDataSource implements FullDataSource {
   }
 
   async settingsUpdate(settings: Partial<AppSettings>): Promise<DataSourceState<AppSettings>> {
-    return unwrap(await window.api.settings.update({ settings }));
+    return unwrap(await window.api.settings.update(settings));
   }
 
   // ============== Log ==============
 
   async logList(limit?: number): Promise<DataSourceState<LogEntry[]>> {
-    return unwrap(await window.api.log.list({ limit }));
+    return unwrap(await window.api.log.list(limit));
   }
 
   async logExport(): Promise<DataSourceState<string>> {
