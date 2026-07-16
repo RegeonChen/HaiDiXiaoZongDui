@@ -124,7 +124,7 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 3 Integration UI 端到端已通过 8/8 smoke 验收**。下一步进入 Phase 4（Topic Tracking / Briefing Agent）。
+- 当前活动里程碑：**Phase 2 集成已通过验收**。Phase 3 已初步开发完成但存在多项 P0/P1 bug（见已知问题和近期记录），正在修复中。
 - **Phase 3 Integration（张晨阳）**：
   - **6 个 pages**（`src/pages/`）：SettingsPage（Provider CRUD + 字体/视觉主题 + 多语言 + AI 默认值 + 字号/阅读宽度）、TagsPage（标签 CRUD）、NotesPage（按文章选 + markdown 笔记 CRUD）、DigestsPage（文摘 CRUD + Markdown/HTML 导出）、TopicsPage（Phase 4 占位，stub handler 返回 NOT_IMPLEMENTED）、LogsPage（同占位）。
   - **顶栏 6 入口**（Layout 顶栏新增 nav 按钮组）：⚙ 设置 / # 标签 / ✎ 笔记 / ☷ 文摘 / ★ 专题 / 📋 日志；点击切换 `currentPage` state；非 reader 模式渲染对应 page slot，reader 模式保持三栏 layout。
@@ -274,6 +274,15 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 第二批补充：HTTP 重试支持 `Retry-After` 与非法资源限制拦截；同步和正文清洗失败持久化稳定错误码，便于日志检索和问题反馈。
   - 修复极端三栏宽度总和可能超过 100% 的布局问题，改用扣除拖拽手柄后的 `fr` 分配，并联动限制侧栏/列表，为阅读区保留至少 20%。
   - UI IPC smoke 新增极限拖拽、中英混排、长代码和宽表格验证，确认窗口与正文容器均不横向溢出。
+- **2026-07-16**：Phase 3 缺陷修复（陈冠中）：
+  - **P0 - 补齐类型导入**：`electron/main/index.ts` 补上 `AIProvider`、`Topic`、`Briefing`、`TimelineEntry`、`EventGroup`、`LogEntry` 六个缺失的类型导入，消除 Main 进程 6 个类型错误（其余类型错误在 Renderer 端，由张晨阳负责）。
+  - **P0 - 默认 Provider 逻辑断裂修复**：`AI_PROVIDER_CREATE` / `AI_PROVIDER_UPDATE` handler 在 isDefault 为 true 时同步调用 `saveSettings({ defaultProviderId })`，`AI_PROVIDER_DELETE` handler 在删除当前默认 Provider 时清除 `defaultProviderId`。保证 AI 生成 handler 能正确读取用户设定的默认 Provider。
+  - **P0 - 烟测判定修复**：`smoke-3.3` 探针判定分离为 coreSections（base/sp/prov/tag/note/dig，不得跳过且必须全部通过，Provider test 必须 !== false）与 aiSections（ais/ait/aig/aic，允许跳过但未跳过则必须通过）；`smoke-3.4-integration` 增加 uiIpc.ok 检查。
+  - **P1 - 文摘 HTML 导出 XSS 修复**：`digest-repository.ts` 的 `buildHtmlExport` 先对 `markdownContent` 调 `escapeHtml()` 再做 Markdown 正则替换，防止用户笔记中的 HTML 标签或 `<script>` 注入导出页面。
+- **2026-07-16**：smoke-3.3 探针修复（陈冠中）：
+  - **JSON.stringify 双引号冲突修复**：`scripts/smoke-3.3-probe.js` 中 `__AI_BASE_URL__` / `__AI_KEY__` / `__FEED_URL__` 占位符去掉外层单引号，消除 `JSON.stringify` 替换时产生的双重引号导致 URL 解析失败（`Failed to parse URL from "http://..."/chat/completions`）。修复后 Provider test 从 false 变为 true。
+  - **note 探针修复**：note 创建改为使用刚创建的 feed ID (`nf.data.id`) 而非 `fl.data[0].id`，避免查错 feed 导致 checks 为空。
+  - **persistedFontTheme 补齐**：`sp` section 新增 `persistedFontTheme` 检查，确保字体主题重启持久化也被验证。
 
 ## 路线图
 
@@ -288,9 +297,13 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 ## 已知问题
 
 - UI 组件库、E2E 测试框架、CI 流水线、跨平台打包工具（electron-builder / electron-forge）尚未确定。
+- **Phase 3 IPC 数据源参数契约不一致**：`IpcDataSource`（Renderer 端）多处调用 preload API 时多包了一层 `{ input }`（如 `tag.create({ input })` 实际变成 `{ input: { input: ... } }`），标签、笔记、文摘、Provider、AI、设置、Topic、日志等操作大面积失败（由张晨阳修复）。
+- **API Key 明文存储**：`ai_providers.api_key` 以明文写入 SQLite，违反 `shared/types.ts` 中"通过安全存储管理、不保存明文"的约定。计划 Phase 5 改用 `safeStorage` 加密。
 - 不同 OpenAI-compatible Provider 在 Endpoint、流式响应和用量信息方面可能存在差异，需要进行兼容性测试。
 - 专题匹配和相似报道分组的实现方案尚未确定。
 - 尚未进行跨平台行为测试。
 - Feed、HTML 和 OPML 已有固定离线样本；AI 功能的固定测试样本尚未建立。
+- 新增数据库仓储（Tag/Note/Digest/AIProvider/AiResultCache）几乎没有对应单元测试。
+- Topic 和 Log 目前仍是占位 stub（12 个 Topic + 2 个 Log IPC 返回 `NOT_IMPLEMENTED`），AI 真实生成未被自动化测试覆盖。
 - 完整 `npm audit` 报告 Electron 31、Vite 5/electron-vite 2 存在 4 组开发/运行工具链公告（2 moderate、2 high）；生产依赖审计为 0。修复需要 Electron、Vite 和 electron-vite 跨大版本升级，应由脚手架负责人协调并在发布前完成兼容性验证。
 - electron-builder / electron-forge 等打包方案未引入；`npm run build` 当前只产出 unpacked 三段产物，不含可分发的安装包（Phase 5 验收前需补齐）。

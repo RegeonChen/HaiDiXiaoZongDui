@@ -106,7 +106,9 @@ function buildHtmlExport(digest: Digest, notes: Note[]): string {
       if (note.excerptText) {
         block += `<blockquote>${escapeHtml(note.excerptText)}</blockquote>`;
       }
-      const mdContent = note.markdownContent
+      // 先转义 HTML 防止注入，再做简易 Markdown → HTML 转换
+      let mdContent = escapeHtml(note.markdownContent);
+      mdContent = mdContent
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.+?)\*/g, '<em>$1</em>')
         .replace(/`(.+?)`/g, '<code>$1</code>')

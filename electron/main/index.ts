@@ -43,26 +43,32 @@ import { SyncService } from './services/content-pipeline/sync-service.js';
 import { IPC_CHANNELS, type IpcResult } from '../../shared/ipc.js';
 import {
   DEFAULT_SETTINGS,
-  type AppSettings,
-  type Feed,
-  type FeedCreateInput,
-  type FeedUpdateInput,
-  type Article,
-  type ArticleFilter,
+  type AIProvider,
   type AIProviderCreateInput,
   type AIProviderUpdateInput,
   type AISummary,
   type AITranslation,
   type AITagSuggestion,
-  type Tag,
-  type TagCreateInput,
-  type TagUpdateInput,
+  type AppSettings,
+  type Article,
+  type ArticleFilter,
+  type Briefing,
+  type Digest,
+  type DigestCreateInput,
+  type EventGroup,
+  type ExportFormat,
+  type Feed,
+  type FeedCreateInput,
+  type FeedUpdateInput,
+  type LogEntry,
   type Note,
   type NoteCreateInput,
   type NoteUpdateInput,
-  type Digest,
-  type DigestCreateInput,
-  type ExportFormat
+  type Tag,
+  type TagCreateInput,
+  type TagUpdateInput,
+  type TimelineEntry,
+  type Topic
 } from '../../shared/types.js';
 
 import { generateSummary } from './services/ai/summary-agent.js';
@@ -969,9 +975,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"db":{"ok":true');
     } else if (smokeUiReal) {
       if (SMOKE_FLAGS.smokeIntegration) {
-        // smoke-3.4-integration：只看 Phase 3 Integration 子探针（基础 uiIpc 探针
-        // 部分检查依赖复杂正文 fixture，与集成测试无关）
-        pass = raw.includes('"integration":{"ok":true');
+        // smoke-3.4-integration：必须 uiIpc + integration 同时通过
+        pass = raw.includes('"uiIpc":{"ok":true') && raw.includes('"integration":{"ok":true');
       } else {
         pass = raw.includes('"uiIpc":{"ok":true');
       }
@@ -979,12 +984,21 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"ui":{"ok":true');
     } else if (smokeTask33) {
       const report33 = JSON.parse(raw);
-      const sections = ['base', 'sp', 'prov', 'tag', 'note', 'dig', 'ais', 'ait', 'aig', 'aic'];
-      pass = sections.every((s) => {
+      // 核心 section（base/sp/prov/tag/note/dig）不得跳过，必须全部通过。
+      // AI section（ais/ait/aig/aic）可跳过，但未跳过则必须通过。
+      const coreSections = ['base', 'sp', 'prov', 'tag', 'note', 'dig'];
+      const aiSections = ['ais', 'ait', 'aig', 'aic'];
+      pass = coreSections.every((s) => {
         const sec = report33[s];
         if (!sec) return false;
-        if (sec.skipped) return true;
-        if (s === 'prov' && sec.checks) return sec.checks.create && sec.checks.list && sec.checks.update && sec.checks.delete;
+        if (sec.skipped) return false; // 核心 section 不允许 skipped
+        if (s === 'prov' && sec.checks) {
+          return sec.checks.create && sec.checks.list && sec.checks.update && sec.checks.delete && sec.checks.test !== false;
+        }
+        return sec.ok === true;
+      }) && aiSections.every((s) => {
+        const sec = report33[s];
+        if (!sec || sec.skipped) return true; // AI section 可跳过
         return sec.ok === true;
       });
     } else {
@@ -1157,7 +1171,12 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       if (!args?.input) return fail('INVALID_PARAMS', '缺少 input');
       const input = args.input as AIProviderCreateInput;
       if (!input.name || !input.baseUrl || !input.modelName) return fail('INVALID_PARAMS', 'name / baseUrl / modelName 为必填项');
-      return ok(AiProviderRepository.create(input));
+      const provider = AiProviderRepository.create(input);
+      // 同步 settings.defaultProviderId，保证 AI 生成能读到默认 Provider
+      if (input.isDefault) {
+        saveSettings({ defaultProviderId: provider.id });
+      }
+      return ok(provider);
     } catch (e) { return fail('AI_PROVIDER_CREATE_FAILED', String(e)); }
   });
 
@@ -1166,6 +1185,10 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
       const result = AiProviderRepository.update(args.id, (args.input ?? {}) as AIProviderUpdateInput);
       if (!result) return fail('NOT_FOUND', 'Provider 不存在');
+      // 同步 settings.defaultProviderId
+      if ((args.input as AIProviderUpdateInput)?.isDefault) {
+        saveSettings({ defaultProviderId: args.id });
+      }
       return ok(result);
     } catch (e) { return fail('AI_PROVIDER_UPDATE_FAILED', String(e)); }
   });
@@ -1173,6 +1196,11 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
   trustedIpcMain.handle(IPC_CHANNELS.AI_PROVIDER_DELETE, async (_, args): Promise<IpcResult<void>> => {
     try {
       if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
+      // 如果删除的是当前默认 Provider，清除 settings.defaultProviderId
+      const settings = loadSettings();
+      if (settings.defaultProviderId === args.id) {
+        saveSettings({ defaultProviderId: null });
+      }
       if (!AiProviderRepository.delete(args.id)) return fail('NOT_FOUND', 'Provider 不存在');
       return ok(undefined);
     } catch (e) { return fail('AI_PROVIDER_DELETE_FAILED', String(e)); }

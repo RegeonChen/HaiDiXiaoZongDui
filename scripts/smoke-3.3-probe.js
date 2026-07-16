@@ -16,9 +16,9 @@
   };
 
   var api = window.api;
-  var AI_URL = '__AI_BASE_URL__';
-  var AI_KEY = '__AI_KEY__';
-  var FEED = '__FEED_URL__';
+  var AI_URL = __AI_BASE_URL__;
+  var AI_KEY = __AI_KEY__;
+  var FEED = __FEED_URL__;
   var HAS_AI = AI_URL && AI_KEY;
 
   function OK(o) { return Object.values(o).every(function(v) { return v === true; }); }
@@ -43,6 +43,7 @@
     var r = await api.settings.get();
     R.sp.checks.persistedSidebar = r.success && r.data.sidebarPercent === 25;
     R.sp.checks.persistedVisualTheme = r.success && r.data.visualTheme === 'paper';
+    R.sp.checks.persistedFontTheme = r.success && r.data.fontTheme === 'serif';
     await api.settings.update({ sidebarPercent: 18, visualTheme: 'classic', fontTheme: 'default' });
     R.sp.ok = OK(R.sp.checks);
   } catch (e) { R.sp.error = String(e); }
@@ -56,7 +57,7 @@
       var pl = await api.ai.providerList();
       R.prov.checks.list = pl.success && Array.isArray(pl.data) && pl.data.length >= 1;
       var pt = await api.ai.providerTest(pid);
-      R.prov.checks.test = pt.success && pt.data.ok === true;
+      R.prov.checks.test = pt.success && pt.data?.ok === true;
       var pu = await api.ai.providerUpdate(pid, { name: 'Smoke2' });
       R.prov.checks.update = pu.success && pu.data.name === 'Smoke2';
       var pd = await api.ai.providerDelete(pid);
@@ -85,16 +86,15 @@
   // ---- note ----
   try {
     var nf = await api.feed.create({ url: FEED + '?n=1', title: 'NS' });
-    if (nf.success) await api.sync.feed(nf.data.id);
-    var fl = await api.feed.list();
-    if (fl.success && fl.data.length > 0) {
-      var sa = await api.article.list({ feedId: fl.data[0].id });
+    if (nf.success) {
+      await api.sync.feed(nf.data.id);
+      // 直接查刚创建的 feed 下的 articles
+      var sa = await api.article.list({ feedId: nf.data.id });
       if (sa.success && sa.data.items.length > 0) {
         var aid = sa.data.items[0].id;
         var n = await api.note.create({ articleId: aid, markdownContent: 'x' });
-        R.note.checks.create = n.success && !!n.data.id;
+        R.note.checks.create = n.success && !!n.data?.id;
         if (n.success) {
-          R.note.checks.list = (await api.note.listByArticle(aid)).success && (await api.note.listByArticle(aid)).data.length >= 1;
           var nl = await api.note.listByArticle(aid);
           R.note.checks.list = nl.success && nl.data.length >= 1;
           var nu = await api.note.update(n.data.id, { markdownContent: 'y' });
