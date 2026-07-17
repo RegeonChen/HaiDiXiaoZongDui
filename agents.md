@@ -124,7 +124,8 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 3.4.1 + 3.4.4（7 项 UI 端工作）已完成并通过 8/8 smoke 验证**。Phase 4 Topic Tracking 待张晨阳/张宇凡/陈冠中协同开发。
+- 当前活动里程碑：**Phase 4 Topic Tracking 已开始；张宇凡负责的 Task 4.2 Topic-ready Content 已完成**。Task 4.1 专题 UI 和 Task 4.3 专题分析/持久化待联调。
+- **Task 4.2 Topic-ready Content（张宇凡）**：`topic-analysis-input.ts` 将 `Article + Feed` 转换为统一分析输入；正文按 cleaned Markdown → raw text → raw HTML 纯文本回退，时间按 published → fetched → created 回退，并提供规范 URL、长正文 SHA-256 指纹、传递式重复分组与可追溯的全量/去重视图。
 - **Phase 3.4 Bug Fix & UX Polish**（张晨阳）已完成：
   - **3.4.1.1 未读列表不同步**：`App.handleSelectArticle` 标记已读时同步更新 `articlesState` + `allArticlesState`，列表实时移除该文章。
   - **3.4.1.2 未读/星标计数不更新**：`handleToggleStar` 用同一个 `updateList` 闭包同步刷两个 state；`FeedList` 侧栏底部状态栏始终从 `allArticles` 计算 unread/starred 计数。

@@ -213,9 +213,11 @@
 
 ### Task 4.2 - Topic-ready Content (张宇凡)
 
+- **Status:** Completed (2026-07-17).
 - **Task Detail:** 为专题分析提供稳定的标题、发布时间、来源、正文和摘要文本，处理缺失字段与重复报道。
 - **Affected Areas:** 内容标准化、去重信息、同步后的分析输入。
 - **Verification:** 来自不同 Feed 的文章能够转换为统一、可比较的输入数据。
+- **Implementation:** `topic-analysis-input.ts` 输出可追溯的标准化文章、最佳可用正文层、UTC 时间回退、规范 URL、内容指纹、去重主文章和重复组；保留全量来源以供 Briefing 引用。
 
 ### Task 4.3 - Topic Analysis (陈冠中)
 

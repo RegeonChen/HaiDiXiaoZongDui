@@ -12,6 +12,8 @@ orchestration, and OPML import/export. It runs only in the Electron Main process
   Reader or AI first requests it, then reuse the persisted layers.
 - `SyncService`: coordinate one-feed/all-feed manual sync and expose progress.
 - `OpmlApplicationService`: import/export OPML files through a storage port.
+- `prepareTopicAnalysisInputs`: normalize persisted articles and feeds into stable,
+  source-attributed Phase 4 inputs, with exact URL/content duplicate groups.
 - `registerContentPipelineIpc`: register Task 2.2 IPC handlers after stores exist.
 
 ## Task 2.3 integration
@@ -58,3 +60,16 @@ IPC, SQLite, deduplication, lazy cleaning/cache, state, and OPML path.
   legacy `gb2312` declarations are normalized to `gbk`.
 - Reader regression fixtures cover mixed Chinese/English text, long code lines and
   wide tables at the minimum reader-pane width without overflowing the window.
+
+## Phase 4 topic-ready content
+
+`prepareTopicAnalysisInputs(articles, feeds)` produces two coordinated views:
+
+- `items` retains every normalized article for source traceability.
+- `uniqueItems` keeps one representative for matching and clustering, while
+  `duplicateGroups` maps canonical-URL and exact long-content duplicates back to
+  every original article ID.
+
+The normalized input prefers cleaned Markdown, then raw text, then safe plain text
+extracted from raw HTML. Missing titles, sources and publish times use deterministic
+fallbacks, and tracking parameters are removed from canonical article URLs.

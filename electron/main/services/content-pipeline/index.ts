@@ -15,6 +15,18 @@ export {
   parseOpml
 } from './opml-service';
 export { SyncService } from './sync-service';
+export {
+  canonicalizeArticleUrl,
+  normalizeTopicAnalysisInput,
+  prepareTopicAnalysisInputs
+} from './topic-analysis-input';
+export type {
+  TopicAnalysisBatch,
+  TopicAnalysisInput,
+  TopicContentSource,
+  TopicDuplicateGroup,
+  TopicPublishedAtSource
+} from './topic-analysis-input';
 export type { FeedSyncStore, FeedSyncTarget, PipelineSaveResult } from './sync-service';
 export type { OpmlFeedStore } from './opml-service';
 export type {
