@@ -91,6 +91,7 @@ const SMOKE_FLAGS = {
   smokePhase2: process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1',
   smokeRealFeed: process.env['JUHE_SHIVI_SMOKE_REAL_FEED'] === '1',
   smokeTask33: process.env['JUHE_SHIVI_SMOKE_TASK33'] === '1',
+  smokeTopic: process.env['JUHE_SHIVI_SMOKE_TOPIC'] === '1',
   seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
   seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
@@ -179,12 +180,78 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeUI = SMOKE_FLAGS.smokeUi;
   const smokeUiReal = SMOKE_FLAGS.smokeUiReal;
   const smokeTask33 = SMOKE_FLAGS.smokeTask33;
+  const smokeTopic = SMOKE_FLAGS.smokeTopic;
   const feedUrl = SMOKE_FLAGS.feedUrl;
   const aiBaseUrl = SMOKE_FLAGS.aiBaseUrl;
   const aiKey = SMOKE_FLAGS.aiKey;
   let probe: string;
 
-  if (smokePhase2) {
+  // Phase 4.1 smoke: 优先级最高，避免被 smokeUiReal 拦截
+  if (smokeTopic) {
+    // Phase 4.1 smoke: 专题 UI 完整化（list + 4 tab 详情）+ IPC stub 调用
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { topic: { ok: false, error: null, checks: {} } };
+        try {
+          // 1) 切到 topics 页面（nav 7 项：topics=索引 5）
+          const navBtns = document.querySelectorAll('.app-header__nav-btn');
+          const topicsNavBtn = navBtns[5];
+          topicsNavBtn?.click();
+          await waitFor(() => !!document.querySelector('.topics-page'), { timeout: 3000 });
+          report.topic.checks.topicsPageRendered = !!document.querySelector('.topics-page');
+
+          // 2) TopicsPage 应该有标题 + 新建按钮（即使后端 stub 也会渲染）
+          await waitFor(() => !!document.querySelector('.topics-page__title'), { timeout: 2000 });
+          const titleEl = document.querySelector('.topics-page__title');
+          report.topic.checks.titleText = titleEl?.textContent?.includes('专题') ?? false;
+          const newBtn = document.querySelector('.topics-page__new-btn');
+          report.topic.checks.newBtnVisible = !!newBtn;
+
+          // 3) stub 状态下应该显示 "等待 4.3 接入" 提示 OR "还没有专题" empty
+          //    EmptyView 渲染为 .status-view；自定义 placeholder 是 .topics-page__placeholder
+          const placeholder = document.querySelector('.topics-page__placeholder, .status-view, .status-title');
+          report.topic.checks.placeholderOrEmptyVisible = !!placeholder;
+
+          // 4) IPC topicList 调用（应该不抛错，返回 NOT_IMPLEMENTED error）
+          const listR = await window.api.topic.list();
+          report.topic.checks.ipcTopicListOk = listR !== undefined;
+          // 验证 5 个 topic IPC 都能调到（即使返回 NOT_IMPLEMENTED）
+          const createR = await window.api.topic.create({ name: 'smoke-topic', description: 'x' });
+          const getR = await window.api.topic.get('non-existent');
+          const updateR = await window.api.topic.update('non-existent', { name: 'y' });
+          const deleteR = await window.api.topic.delete('non-existent');
+          const getArticlesR = await window.api.topic.getArticles('non-existent');
+          report.topic.checks.ipcAllReachable = [
+            createR, getR, updateR, deleteR, getArticlesR
+          ].every((r) => r !== undefined);
+          const allStubbed = [createR, getR, updateR, deleteR, getArticlesR].every(
+            (r) => !r || !r.success
+          );
+          report.topic.checks.allStubbed = allStubbed;
+
+          report.topic.ok = [
+            'topicsPageRendered', 'titleText', 'newBtnVisible', 'placeholderOrEmptyVisible',
+            'ipcTopicListOk', 'ipcAllReachable', 'allStubbed'
+          ].every((k) => report.topic.checks[k] === true);
+        } catch (e) {
+          report.topic.error = String(e);
+          report.topic.stack = (e instanceof Error) ? e.stack : null;
+        }
+        return JSON.stringify(report);
+      })()
+    `;
+  } else if (smokePhase2) {
     probe = `
       (async () => {
         const report = { phase2: { ok: false, error: null, checks: {} } };
@@ -756,7 +823,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             navBtn4?.click();
             await sleep(120);
             integrationReport.checks.topicsPageRendered = !!document.querySelector('.topics-page');
-            integrationReport.checks.topicsPlaceholder = !!document.querySelector('.topics-page__placeholder');
+            integrationReport.checks.topicsPlaceholder = !!document.querySelector('.topics-page__placeholder, .topics-page .status-view');
 
             // 10) LogsPage：占位
             const navBtn5 = navBtns[6]; // logs（Phase 3.4.4.4 后索引 +1）
@@ -987,6 +1054,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"phase2":{"ok":true');
     } else if (smokeRealFeed) {
       pass = raw.includes('"realFeed":{"ok":true');
+    } else if (smokeTopic) {
+      pass = raw.includes('"topic":{"ok":true');
     } else if (smokeV2) {
       pass = raw.includes('"db":{"ok":true');
     } else if (smokeUiReal) {

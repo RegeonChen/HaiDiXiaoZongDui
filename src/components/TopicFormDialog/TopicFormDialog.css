@@ -1,0 +1,133 @@
+/**
+ * TopicFormDialog — 专题创建/编辑对话框
+ */
+.topic-form-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.topic-form-dialog {
+  background: var(--bg-elev);
+  color: var(--fg);
+  border-radius: 10px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.topic-form-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.topic-form-dialog__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.topic-form-dialog__close {
+  background: transparent;
+  border: 0;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--fg-soft);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.topic-form-dialog__close:hover {
+  background: var(--bg-elev-hover);
+  color: var(--fg);
+}
+
+.topic-form-dialog__body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.topic-form-dialog__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.topic-form-dialog__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.topic-form-dialog__required {
+  color: #e74c3c;
+  margin-left: 2px;
+}
+
+.topic-form-dialog__input,
+.topic-form-dialog__textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+.topic-form-dialog__input:focus,
+.topic-form-dialog__textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.topic-form-dialog__textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.topic-form-dialog__hint {
+  font-size: 11px;
+  color: var(--fg-soft);
+}
+
+.topic-form-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.topic-form-dialog__btn {
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.topic-form-dialog__btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.topic-form-dialog__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.topic-form-dialog__btn--primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}

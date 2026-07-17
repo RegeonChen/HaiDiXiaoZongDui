@@ -1,0 +1,130 @@
+/**
+ * TopicDetail — 专题详情 4 tab 容器
+ */
+.topic-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.topic-detail__header {
+  padding: 16px 24px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-elev);
+}
+
+.topic-detail__back-btn {
+  background: transparent;
+  border: 0;
+  color: var(--fg-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+  transition: color 0.15s, background 0.15s;
+}
+.topic-detail__back-btn:hover {
+  color: var(--fg);
+  background: var(--bg-elev-hover);
+}
+
+.topic-detail__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topic-detail__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.topic-detail__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.topic-detail__action-btn {
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.topic-detail__action-btn:hover {
+  background: var(--bg-elev-hover);
+}
+
+.topic-detail__desc {
+  margin: 8px 0 0 0;
+  font-size: 13px;
+  color: var(--fg-soft);
+}
+
+.topic-detail__keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.topic-detail__keyword {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--fg-soft);
+  border: 1px solid var(--border-soft);
+}
+
+.topic-detail__tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-elev);
+}
+
+.topic-detail__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.topic-detail__tab:hover {
+  color: var(--fg);
+}
+.topic-detail__tab.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+
+.topic-detail__tab-icon {
+  font-size: 14px;
+}
+
+.topic-detail__content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 24px;
+}

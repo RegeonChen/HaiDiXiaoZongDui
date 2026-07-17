@@ -21,6 +21,9 @@ import type {
   Topic,
   TopicCreateInput,
   TopicUpdateInput,
+  Briefing,
+  TimelineEntry,
+  EventGroup,
   AIProvider,
   AIProviderCreateInput,
   AIProviderUpdateInput,
@@ -308,6 +311,30 @@ export class MockDataSource implements DataSource {
 
   async topicGetArticles(_topicId: string): Promise<DataSourceState<Article[]>> {
     return { kind: 'ready', data: [] };
+  }
+
+  async topicGetTimeline(_topicId: string): Promise<DataSourceState<TimelineEntry[]>> {
+    return { kind: 'ready', data: [] };
+  }
+
+  async topicGetEventGroups(_topicId: string): Promise<DataSourceState<EventGroup[]>> {
+    return { kind: 'ready', data: [] };
+  }
+
+  async topicGenerateBriefing(_topicId: string): Promise<{ ok: boolean; message: string }> {
+    return { ok: false, message: 'Mock 模式不支持 AI 简报生成' };
+  }
+
+  async topicGetBriefing(_topicId: string): Promise<DataSourceState<Briefing | null>> {
+    return { kind: 'ready', data: null };
+  }
+
+  async topicUpdateBriefing(_topicId: string, _editedContent: string): Promise<DataSourceState<Briefing>> {
+    return { kind: 'error', error: 'Mock 模式不支持编辑简报' };
+  }
+
+  async topicExportBriefing(_topicId: string, _format: ExportFormat): Promise<DataSourceState<string>> {
+    return { kind: 'error', error: 'Mock 模式不支持导出简报' };
   }
 
   // ============== AI Provider ==============

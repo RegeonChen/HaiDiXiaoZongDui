@@ -482,7 +482,7 @@ export function App() {
       pageSlot = <DigestsPage onToast={pushToast} />;
       break;
     case 'topics':
-      pageSlot = <TopicsPage />;
+      pageSlot = <TopicsPage onToast={pushToast} />;
       break;
     case 'logs':
       pageSlot = <LogsPage />;

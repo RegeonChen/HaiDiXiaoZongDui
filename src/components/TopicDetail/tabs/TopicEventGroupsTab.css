@@ -1,0 +1,125 @@
+/**
+ * TopicEventGroupsTab — 事件分组卡片（可折叠）
+ */
+.topic-event-groups {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.topic-event-group {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.topic-event-group__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--fg);
+  font: inherit;
+  transition: background 0.15s;
+}
+.topic-event-group__header:hover {
+  background: var(--bg-elev-hover);
+}
+
+.topic-event-group__rail {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.topic-event-group__chevron {
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.topic-event-group__summary {
+  flex: 1;
+  min-width: 0;
+}
+
+.topic-event-group__name {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.topic-event-group__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.topic-event-group__count {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.topic-event-group__range {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+}
+
+.topic-event-group__body {
+  padding: 0 16px 12px 42px;
+  border-top: 1px solid var(--border-soft);
+  background: var(--bg);
+}
+
+.topic-event-group__loading,
+.topic-event-group__empty {
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--fg-soft);
+  font-style: italic;
+}
+
+.topic-event-group__articles {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.topic-event-group__article {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.topic-event-group__article-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topic-event-group__article-feed {
+  flex-shrink: 0;
+  color: var(--fg-soft);
+  font-size: 11px;
+  padding: 1px 6px;
+  background: var(--bg-elev);
+  border-radius: 3px;
+}

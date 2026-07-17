@@ -1,0 +1,217 @@
+/**
+ * TopicBriefingTab — 简报展示 + 生成 + 导出
+ */
+.topic-briefing {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 800px;
+}
+
+.topic-briefing__empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 0;
+}
+
+.topic-briefing__generate-btn {
+  padding: 10px 24px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: white;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.topic-briefing__generate-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.topic-briefing__generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.topic-briefing__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topic-briefing__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.topic-briefing__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.topic-briefing__btn {
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.topic-briefing__btn:hover:not(:disabled) {
+  background: var(--bg-elev-hover);
+}
+.topic-briefing__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.topic-briefing__btn--primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.topic-briefing__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.topic-briefing__edited-tag {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.topic-briefing__body {
+  margin-top: 8px;
+}
+
+.topic-briefing__content {
+  padding: 16px 20px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--fg);
+}
+
+.topic-briefing__content p {
+  margin: 0 0 12px 0;
+}
+.topic-briefing__content h1,
+.topic-briefing__content h2,
+.topic-briefing__content h3 {
+  margin: 16px 0 8px 0;
+  color: var(--fg);
+}
+.topic-briefing__content code {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+.topic-briefing__content a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.topic-briefing__content a:hover {
+  text-decoration: underline;
+}
+
+.topic-briefing__editor {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.topic-briefing__conclusions {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.topic-briefing__conclusions-title {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.topic-briefing__conclusions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.topic-briefing__conclusion {
+  padding: 10px 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+}
+
+.topic-briefing__conclusion-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.topic-briefing__conclusion-num {
+  font-weight: 600;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.topic-briefing__conclusion-text {
+  flex: 1;
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.topic-briefing__conclusion-support,
+.topic-briefing__conclusion-diff {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--fg-soft);
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.topic-briefing__conclusion-support-label,
+.topic-briefing__conclusion-diff-label {
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.topic-briefing__conclusion-ids {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: var(--fg-soft);
+  word-break: break-all;
+}

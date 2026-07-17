@@ -124,7 +124,24 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 4 Topic Tracking 已开始；张宇凡负责的 Task 4.2 Topic-ready Content 已完成**。Task 4.1 专题 UI 和 Task 4.3 专题分析/持久化待联调。
+- 当前活动里程碑：**Phase 4.1 专题 UI 完整化已完成**（A）。Task 4.2（张宇凡）已完成；Task 4.3（陈冠中）Topic 仓储 + 匹配 + Briefing Agent 仍 stub 待落地。
+- **Task 4.1 专题 UI 完整化**（张晨阳）：
+  - **FullDataSource 接口扩展**：6 个新方法 `topicGetTimeline` / `topicGetEventGroups` / `topicGenerateBriefing` / `topicGetBriefing` / `topicUpdateBriefing` / `topicExportBriefing`，IpcDataSource + MockDataSource 同步实现
+  - **TopicsPage 完整化**（替代占位 stub）：
+    - 列表视图：专题卡片 + 关键词 tag + 元数据 + 编辑/删除按钮
+    - 创建/编辑对话框 `TopicFormDialog`（name/description/keywords 三个字段，Esc/点 backdrop 关闭，关键词自动小写+去重+中英文逗号分隔）
+    - stub 状态下显示"等待 4.3 接入"占位 + 提供新建入口（创建会失败但用户能立即尝试）
+  - **TopicDetail 4 tab 容器**（`src/components/TopicDetail/TopicDetail.tsx`）：
+    - 顶栏：返回列表 + 专题名 + 编辑按钮 + 描述 + 关键词 tag
+    - 4 tab sub-nav：Articles / Timeline / EventGroups / Briefing
+    - 按需 lazy load（切到 tab 才发请求）+ loading/empty/error 三态
+  - **Articles tab**：复用 `ArticleList` 渲染关联文章
+  - **Timeline tab**：左 rail 时间线 + 右内容卡片；`newInformation` 字段高亮"新增"信息
+  - **EventGroups tab**：可折叠卡片，按 `startDate` 倒序；展开后调 `topicGetArticles` 加载该事件下的文章
+  - **Briefing tab**：生成 / 编辑 / 导出 Markdown / 导出 HTML 4 个操作；正文用 `renderMarkdown` 渲染；结论列表展示 `[N]` + 支撑文章 ID + viewpointDiff；导出走 Blob 下载
+  - **smoke-4.1 探针**（`scripts/smoke-4.1.cjs`）：7 项校验（page 渲染 / 标题 / 新建按钮 / 占位 / 5 个 IPC 可达 / 全部 stub）+ `npm run smoke:topic` script
+  - **smoke-3.4-integration 探针适配**：`topicsPlaceholder` 选择器增加 `.topics-page .status-view` 兼容新版 TopicsPage
+  - **9/9 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / **smoke:topic**（新增）。
 - **Task 4.2 Topic-ready Content（张宇凡）**：`topic-analysis-input.ts` 将 `Article + Feed` 转换为统一分析输入；正文按 cleaned Markdown → raw text → raw HTML 纯文本回退，时间按 published → fetched → created 回退，并提供规范 URL、长正文 SHA-256 指纹、传递式重复分组与可追溯的全量/去重视图。
 - **Phase 3.4 Bug Fix & UX Polish**（张晨阳）已完成：
   - **3.4.1.1 未读列表不同步**：`App.handleSelectArticle` 标记已读时同步更新 `articlesState` + `allArticlesState`，列表实时移除该文章。
@@ -332,6 +349,17 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 - **2026-07-17**：Seed 模式（张晨阳）：
   - 新增 `scripts/seed-test-feeds.cjs`（6 推荐 URL：阮一峰 / 少数派 / antirez / HN / Simon Willison / JSON Feed Spec，知乎日报 404 移除） + 主进程 `runSeedFeeds()` + `SMOKE_FLAGS.seedFeeds/seedList` + `app.setPath` 加 seedFeeds 分支
   - 6 源共 165 篇文章入数据库；保留 userData 不删，方便 dev 模式直接查看（默认写到 OS userData，JUHE_SHIVI_USER_DATA env 覆盖）
+- **2026-07-17**：Task 4.1 专题 UI 完整化（张晨阳）：
+  - FullDataSource 接口 + IpcDataSource + MockDataSource 扩展 6 个 topic 4-tab 方法（`topicGetTimeline` / `topicGetEventGroups` / `topicGenerateBriefing` / `topicGetBriefing` / `topicUpdateBriefing` / `topicExportBriefing`）
+  - TopicsPage 完整化：列表（卡片 + 关键词 tag + 编辑/删除）+ TopicFormDialog（创建/编辑共用）+ stub 状态下显示"等待 4.3 接入"占位 + 仍提供新建入口
+  - TopicDetail 4 tab 容器：返回列表 + 4 tab sub-nav + 按需 lazy load
+    - Articles tab：复用 ArticleList
+    - Timeline tab：左 rail 时间线 + newInformation 高亮
+    - EventGroups tab：可折叠卡片 + 按需加载组内文章
+    - Briefing tab：生成 / 编辑 / 导出 Markdown/HTML（Blob 下载）+ 结论追溯 [N] 列表 + 支撑文章 ID + viewpointDiff
+  - smoke-4.1 探针（7 项校验）+ `npm run smoke:topic` script
+  - smoke-3.4-integration 探针适配 `topicsPlaceholder` 选择器（`.topics-page__placeholder, .topics-page .status-view`）
+  - **9/9 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic
 
 ## 路线图
 

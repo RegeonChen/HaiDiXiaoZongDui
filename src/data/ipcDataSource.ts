@@ -19,6 +19,9 @@ import type {
   Topic,
   TopicCreateInput,
   TopicUpdateInput,
+  Briefing,
+  TimelineEntry,
+  EventGroup,
   AIProvider,
   AIProviderCreateInput,
   AIProviderUpdateInput,
@@ -79,13 +82,25 @@ export interface FullDataSource extends DataSource {
   digestDelete(id: string): Promise<void>;
   digestExport(id: string, format: ExportFormat): Promise<DataSourceState<string>>;
 
-  // --- Topic（Phase 3.3 已实现，UI 暂时只 list/create/update/delete）---
+  // --- Topic（Phase 4.1 完整化：list/create/update/delete + 4 tab 数据）---
   topicList(): Promise<DataSourceState<Topic[]>>;
   topicGet(id: string): Promise<DataSourceState<Topic>>;
   topicCreate(input: TopicCreateInput): Promise<DataSourceState<Topic>>;
   topicUpdate(id: string, input: TopicUpdateInput): Promise<DataSourceState<Topic>>;
   topicDelete(id: string): Promise<void>;
   topicGetArticles(topicId: string): Promise<DataSourceState<Article[]>>;
+  /** 合并多源时间线（Phase 4.1 Timeline tab） */
+  topicGetTimeline(topicId: string): Promise<DataSourceState<TimelineEntry[]>>;
+  /** 事件分组（Phase 4.1 EventGroups tab） */
+  topicGetEventGroups(topicId: string): Promise<DataSourceState<EventGroup[]>>;
+  /** 生成简报（Phase 4.1 Briefing tab，AI 触发） */
+  topicGenerateBriefing(topicId: string): Promise<{ ok: boolean; message: string }>;
+  /** 获取最新简报（含 editedContent） */
+  topicGetBriefing(topicId: string): Promise<DataSourceState<Briefing | null>>;
+  /** 用户编辑简报后保存 */
+  topicUpdateBriefing(topicId: string, editedContent: string): Promise<DataSourceState<Briefing>>;
+  /** 导出简报（Markdown / HTML） */
+  topicExportBriefing(topicId: string, format: ExportFormat): Promise<DataSourceState<string>>;
 
   // --- AI Provider ---
   aiProviderList(): Promise<DataSourceState<AIProvider[]>>;
@@ -262,6 +277,31 @@ export class IpcDataSource implements FullDataSource {
 
   async topicGetArticles(topicId: string): Promise<DataSourceState<Article[]>> {
     return unwrap(await window.api.topic.getArticles(topicId));
+  }
+
+  async topicGetTimeline(topicId: string): Promise<DataSourceState<TimelineEntry[]>> {
+    return unwrap(await window.api.topic.getTimeline(topicId));
+  }
+
+  async topicGetEventGroups(topicId: string): Promise<DataSourceState<EventGroup[]>> {
+    return unwrap(await window.api.topic.getEventGroups(topicId));
+  }
+
+  async topicGenerateBriefing(topicId: string): Promise<{ ok: boolean; message: string }> {
+    const r = await window.api.topic.generateBriefing(topicId);
+    return r.success ? { ok: true, message: '已生成' } : { ok: false, message: r.error?.message ?? '生成失败' };
+  }
+
+  async topicGetBriefing(topicId: string): Promise<DataSourceState<Briefing | null>> {
+    return unwrap(await window.api.topic.getBriefing(topicId));
+  }
+
+  async topicUpdateBriefing(topicId: string, editedContent: string): Promise<DataSourceState<Briefing>> {
+    return unwrap(await window.api.topic.updateBriefing(topicId, editedContent));
+  }
+
+  async topicExportBriefing(topicId: string, format: ExportFormat): Promise<DataSourceState<string>> {
+    return unwrap(await window.api.topic.exportBriefing(topicId, format));
   }
 
   // ============== AI Provider ==============
