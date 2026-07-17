@@ -30,7 +30,8 @@ import type {
   OpmlImportResult,
   ExportFormat,
   Language,
-  SummaryDetailLevel
+  SummaryDetailLevel,
+  AITranslationProgressEvent
 } from '@shared/types';
 import type { DataSource, DataSourceState } from '../types/dataSource';
 
@@ -113,6 +114,7 @@ export interface FullDataSource extends DataSource {
   aiGenerateSummary(articleId: string, language?: Language, detailLevel?: SummaryDetailLevel): Promise<{ ok: boolean; message: string }>;
   aiGetSummary(articleId: string): Promise<DataSourceState<string>>;
   aiGenerateTranslation(articleId: string, targetLanguage?: Language): Promise<{ ok: boolean; message: string }>;
+  aiSubscribeTranslationProgress(articleId: string, listener: (event: AITranslationProgressEvent) => void): () => void;
   aiGetTranslation(articleId: string): Promise<DataSourceState<Array<{ index: number; original: string; translated: string }>>>;
   aiSuggestTags(articleId: string): Promise<{ ok: boolean; message: string }>;
   aiGetTagSuggestions(articleId: string): Promise<DataSourceState<Array<{ name: string; confidence: number; reason: string }>>>;
@@ -354,6 +356,15 @@ export class IpcDataSource implements FullDataSource {
     const r = await window.api.ai.generateTranslation(articleId, targetLanguage);
     if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
     return { ok: true, message: '翻译已生成' };
+  }
+
+  aiSubscribeTranslationProgress(
+    articleId: string,
+    listener: (event: AITranslationProgressEvent) => void
+  ): () => void {
+    return window.api.ai.onTranslationProgress((event) => {
+      if (event.articleId === articleId) listener(event);
+    });
   }
 
   async aiGetTranslation(articleId: string): Promise<DataSourceState<Array<{ index: number; original: string; translated: string }>>> {

@@ -3,8 +3,8 @@
  *  - 顶部：URL 链接（带 link 图标）
  *  - 标题：serif 大字
  *  - 工具栏：星标 / 打开原文 / AI（摘要 / 翻译 / 标签建议 / 笔记 / 专题）
- *  - 正文：按需清洗的 Cleaned HTML
- *  - 底部：摘要 / 翻译结果折叠区
+ *  - 正文：默认显示 Cleaned HTML；翻译后切换为逐段原文 + 译文流
+ *  - 底部：摘要 / 标签 / 笔记结果区
  *
  * Phase 3 Integration：
  *  - 摘要：先 aiGenerateSummary 触发 AI 写入缓存，再 aiGetSummary 读取（带缓存）
@@ -44,13 +44,22 @@ interface ContentState {
 
 type AiPanel = 'summary' | 'translation' | 'tags' | 'note' | null;
 
+type TranslationParagraphStatus = 'pending' | 'ready' | 'failed';
+
+interface TranslationDisplayParagraph {
+  index: number;
+  original: string;
+  translated: string;
+  status: TranslationParagraphStatus;
+}
+
 export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleReaderProps) {
   const ds = useDataSource();
   const [content, setContent] = useState<ContentState>({ html: null, loading: false, error: null });
   const [activePanel, setActivePanel] = useState<AiPanel>(null);
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<string>('');
-  const [translationParagraphs, setTranslationParagraphs] = useState<Array<{ index: number; original: string; translated: string }>>([]);
+  const [translationParagraphs, setTranslationParagraphs] = useState<TranslationDisplayParagraph[]>([]);
   const [tagSuggestions, setTagSuggestions] = useState<Array<{ name: string; confidence: number; reason: string }>>([]);
   const [noteMarkdown, setNoteMarkdown] = useState('');
 
@@ -139,20 +148,52 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
     setBusy(true);
     setActivePanel('translation');
     setTranslationParagraphs([]);
+    let activeRunId = '';
+    let receivedInitialParagraphs = false;
+    const unsubscribe = ds.aiSubscribeTranslationProgress(article.id, (event) => {
+      if (event.type === 'started') {
+        activeRunId = event.runId;
+        receivedInitialParagraphs = true;
+        setTranslationParagraphs(event.paragraphs.map((paragraph) => ({
+          ...paragraph,
+          status: 'pending'
+        })));
+        return;
+      }
+
+      if (event.runId !== activeRunId) return;
+
+      if (event.type === 'segmentCompleted') {
+        setTranslationParagraphs((current) => current.map((paragraph) => (
+          paragraph.index === event.paragraph.index
+            ? { ...event.paragraph, status: 'ready' }
+            : paragraph
+        )));
+        return;
+      }
+
+      setTranslationParagraphs((current) => current.map((paragraph) => (
+        paragraph.status === 'ready' ? paragraph : { ...paragraph, status: 'failed' }
+      )));
+    });
     try {
       const gen = await ds.aiGenerateTranslation(article.id);
       if (!gen.ok) {
         onToast(`翻译失败：${gen.message}`, 'error');
+        // 在模型请求之前就失败（例如未配置 Provider）时没有段落状态框可保留，
+        // 回到原文，不能留下一个永远显示“正在按段落翻译”的加载提示。
+        if (!receivedInitialParagraphs) setActivePanel(null);
         return;
       }
       const r = await ds.aiGetTranslation(article.id);
       if (r.kind === 'ready') {
-        setTranslationParagraphs(r.data);
+        setTranslationParagraphs(r.data.map((paragraph) => ({ ...paragraph, status: 'ready' })));
         onToast('翻译已生成', 'success');
       } else {
         onToast(`读取翻译失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
       }
     } finally {
+      unsubscribe();
       setBusy(false);
     }
   }, [article, ds, onToast]);
@@ -327,11 +368,41 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
             <LoadingView message="正在清洗正文…" />
           ) : content.error ? (
             <ErrorView message={content.error} onRetry={retry} />
+          ) : activePanel === 'translation' && translationParagraphs.length > 0 ? (
+            <div className="article-reader__content article-reader__bilingual-content">
+              {translationParagraphs.map((paragraph) => (
+                <section key={paragraph.index} className="article-reader__translation-item">
+                  <div
+                    className="article-reader__translation-original"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(paragraph.original) }}
+                  />
+                  {paragraph.status === 'ready' ? (
+                    <div
+                      className="article-reader__translation-translated"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(paragraph.translated) }}
+                    />
+                  ) : (
+                    <div
+                      className={`article-reader__translation-translated article-reader__translation-status article-reader__translation-status--${paragraph.status}`}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {paragraph.status === 'pending' ? '翻译中…' : '翻译失败'}
+                    </div>
+                  )}
+                </section>
+              ))}
+            </div>
           ) : content.html ? (
+            <>
             <div
               className="article-reader__content"
               dangerouslySetInnerHTML={{ __html: content.html }}
             />
+              {activePanel === 'translation' && (
+                <LoadingView message="正在按段落翻译…" />
+              )}
+            </>
           ) : (
             <EmptyView title="此文章暂无正文" hint="可能还没有内容，或者源站返回为空。" />
           )}
@@ -349,31 +420,6 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
               />
             ) : (
               <LoadingView message="正在生成摘要…" />
-            )}
-          </div>
-        )}
-
-        {activePanel === 'translation' && (
-          <div className="article-reader__ai-panel">
-            <h3>🌐 双语翻译</h3>
-            {translationParagraphs.length > 0 ? (
-              <ol className="article-reader__translation">
-                {translationParagraphs.map((p) => (
-                  <li key={p.index} className="article-reader__translation-item">
-                    {/* Phase 3.4.1.4：原文/译文都做简易 Markdown 渲染 */}
-                    <div
-                      className="article-reader__translation-original"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(p.original) }}
-                    />
-                    <div
-                      className="article-reader__translation-translated"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(p.translated) }}
-                    />
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <LoadingView message="正在翻译…" />
             )}
           </div>
         )}

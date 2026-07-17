@@ -40,7 +40,7 @@ import {
 } from './services/content-pipeline/ipc-handlers.js';
 import { OpmlApplicationService } from './services/content-pipeline/opml-service.js';
 import { SyncService } from './services/content-pipeline/sync-service.js';
-import { IPC_CHANNELS, type IpcResult } from '../../shared/ipc.js';
+import { IPC_CHANNELS, IPC_EVENTS, type IpcResult } from '../../shared/ipc.js';
 import {
   DEFAULT_SETTINGS,
   type AIProvider,
@@ -48,6 +48,7 @@ import {
   type AIProviderUpdateInput,
   type AISummary,
   type AITranslation,
+  type AITranslationProgressEvent,
   type AITagSuggestion,
   type AppSettings,
   type Article,
@@ -72,7 +73,10 @@ import {
 } from '../../shared/types.js';
 
 import { generateSummary } from './services/ai/summary-agent.js';
-import { generateTranslation } from './services/ai/translation-agent.js';
+import {
+  generateTranslation,
+  type TranslationGenerationProgressEvent
+} from './services/ai/translation-agent.js';
 import { suggestTags } from './services/ai/tag-agent.js';
 import { testConnection } from './services/ai/openai-client.js';
 
@@ -1395,7 +1399,25 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
     } catch (e) { return fail('AI_SUMMARY_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.AI_GENERATE_TRANSLATION, async (_, args): Promise<IpcResult<AITranslation>> => {
+  trustedIpcMain.handle(IPC_CHANNELS.AI_GENERATE_TRANSLATION, async (event, args): Promise<IpcResult<AITranslation>> => {
+    const runId = crypto.randomUUID();
+    const sendProgress = (progress: TranslationGenerationProgressEvent): void => {
+      const payload: AITranslationProgressEvent = {
+        ...progress,
+        articleId: args?.articleId ?? '',
+        runId
+      };
+      event.sender.send(IPC_EVENTS.AI_TRANSLATION_PROGRESS, payload);
+    };
+    const sendFailure = (message: string): void => {
+      const payload: AITranslationProgressEvent = {
+        type: 'failed',
+        articleId: args?.articleId ?? '',
+        runId,
+        message
+      };
+      event.sender.send(IPC_EVENTS.AI_TRANSLATION_PROGRESS, payload);
+    };
     try {
       if (!args?.articleId) return fail('INVALID_PARAMS', '缺少 articleId');
       const article = ArticleRepository.getById(args.articleId);
@@ -1407,12 +1429,18 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       if (!provider) return fail('NOT_FOUND', '默认 Provider 不存在');
       const paragraphs = await generateTranslation(provider, article.cleanedMarkdown, {
         targetLanguage: args.targetLanguage ?? settings.defaultTranslationTarget,
-        customPromptTemplate: settings.translationPromptTemplate, temperature: 0.3
+        customPromptTemplate: settings.translationPromptTemplate,
+        temperature: 0.3,
+        onProgress: sendProgress
       });
       const result: AITranslation = { id: crypto.randomUUID(), articleId: article.id, providerId: provider.id, modelName: provider.modelName, targetLanguage: args.targetLanguage ?? settings.defaultTranslationTarget, paragraphs, generatedAt: new Date().toISOString() };
       AiResultCache.set(article.id, 'translation', result);
       return ok(result);
-    } catch (e) { return fail('AI_TRANSLATION_FAILED', e instanceof Error ? e.message : String(e)); }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      sendFailure(message);
+      return fail('AI_TRANSLATION_FAILED', message);
+    }
   });
 
   trustedIpcMain.handle(IPC_CHANNELS.AI_SUGGEST_TAGS, async (_, args): Promise<IpcResult<AITagSuggestion>> => {

@@ -9,7 +9,6 @@ import type { Article, Briefing, EventGroup, Feed, Topic, TimelineEntry } from '
 import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../StatusView/LoadingView';
 import { ErrorView } from '../StatusView/ErrorView';
-import { EmptyView } from '../StatusView/EmptyView';
 import { TopicArticlesTab } from './tabs/TopicArticlesTab';
 import { TopicTimelineTab } from './tabs/TopicTimelineTab';
 import { TopicEventGroupsTab } from './tabs/TopicEventGroupsTab';
@@ -22,7 +21,6 @@ export type TopicTab = 'articles' | 'timeline' | 'events' | 'briefing';
 export interface TopicDetailProps {
   topicId: string;
   onBack: () => void;
-  onEdit: (topic: Topic) => void;
   onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
 }
 
@@ -33,7 +31,7 @@ const TAB_ITEMS: Array<{ id: TopicTab; label: string; icon: string; description:
   { id: 'briefing', label: '简报', icon: '📋', description: 'AI 生成的多源带引用简报' }
 ];
 
-export function TopicDetail({ topicId, onBack, onEdit, onToast }: TopicDetailProps) {
+export function TopicDetail({ topicId, onBack, onToast }: TopicDetailProps) {
   const ds = useDataSource();
   const [topic, setTopic] = useState<Topic | null | undefined>(undefined);
   const [tab, setTab] = useState<TopicTab>('articles');
@@ -113,7 +111,7 @@ export function TopicDetail({ topicId, onBack, onEdit, onToast }: TopicDetailPro
           setBriefing(r2.data);
           onToast('简报已生成', 'success');
         } else {
-          onToast(`读取简报失败：${r2.error}`, 'error');
+          onToast(`读取简报失败：${r2.kind === 'error' ? r2.error : '尚未就绪'}`, 'error');
         }
       } else {
         onToast(`简报生成失败：${r.message}`, 'error');
@@ -211,7 +209,7 @@ export function TopicDetail({ topicId, onBack, onEdit, onToast }: TopicDetailPro
                 onToast('简报已保存', 'success');
                 return true;
               }
-              onToast(`保存失败：${r.error}`, 'error');
+              onToast(`保存失败：${r.kind === 'error' ? r.error : '尚未就绪'}`, 'error');
               return false;
             }}
             onExport={async (format) => {
@@ -220,7 +218,7 @@ export function TopicDetail({ topicId, onBack, onEdit, onToast }: TopicDetailPro
                 onToast(`已导出 ${format.toUpperCase()}（${r.data.length} 字符）`, 'success');
                 return r.data;
               }
-              onToast(`导出失败：${r.error}`, 'error');
+              onToast(`导出失败：${r.kind === 'error' ? r.error : '尚未就绪'}`, 'error');
               return null;
             }}
             onToast={onToast}
@@ -243,7 +241,7 @@ export function TopicDetail({ topicId, onBack, onEdit, onToast }: TopicDetailPro
               onToast(`已更新「${value.name}」`, 'success');
               setEditing(false);
             } else {
-              onToast(`更新失败：${r.error}`, 'error');
+              onToast(`更新失败：${r.kind === 'error' ? r.error : '尚未就绪'}`, 'error');
             }
           }}
           onClose={() => setEditing(false)}

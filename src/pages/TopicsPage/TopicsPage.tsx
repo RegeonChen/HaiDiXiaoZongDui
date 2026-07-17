@@ -17,7 +17,7 @@ import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
 import { EmptyView } from '../../components/StatusView/EmptyView';
 import { TopicDetail } from '../../components/TopicDetail/TopicDetail';
-import { TopicFormDialog, type TopicFormValue } from '../../components/TopicFormDialog/TopicFormDialog';
+import { TopicFormDialog } from '../../components/TopicFormDialog/TopicFormDialog';
 import './TopicsPage.css';
 
 export interface TopicsPageProps {
@@ -42,7 +42,7 @@ export function TopicsPage({ onToast }: TopicsPageProps) {
       setTopics(r.data);
       setError(null);
     } else {
-      setError(r.error);
+      setError(r.kind === 'error' ? r.error : '正在加载专题');
       setTopics([]);
     }
   }, [ds]);
@@ -60,7 +60,6 @@ export function TopicsPage({ onToast }: TopicsPageProps) {
           setCurrentTopicId(null);
           void refresh();
         }}
-        onEdit={(t) => setFormDialog({ mode: 'edit', topic: t })}
         onToast={onToast}
       />
     );
@@ -207,7 +206,7 @@ export function TopicsPage({ onToast }: TopicsPageProps) {
               setFormDialog({ mode: 'closed' });
               await refresh();
             } else {
-              onToast(`创建失败：${r.error}`, 'error');
+              onToast(`创建失败：${r.kind === 'error' ? r.error : '尚未就绪'}`, 'error');
             }
           }}
           onClose={() => setFormDialog({ mode: 'closed' })}
@@ -229,7 +228,7 @@ export function TopicsPage({ onToast }: TopicsPageProps) {
               setFormDialog({ mode: 'closed' });
               await refresh();
             } else {
-              onToast(`更新失败：${r.error}`, 'error');
+              onToast(`更新失败：${r.kind === 'error' ? r.error : '尚未就绪'}`, 'error');
             }
           }}
           onClose={() => setFormDialog({ mode: 'closed' })}

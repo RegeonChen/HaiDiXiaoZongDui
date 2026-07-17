@@ -162,6 +162,13 @@ export const IPC_CHANNELS = {
 
 export type IpcChannel = typeof IPC_CHANNELS[keyof typeof IPC_CHANNELS];
 
+/**
+ * 单向进度事件。它们不是 `ipcRenderer.invoke()` 请求，故不放入 IpcRequestMap。
+ */
+export const IPC_EVENTS = {
+  AI_TRANSLATION_PROGRESS: 'ai:translationProgress'
+} as const;
+
 // ============================================================
 // 请求/响应类型映射
 // ============================================================

@@ -32,7 +32,8 @@ import type {
   OpmlImportResult,
   ExportFormat,
   Language,
-  SummaryDetailLevel
+  SummaryDetailLevel,
+  AITranslationProgressEvent
 } from '@shared/types';
 import type { DataSource, DataSourceState } from '../types/dataSource';
 import { MOCK_ARTICLES, MOCK_FEEDS } from './mockData';
@@ -401,6 +402,13 @@ export class MockDataSource implements DataSource {
     _targetLanguage?: Language
   ): Promise<{ ok: boolean; message: string }> {
     return { ok: false, message: 'mock 模式无 AI 服务' };
+  }
+
+  aiSubscribeTranslationProgress(
+    _articleId: string,
+    _listener: (event: AITranslationProgressEvent) => void
+  ): () => void {
+    return () => undefined;
   }
 
   async aiGetTranslation(_articleId: string): Promise<DataSourceState<Array<{ index: number; original: string; translated: string }>>> {

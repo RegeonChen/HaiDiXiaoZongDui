@@ -453,6 +453,32 @@ export interface AITranslation {
   generatedAt: IsoTimestamp;
 }
 
+/**
+ * 翻译运行期间从主进程推送到阅读器的进度事件。
+ *
+ * `started` 会一次性给出全部原文段落，阅读器据此立刻在每段后插入“翻译中”框；
+ * 随后的 `segmentCompleted` 只替换已完成的那一段，避免等待整篇文章翻译结束。
+ */
+export type AITranslationProgressEvent =
+  | {
+      type: 'started';
+      articleId: string;
+      runId: string;
+      paragraphs: TranslatedParagraph[];
+    }
+  | {
+      type: 'segmentCompleted';
+      articleId: string;
+      runId: string;
+      paragraph: TranslatedParagraph;
+    }
+  | {
+      type: 'failed';
+      articleId: string;
+      runId: string;
+      message: string;
+    };
+
 /** AI 标签推荐结果 */
 export interface AITagSuggestion {
   id: string;

@@ -8,12 +8,15 @@
  *  - 绝不暴露 ipcRenderer / process / require / fs 之类的底层 API
  */
 import { contextBridge, ipcRenderer } from 'electron';
+import type { IpcRendererEvent } from 'electron';
 import {
   IPC_CHANNELS,
+  IPC_EVENTS,
   type IpcResponse,
   type IpcArgs,
   type IpcChannel
 } from '../../shared/ipc.js';
+import type { AITranslationProgressEvent } from '../../shared/types.js';
 
 // ============================================================
 // 辅助：类型安全的 invoke 封装
@@ -134,6 +137,14 @@ const api = {
 
     generateTranslation: (articleId: string, targetLanguage?: IpcArgs<typeof IPC_CHANNELS.AI_GENERATE_TRANSLATION>['targetLanguage']): Promise<IpcResponse<typeof IPC_CHANNELS.AI_GENERATE_TRANSLATION>> =>
       invoke(IPC_CHANNELS.AI_GENERATE_TRANSLATION, { articleId, targetLanguage }),
+
+    onTranslationProgress: (listener: (event: AITranslationProgressEvent) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, progress: AITranslationProgressEvent): void => {
+        listener(progress);
+      };
+      ipcRenderer.on(IPC_EVENTS.AI_TRANSLATION_PROGRESS, handler);
+      return () => ipcRenderer.removeListener(IPC_EVENTS.AI_TRANSLATION_PROGRESS, handler);
+    },
 
     suggestTags: (articleId: string): Promise<IpcResponse<typeof IPC_CHANNELS.AI_SUGGEST_TAGS>> =>
       invoke(IPC_CHANNELS.AI_SUGGEST_TAGS, { articleId }),

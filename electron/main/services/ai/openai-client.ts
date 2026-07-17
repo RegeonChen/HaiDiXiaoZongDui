@@ -26,6 +26,8 @@ export interface ChatCompletionOptions {
   maxTokens?: number;
   /** 超时毫秒，默认 120_000（2 分钟） */
   timeoutMs?: number;
+  /** Qwen 混合思考模型可用；翻译等确定性任务应关闭思考。 */
+  enableThinking?: boolean;
 }
 
 interface OpenAIErrorResponse {
@@ -45,7 +47,12 @@ export async function chatCompletion(
   messages: ChatMessage[],
   options: ChatCompletionOptions = {}
 ): Promise<string> {
-  const { temperature = 0.3, maxTokens = 4096, timeoutMs = 120_000 } = options;
+  const {
+    temperature = 0.3,
+    maxTokens = 4096,
+    timeoutMs = 120_000,
+    enableThinking
+  } = options;
 
   // provider 不存明文 apiKey；需从 ai_providers 表补充
   // 调用方（Agent）负责传入已填充 apiKey 的 provider（通过 getById 内部获取）
@@ -71,7 +78,8 @@ export async function chatCompletion(
         model: provider.modelName,
         messages,
         temperature,
-        max_tokens: maxTokens
+        max_tokens: maxTokens,
+        ...(enableThinking === undefined ? {} : { enable_thinking: enableThinking })
       }),
       signal: controller.signal
     });
@@ -86,12 +94,13 @@ export async function chatCompletion(
     }
 
     const data = await response.json() as {
-      choices?: { message?: { content?: string; role?: string } }[];
+      choices?: { message?: { content?: unknown; reasoning_content?: unknown; role?: string } }[];
       error?: { message: string; type?: string };
       model?: string;
     };
 
-    const content = data.choices?.[0]?.message?.content;
+    const rawContent = data.choices?.[0]?.message?.content;
+    const content = extractMessageText(rawContent);
     if (!content) {
       // 提供更丰富的诊断信息，帮助用户排查模型/Provider 问题
       const detail: string[] = [];
@@ -99,8 +108,11 @@ export async function chatCompletion(
         detail.push('模型未返回 choices 数组');
       } else if (!data.choices[0].message) {
         detail.push('choices[0] 缺少 message 字段');
-      } else if (!data.choices[0].message.content) {
-        detail.push(`message.content 为空字符串或 ${typeof data.choices[0].message.content}`);
+      } else if (!content) {
+        detail.push(`message.content 无可用文本（原始类型: ${contentType(rawContent)}）`);
+        if (data.choices[0].message.reasoning_content) {
+          detail.push('模型只返回了 reasoning_content，未返回正式答案');
+        }
       }
       if (data.model) detail.push(`模型: ${data.model}`);
       if (data.error) detail.push(`API 错误: ${data.error.message}`);
@@ -117,6 +129,34 @@ export async function chatCompletion(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * OpenAI-compatible 服务中的 content 可能是字符串，也可能是文本 part 数组/对象。
+ * 只提取正式答案文本，不读取 reasoning_content。
+ */
+export function extractMessageText(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (Array.isArray(value)) {
+    const parts = value.map(extractMessageText).filter((part): part is string => !!part);
+    return parts.length > 0 ? parts.join('') : null;
+  }
+  if (!value || typeof value !== 'object') return null;
+
+  const record = value as Record<string, unknown>;
+  for (const key of ['text', 'content', 'value', 'output_text']) {
+    if (key in record) {
+      const text = extractMessageText(record[key]);
+      if (text) return text;
+    }
+  }
+  return null;
+}
+
+function contentType(value: unknown): string {
+  if (Array.isArray(value)) return 'array';
+  if (value === null) return 'null';
+  return typeof value;
 }
 
 /**

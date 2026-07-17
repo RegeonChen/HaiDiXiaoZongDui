@@ -303,33 +303,59 @@
   margin: 0;
 }
 
-.article-reader__translation {
-  list-style: decimal;
-  margin: 0;
-  padding: 0 0 0 20px;
+.article-reader__bilingual-content {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 1.4em;
 }
 
 .article-reader__translation-item {
-  padding: 8px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  padding: 0 0 1.4em;
+  border-bottom: 1px solid var(--border);
+}
+
+.article-reader__translation-item:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .article-reader__translation-original {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--fg-soft);
-  margin-bottom: 6px;
+  color: var(--fg);
+  margin-bottom: 0.55em;
 }
 
 .article-reader__translation-translated {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--fg);
+  font-size: 0.94em;
+  line-height: 1.75;
+  color: var(--fg-soft);
+  padding: 0.55em 0.8em;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.article-reader__translation-status {
+  min-height: 1.75em;
+  box-sizing: border-box;
+  color: var(--muted);
+  border-left-style: dashed;
+  background: var(--bg-elev);
+}
+
+.article-reader__translation-status--pending::before {
+  content: '◌';
+  display: inline-block;
+  margin-right: 0.45em;
+  color: var(--accent);
+}
+
+.article-reader__translation-status--failed {
+  color: #b54747;
+  border-left-color: #b54747;
+}
+
+.article-reader__translation-original > :last-child,
+.article-reader__translation-translated > :last-child {
+  margin-bottom: 0;
 }
 
 .article-reader__tag-suggestions {
@@ -392,4 +418,3 @@
   border-color: var(--accent);
   color: white;
 }
-

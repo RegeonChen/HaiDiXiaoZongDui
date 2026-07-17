@@ -16,28 +16,18 @@ import type { AIProvider, Language, TranslatedParagraph } from '../../../../shar
 // ============================================================
 
 const DEFAULT_TRANSLATION_PROMPT = [
-  'You are a professional translator. Translate the COMPLETE article chunk below.',
+  'You are a professional translator. Translate the ONE source paragraph below.',
   '',
   'Target language: {{targetLanguage}}',
   '',
-  'IMPORTANT — output format:',
-  'Split the article into logical paragraphs (preserve the original paragraph boundaries).',
-  'For each paragraph, output:',
-  '---',
-  'ORIGINAL: <original text>',
-  'TRANSLATED: <translated text>',
-  '---',
-  '',
   'Rules:',
-  '- Translate every paragraph completely, including headings and all body text.',
-  '- Never translate only the title or headings. Do not summarize, omit, merge, or shorten body paragraphs.',
-  '- Emit exactly one ORIGINAL/TRANSLATED block for every input paragraph, in the same order.',
+  '- Translate this paragraph completely. Do not summarize, omit, merge, or shorten it.',
   '- Preserve markdown formatting (links, bold, italic, code, lists, etc.).',
   '- Do not translate code blocks or URLs.',
   '- Keep technical terms accurate.',
-  '- Output ONLY the --- delimited blocks, no preamble or postamble.',
+  '- Output ONLY the translated paragraph. Do not repeat the source and do not add labels or commentary.',
   '',
-  'Article:',
+  'Source paragraph:',
   '{{content}}'
 ].join('\n');
 
@@ -54,7 +44,14 @@ export interface TranslationOptions {
   /** 用户自定义 Prompt 模板，null 时使用内置 */
   customPromptTemplate?: string | null;
   temperature?: number;
+  /** 每个段落完成时通知调用方，用于阅读器原地替换占位框。 */
+  onProgress?: (event: TranslationGenerationProgressEvent) => void;
 }
+
+/** 仅供主进程翻译运行时使用的逐段进度事件。 */
+export type TranslationGenerationProgressEvent =
+  | { type: 'started'; paragraphs: TranslatedParagraph[] }
+  | { type: 'segmentCompleted'; paragraph: TranslatedParagraph };
 
 // ============================================================
 // 公共 API
@@ -71,7 +68,8 @@ export async function generateTranslation(
   const {
     targetLanguage = 'zh',
     customPromptTemplate,
-    temperature = 0.3
+    temperature = 0.3,
+    onProgress
   } = options;
 
   const languageName = targetLanguage === 'zh' ? 'Simplified Chinese' : 'English';
@@ -80,6 +78,13 @@ export async function generateTranslation(
 
   const chunks = splitMarkdownIntoChunks(articleContent, MAX_CHUNK_CHARACTERS);
   const translated: TranslatedParagraph[] = [];
+
+  // 先发布完整的原文段落快照。这样在第一个模型请求完成前，阅读器就能给每段
+  // 原文后插入“翻译中”框，而不是等到整篇翻完才开始渲染双语内容。
+  onProgress?.({
+    type: 'started',
+    paragraphs: chunks.map((original, index) => ({ index, original, translated: '' }))
+  });
 
   for (const chunk of chunks) {
     const prompt = template
@@ -90,12 +95,20 @@ export async function generateTranslation(
     const output = await chatCompletion(
       provider,
       [{ role: 'user', content: prompt }],
-      { temperature, maxTokens: 8192 }
+      {
+        temperature,
+        maxTokens: 8192,
+        enableThinking: /^qwen3(?:[.\-]|$)/i.test(provider.modelName) ? false : undefined
+      }
     );
 
-    for (const paragraph of parseBilingualOutput(output, chunk)) {
-      translated.push({ ...paragraph, index: translated.length });
-    }
+    const paragraph = {
+      index: translated.length,
+      original: chunk,
+      translated: extractTranslatedText(output)
+    };
+    translated.push(paragraph);
+    onProgress?.({ type: 'segmentCompleted', paragraph });
   }
 
   return translated;
@@ -106,39 +119,20 @@ export async function generateTranslation(
 // ============================================================
 
 /**
- * 解析模型输出的 --- ORIGINAL / TRANSLATED --- 格式。
- * 解析失败时回退为整篇原文 + 整篇译文（一段）。
+ * 兼容用户旧自定义 Prompt 可能返回的 ORIGINAL / TRANSLATED 格式。
+ * 新默认 Prompt 只返回译文本身。
  */
-function parseBilingualOutput(text: string, fallbackOriginal: string): TranslatedParagraph[] {
-  const blocks = text.split(/\n---+\n?/).filter((s) => s.trim());
-  const result: TranslatedParagraph[] = [];
-  let index = 0;
+function extractTranslatedText(text: string): string {
+  const legacyBlocks = text.split(/\n---+\n?/).map((block) => block.trim()).filter(Boolean);
+  const legacyTranslations = legacyBlocks.flatMap((block) => {
+    const match = block.match(/(?:^|\n)(?:TRANSLATED|TRANSLATION|译文)\s*[:：]\s*([\s\S]*?)$/i);
+    return match?.[1]?.trim() ? [match[1].trim()] : [];
+  });
+  if (legacyTranslations.length > 0) return legacyTranslations.join('\n\n');
 
-  for (const block of blocks) {
-    // 匹配 ORIGINAL: 和 TRANSLATED: 段
-    const origMatch = block.match(/^ORIGINAL:\s*([\s\S]*?)(?=\nTRANSLATED:|\n?$)/m);
-    const transMatch = block.match(/TRANSLATED:\s*([\s\S]*?)$/m);
-
-    if (origMatch && transMatch) {
-      result.push({
-        index,
-        original: origMatch[1].trim(),
-        translated: transMatch[1].trim()
-      });
-      index++;
-    }
-  }
-
-  // 回退：解析失败时整篇作为一个段落
-  if (result.length === 0) {
-    result.push({
-      index: 0,
-      original: fallbackOriginal,
-      translated: text.trim()
-    });
-  }
-
-  return result;
+  return text
+    .replace(/^\s*(?:TRANSLATED|TRANSLATION|译文)\s*[:：]\s*/i, '')
+    .trim();
 }
 
 export function splitMarkdownIntoChunks(
@@ -150,23 +144,34 @@ export function splitMarkdownIntoChunks(
     throw new Error('maxCharacters must be a positive number');
   }
 
-  const paragraphs = content.split(/\n{2,}/).flatMap((paragraph) =>
+  return splitMarkdownParagraphs(content).flatMap((paragraph) =>
     splitLongParagraph(paragraph.trim(), Math.trunc(maxCharacters))
   ).filter(Boolean);
-  const chunks: string[] = [];
-  let current = '';
+}
 
-  for (const paragraph of paragraphs) {
-    const candidate = current ? `${current}\n\n${paragraph}` : paragraph;
-    if (candidate.length <= maxCharacters) {
-      current = candidate;
+function splitMarkdownParagraphs(content: string): string[] {
+  const paragraphs: string[] = [];
+  const current: string[] = [];
+  let fence: '```' | '~~~' | null = null;
+  const flush = (): void => {
+    const paragraph = current.join('\n').trim();
+    if (paragraph) paragraphs.push(paragraph);
+    current.length = 0;
+  };
+
+  for (const line of content.replace(/\r\n?/g, '\n').split('\n')) {
+    const fenceMatch = line.match(/^\s*(```|~~~)/);
+    if (fenceMatch) {
+      const marker = fenceMatch[1] as '```' | '~~~';
+      fence = fence === null ? marker : fence === marker ? null : fence;
+      current.push(line);
       continue;
     }
-    if (current) chunks.push(current);
-    current = paragraph;
+    if (!fence && line.trim() === '') flush();
+    else current.push(line);
   }
-  if (current) chunks.push(current);
-  return chunks;
+  flush();
+  return paragraphs;
 }
 
 function splitLongParagraph(paragraph: string, maxCharacters: number): string[] {

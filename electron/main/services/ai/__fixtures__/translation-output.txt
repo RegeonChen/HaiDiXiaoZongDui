@@ -1,10 +1,5 @@
+## 为什么 RSS 仍然重要
 ---
-ORIGINAL: ## Why RSS Still Matters
-TRANSLATED: ## 为什么 RSS 仍然重要
+RSS 让读者掌控自己关注的内容，而不是由算法决定接下来出现什么。
 ---
-ORIGINAL: RSS gives readers control over what they follow, without an algorithm deciding what appears next.
-TRANSLATED: RSS 让读者掌控自己关注的内容，而不是由算法决定接下来出现什么。
----
-ORIGINAL: It also keeps subscriptions portable between applications.
-TRANSLATED: 它还让订阅能够在不同应用之间迁移。
----
+它还让订阅能够在不同应用之间迁移。
