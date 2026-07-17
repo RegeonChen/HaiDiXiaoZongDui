@@ -7,6 +7,7 @@
  *  - 批量插入（INSERT OR IGNORE 基于 feed_id + guid 唯一索引去重）
  *  - 已读/星标状态更新
  *  - 按筛选条件分页查询
+ *  - Phase 3.4：文章模糊搜索（相关性打分排序，上限 20 篇）
  */
 
 import crypto from 'node:crypto';
@@ -61,6 +62,8 @@ const ARTICLE_SELECT = `
 export const ArticleRepository = {
   /**
    * 按筛选条件分页查询文章。
+   * 当 filter.search 非空时进入搜索模式：全量 LIKE 匹配 + JS 相关性打分排序，
+   * 返回 top N 结果（上限 filter.limit 或默认 20）。
    */
   list(filter: ArticleFilter = {}): { items: Article[]; total: number } {
     const db = getDatabase();
@@ -87,7 +90,31 @@ export const ArticleRepository = {
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    // 总数
+    // 搜索模式：全量查询所有匹配文章，JS 端打分排序，返回 top N
+    if (filter.search) {
+      const searchLimit = filter.limit || 20;
+      const allRows = db.exec(
+        `SELECT ${ARTICLE_SELECT} FROM articles ${where}
+         ORDER BY published_at DESC`,
+        params
+      );
+      const allItems: Article[] = allRows.length > 0
+        ? allRows[0].values.map(row => rowToArticle(allRows[0].columns, row))
+        : [];
+
+      if (allItems.length === 0) return { items: [], total: 0 };
+
+      const searchLower = filter.search.toLowerCase();
+      const scored = allItems.map(article => ({
+        article,
+        score: computeSearchScore(article, searchLower)
+      }));
+      scored.sort(compareScored);
+
+      const topItems = scored.slice(0, searchLimit).map(s => s.article);
+      return { items: topItems, total: allItems.length };
+    }
+
     const countRows = db.exec(`SELECT COUNT(*) AS cnt FROM articles ${where}`, params);
     const total = countRows.length > 0 ? (countRows[0].values[0][0] as number) : 0;
 
@@ -254,6 +281,59 @@ export const ArticleRepository = {
 // ============================================================
 // 内部辅助
 // ============================================================
+
+// ============================================================
+// 搜索相关性评分（Phase 3.4.3）
+// ============================================================
+
+/** 标题命中权重 */
+const SCORE_TITLE_HIT = 10;
+/** 正文命中权重 */
+const SCORE_BODY_HIT = 1;
+/** 标题完全一致额外加分 */
+const SCORE_TITLE_EXACT = 100;
+
+/**
+ * 按相关性得分 + 发布时间排序的比较器。
+ * 得分高排前，同分时越新排越前。
+ */
+function compareScored(
+  a: { article: Article; score: number },
+  b: { article: Article; score: number }
+): number {
+  if (b.score !== a.score) return b.score - a.score;
+  const aTime = a.article.publishedAt ? new Date(a.article.publishedAt).getTime() : 0;
+  const bTime = b.article.publishedAt ? new Date(b.article.publishedAt).getTime() : 0;
+  return bTime - aTime;
+}
+
+/** 统计 needle 在 haystack 中出现的次数（不区分大小写） */
+function countOccurrences(haystack: string, needle: string): number {
+  if (!needle) return 0;
+  let count = 0;
+  let pos = 0;
+  while ((pos = haystack.indexOf(needle, pos)) !== -1) {
+    count++;
+    pos += needle.length;
+  }
+  return count;
+}
+
+/** 根据文章 title / raw_text 与搜索词的匹配程度计算相关性得分 */
+function computeSearchScore(article: Article, searchLower: string): number {
+  let score = 0;
+  const title = (article.title ?? '').toLowerCase();
+  const body = (article.rawText ?? '').toLowerCase();
+
+  // 标题完全一致
+  if (title === searchLower) score += SCORE_TITLE_EXACT;
+  // 标题命中
+  score += countOccurrences(title, searchLower) * SCORE_TITLE_HIT;
+  // 正文命中
+  score += countOccurrences(body, searchLower) * SCORE_BODY_HIT;
+
+  return score;
+}
 
 function columnForSort(sortBy: string): string {
   switch (sortBy) {
