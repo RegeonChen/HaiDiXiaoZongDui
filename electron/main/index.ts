@@ -91,6 +91,8 @@ const SMOKE_FLAGS = {
   smokePhase2: process.env['JUHE_SHIVI_SMOKE_PHASE2'] === '1',
   smokeRealFeed: process.env['JUHE_SHIVI_SMOKE_REAL_FEED'] === '1',
   smokeTask33: process.env['JUHE_SHIVI_SMOKE_TASK33'] === '1',
+  seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
+  seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
   feedUrl: process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? '',
   aiBaseUrl: process.env['JUHE_SHIVI_SMOKE_AI_BASE_URL'] ?? '',
@@ -154,6 +156,11 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
 
   if (SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) {
     void runSmokeTest(win);
+  }
+
+  // seed 模式：批量 seed 真实 feeds + sync 后直接退出，不需要 BrowserWindow
+  if (SMOKE_FLAGS.seedFeeds) {
+    void runSeedFeeds();
   }
 }
 
@@ -580,8 +587,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             integrationReport.checks.navBtnsOk = navBtns.length >= 6;
 
             // 2) 切到每个 page，验证 .app-page 出现 + 页面内容
+            // Phase 3.4.4.4：nav 7 项：general（弹窗）/ ai / tags / notes / digests / topics / logs
+            // 索引：[general=0, ai=1, tags=2, notes=3, digests=4, topics=5, logs=6]
             const pageCheckpoints = [
-              { page: 'settings', selector: '.settings-page', text: '设置' },
+              { page: 'ai', selector: '.settings-page', text: 'AI' },
               { page: 'tags', selector: '.tags-page', text: '标签' },
               { page: 'notes', selector: '.notes-page', text: '笔记' },
               { page: 'digests', selector: '.digests-page', text: '文摘' },
@@ -590,21 +599,23 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             ];
             for (const cp of pageCheckpoints) {
               const navBtn = Array.from(navBtns).find((b) => b.getAttribute('data-page-key') === cp.page || b.textContent?.includes(cp.text));
-              // 实际 dom 没有 data-page-key；用索引兜底
-              const idx = ['settings', 'tags', 'notes', 'digests', 'topics', 'logs'].indexOf(cp.page);
-              const target = idx >= 0 ? navBtns[idx] : null;
+              // 实际 dom 没有 data-page-key；用索引兜底（Phase 3.4.4.4 后 ai 占索引 1）
+              const idx = ['ai', 'tags', 'notes', 'digests', 'topics', 'logs'].indexOf(cp.page);
+              const target = idx >= 0 ? navBtns[idx + 1] : null; // +1 跳过 general（弹窗）
               if (target) target.click();
               await sleep(120);
               const el = document.querySelector(cp.selector);
               integrationReport.checks['page_' + cp.page + 'Rendered'] = !!el;
             }
 
-            // 3) SettingsPage：3 套字体 + 2 套视觉主题按钮
-            const navBtn0 = navBtns[0]; // settings
+            // 3) 通用设置 Modal（Phase 3.4.4.4 拆分后）：3 套字体 + 2 套视觉主题按钮
+            //    原 SettingsPage 字体/视觉入口已挪到 GeneralSettingsModal 弹窗
+            //    点 navBtn[0] (general) 触发弹窗（App.tsx 拦截：setGeneralModalOpen(true) + setCurrentPage('reader')）
+            const navBtn0 = navBtns[0]; // general（弹窗入口）
             navBtn0?.click();
-            await sleep(150);
-            const fontCards = document.querySelectorAll('.settings-page__font-card');
-            const visualCards = document.querySelectorAll('.settings-page__visual-card');
+            await waitFor(() => !!document.querySelector('.general-modal'), { timeout: 2000 });
+            const fontCards = document.querySelectorAll('.general-modal__font-card');
+            const visualCards = document.querySelectorAll('.general-modal__visual-card');
             integrationReport.checks.fontThemeCount = fontCards.length;
             integrationReport.checks.visualThemeCount = visualCards.length;
             integrationReport.checks.fontThemesOk = fontCards.length >= 3;
@@ -672,9 +683,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             integrationReport.checks.visualBefore = visualBefore;
             integrationReport.checks.visualAfter = visualAfter;
             integrationReport.checks.visualToggled = visualBefore !== visualAfter;
+            // 关闭弹窗（点 backdrop）回到 reader
+            const backdrop = document.querySelector('.general-modal__backdrop');
+            backdrop?.click();
+            await sleep(150);
 
             // 6) TagsPage：创建标签 + 删除
-            const navBtn1 = navBtns[1]; // tags
+            const navBtn1 = navBtns[2]; // tags（Phase 3.4.4.4 后索引 +1）
             navBtn1?.click();
             await waitFor(() => !!document.querySelector('.tags-page'), { timeout: 2000 });
             const tagBefore = document.querySelectorAll('.tags-page__item').length;
@@ -704,7 +719,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             integrationReport.checks.tagDeleted = tagDelR.success && tagListAfterCount === tagBefore;
 
             // 7) NotesPage：选文章 + 添加笔记
-            const navBtn2 = navBtns[2]; // notes
+            const navBtn2 = navBtns[3]; // notes（Phase 3.4.4.4 后索引 +1）
             navBtn2?.click();
             await waitFor(() => !!document.querySelector('.notes-page'), { timeout: 2000 });
             const noteSelect = document.querySelector('.notes-page__select');
@@ -731,20 +746,20 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             }
 
             // 8) DigestsPage：列出
-            const navBtn3 = navBtns[3]; // digests
+            const navBtn3 = navBtns[4]; // digests（Phase 3.4.4.4 后索引 +1）
             navBtn3?.click();
             await sleep(120);
             integrationReport.checks.digestPageRendered = !!document.querySelector('.digests-page');
 
             // 9) TopicsPage：占位
-            const navBtn4 = navBtns[4]; // topics
+            const navBtn4 = navBtns[5]; // topics（Phase 3.4.4.4 后索引 +1）
             navBtn4?.click();
             await sleep(120);
             integrationReport.checks.topicsPageRendered = !!document.querySelector('.topics-page');
             integrationReport.checks.topicsPlaceholder = !!document.querySelector('.topics-page__placeholder');
 
             // 10) LogsPage：占位
-            const navBtn5 = navBtns[5]; // logs
+            const navBtn5 = navBtns[6]; // logs（Phase 3.4.4.4 后索引 +1）
             navBtn5?.click();
             await sleep(120);
             integrationReport.checks.logsPageRendered = !!document.querySelector('.logs-page');
@@ -771,8 +786,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               aiBtnLabels.some((t) => t.includes('专题'));
 
             // OK 判定
+            // Phase 3.4.4.4：page_settingsRendered 改名 page_aiRendered（settings → ai 拆分）
             const integrationChecks = [
-              'navBtnsOk', 'page_settingsRendered', 'page_tagsRendered', 'page_notesRendered',
+              'navBtnsOk', 'page_aiRendered', 'page_tagsRendered', 'page_notesRendered',
               'page_digestsRendered', 'page_topicsRendered', 'page_logsRendered',
               'fontThemesOk', 'visualThemesOk', 'fontToggled', 'visualToggled',
               'tagCreated', 'tagDeleted', 'noteCreated', 'digestPageRendered',
@@ -1018,6 +1034,79 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   } finally {
     setTimeout(() => app.quit(), 50);
   }
+}
+
+// ============================================================
+// seed 模式：批量添加推荐真实 feed + sync
+// ============================================================
+//
+// 用法：JUHE_SHIVI_SEED=1 JUHE_SHIVI_SEED_LIST='[{url,title},...]' node out/main/index.js
+//   - 直接走主进程模块（不依赖 BrowserWindow）
+//   - 数据库写到 JUHE_SHIVI_USER_DATA 指定的目录
+//   - 完成后输出 SEED_RESULT JSON 行
+async function runSeedFeeds(): Promise<void> {
+  interface SeedEntry { url: string; title?: string; note?: string }
+  let seeds: SeedEntry[] = [];
+  try {
+    seeds = JSON.parse(SMOKE_FLAGS.seedList) as SeedEntry[];
+  } catch (e) {
+    process.stdout.write(`SEED_RESULT ${JSON.stringify({ ok: false, error: `seedList 解析失败: ${String(e)}` })}\n`);
+    setTimeout(() => app.quit(), 100);
+    return;
+  }
+
+  if (!Array.isArray(seeds) || seeds.length === 0) {
+    process.stdout.write(`SEED_RESULT ${JSON.stringify({ ok: false, error: 'seedList 为空' })}\n`);
+    setTimeout(() => app.quit(), 100);
+    return;
+  }
+
+  const store = new SqliteContentPipelineStore();
+  const service = new SyncService(store);
+  const report = {
+    ok: true,
+    userData: app.getPath('userData'),
+    total: seeds.length,
+    succeeded: 0 as number,
+    failed: 0 as number,
+    results: [] as Array<{ url: string; title: string; ok: boolean; feedId?: string; newArticles?: number; error?: string }>
+  };
+
+  for (const seed of seeds) {
+    try {
+      // 幂等：url 重复时返回旧 feed
+      const existing = FeedRepository.findByUrl(seed.url);
+      let feed: Feed | null = existing;
+      if (!feed) {
+        feed = FeedRepository.create({ url: seed.url, title: seed.title ?? seed.url });
+      }
+      const r = await service.syncFeed(feed.id);
+      const result = {
+        url: seed.url,
+        title: feed.title,
+        ok: r.success,
+        feedId: feed.id,
+        newArticles: r.newArticles,
+        error: r.error ?? undefined
+      };
+      report.results.push(result);
+      if (r.success) {
+        report.succeeded += 1;
+        process.stdout.write(`  ✓ ${seed.title ?? seed.url}  +${r.newArticles} 篇\n`);
+      } else {
+        report.failed += 1;
+        process.stdout.write(`  ✗ ${seed.title ?? seed.url}  ${r.error}\n`);
+      }
+    } catch (e) {
+      report.failed += 1;
+      report.results.push({ url: seed.url, title: seed.title ?? seed.url, ok: false, error: String(e) });
+      process.stdout.write(`  ✗ ${seed.title ?? seed.url}  ${String(e)}\n`);
+    }
+  }
+
+  process.stdout.write(`SEED_RESULT ${JSON.stringify(report)}\n`);
+  process.stdout.write(`[seed] ${report.succeeded}/${report.total} 成功，${report.failed} 失败\n`);
+  setTimeout(() => app.quit(), 200);
 }
 
 // ============================================================
@@ -1532,7 +1621,10 @@ app.whenReady().then(async () => {
   // Electron 31 在 Windows 上要求 setPath 在 ready 之后才生效
   // 否则会 silently ignored，userData 走默认路径（所有 smoke 累积污染）
   // 触发条件：任何 smoke 模式 + 设了 userData 路径
-  if ((SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) && configuredUserDataPath) {
+  if (
+    (SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi || SMOKE_FLAGS.seedFeeds) &&
+    configuredUserDataPath
+  ) {
     app.setPath('userData', configuredUserDataPath);
   } else if (SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) {
     process.stdout.write(`[main] WARN JUHE_SHIVI_USER_DATA not set, smoke data will leak\n`);

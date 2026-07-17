@@ -1,52 +1,17 @@
 /**
- * SettingsPage — 设置页
+ * SettingsPage — AI 设置（Phase 3.4.4.4 拆分后）
  *
- * Phase 3 Integration 阶段
- *  - 通用设置：界面语言、字体主题、视觉主题、字号、阅读宽度
- *  - AI 默认值：默认摘要语言/详细度、默认翻译目标语言
- *  - AI Provider 管理：列表 + 新建/编辑/删除/测试
- *
- * 数据来源：FullDataSource.settingsGet / settingsUpdate + aiProviderList/...
- *
- * 字体/视觉/语言切换通过 props.onChangeAppearance（来自 useAppearance）走 IPC，
- * 并由 hook 同步到 <html data-font-theme data-visual-theme data-lang>，让探针
- * 能稳定拿到切换后的状态。
+ * 通用设置（语言 / 字体 / 视觉 / 字号 / 阅读宽度）已挪到 GeneralSettingsModal。
+ * 本页面只剩 AI 相关：
+ *   - AI 默认值（默认摘要语言 / 详细度 / 翻译目标语言 / 默认 Provider）
+ *   - AI Provider 管理（列表 + 新建/编辑/删除/测试）
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { AppSettings, AIProvider, AIProviderCreateInput, AIProviderUpdateInput, Language, SummaryDetailLevel } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
-import { useAppearance } from '../../hooks/useAppearance';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
 import './SettingsPage.css';
-
-// 字体主题预设：3 套中英混排字体栈
-const FONT_THEMES: Array<{ id: string; label: string; preview: string; stack: string }> = [
-  {
-    id: 'default',
-    label: '默认',
-    preview: 'Aa 字体 / Font',
-    stack: `Georgia, "Source Han Serif SC", "Songti SC", "SimSun", "PingFang SC", "Hiragino Sans GB", serif`
-  },
-  {
-    id: 'hei',
-    label: '黑体',
-    preview: 'Aa 黑体 / Sans',
-    stack: `"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Helvetica Neue", Arial, sans-serif`
-  },
-  {
-    id: 'kai',
-    label: '楷体',
-    preview: 'Aa 楷体 / Kai',
-    stack: `"Kaiti SC", "STKaiti", "KaiTi", "FangSong", "Source Han Serif SC", serif`
-  }
-];
-
-// 视觉主题：经典 / 纸质
-const VISUAL_THEMES: Array<{ id: 'classic' | 'paper'; label: string; preview: string }> = [
-  { id: 'classic', label: '经典', preview: '白底深字' },
-  { id: 'paper', label: '纸质', preview: '暖黄护眼' }
-];
 
 export interface SettingsPageProps {
   onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
@@ -54,7 +19,6 @@ export interface SettingsPageProps {
 
 export function SettingsPage({ onToast }: SettingsPageProps) {
   const ds = useDataSource();
-  const appearance = useAppearance();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
@@ -89,35 +53,12 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
       const r = await ds.settingsUpdate(patch);
       if (r.kind === 'ready') {
         setSettings(r.data);
-        // 同步 CSS 变量到 DOM，使 Reader 的 var(--font-size) / var(--reading-width) 实时生效
-        if ('fontSize' in patch) {
-          document.documentElement.style.setProperty('--font-size', `${r.data.fontSize}px`);
-        }
-        if ('readingWidth' in patch) {
-          document.documentElement.style.setProperty('--reading-width', `${r.data.readingWidth}px`);
-        }
         onToast('设置已保存', 'success');
       } else {
         onToast(`保存失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
       }
     },
     [ds, onToast]
-  );
-
-  const handleChangeAppearance = useCallback(
-    async (patch: { fontTheme?: string; visualTheme?: 'classic' | 'paper'; language?: 'zh' | 'en' }) => {
-      let ok = false;
-      if (patch.fontTheme) ok = await appearance.setFontTheme(patch.fontTheme);
-      else if (patch.visualTheme) ok = await appearance.setVisualTheme(patch.visualTheme);
-      else if (patch.language) ok = await appearance.setLanguage(patch.language);
-      if (ok) {
-        setSettings((prev) => (prev ? { ...prev, ...patch } : prev));
-        onToast('外观已切换', 'success');
-      } else {
-        onToast('外观切换失败', 'error');
-      }
-    },
-    [appearance, onToast]
   );
 
   const handleCreateProvider = useCallback(
@@ -182,100 +123,10 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
 
   return (
     <div className="settings-page">
-      <h1 className="settings-page__title">设置</h1>
-
-      {/* === 通用 === */}
-      <section className="settings-page__section">
-        <h2 className="settings-page__section-title">通用</h2>
-
-        <div className="settings-page__row">
-          <label className="settings-page__label">界面语言</label>
-          <div className="settings-page__radio-group">
-            {(['zh', 'en'] as Language[]).map((lang) => (
-              <button
-                key={lang}
-                type="button"
-                className={`settings-page__radio ${appearance.language === lang ? 'is-active' : ''}`}
-                onClick={() => void handleChangeAppearance({ language: lang })}
-              >
-                {lang === 'zh' ? '中文' : 'English'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="settings-page__row">
-          <label className="settings-page__label">字体主题</label>
-          <div className="settings-page__radio-group">
-            {FONT_THEMES.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                className={`settings-page__font-card ${appearance.fontTheme === f.id ? 'is-active' : ''}`}
-                onClick={() => void handleChangeAppearance({ fontTheme: f.id })}
-                title={f.stack}
-                style={{ fontFamily: f.stack }}
-              >
-                <span className="settings-page__font-preview">{f.preview}</span>
-                <span className="settings-page__font-label">{f.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="settings-page__row">
-          <label className="settings-page__label">视觉主题</label>
-          <div className="settings-page__radio-group">
-            {VISUAL_THEMES.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                className={`settings-page__visual-card settings-page__visual-card--${v.id} ${appearance.visualTheme === v.id ? 'is-active' : ''}`}
-                onClick={() => void handleChangeAppearance({ visualTheme: v.id })}
-              >
-                <span className="settings-page__visual-swatch" />
-                <span className="settings-page__visual-label">{v.label}</span>
-                <span className="settings-page__visual-preview">{v.preview}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="settings-page__row">
-          <label className="settings-page__label">正文字号（px）</label>
-          <input
-            type="number"
-            className="settings-page__input settings-page__input--narrow"
-            min={12}
-            max={24}
-            value={settings.fontSize}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (Number.isFinite(n) && n >= 12 && n <= 24) {
-                void updateSettings({ fontSize: n });
-              }
-            }}
-          />
-        </div>
-
-        <div className="settings-page__row">
-          <label className="settings-page__label">阅读宽度（px）</label>
-          <input
-            type="number"
-            className="settings-page__input settings-page__input--narrow"
-            min={500}
-            max={1400}
-            step={50}
-            value={settings.readingWidth}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (Number.isFinite(n) && n >= 500 && n <= 1400) {
-                void updateSettings({ readingWidth: n });
-              }
-            }}
-          />
-        </div>
-      </section>
+      <h1 className="settings-page__title">AI 设置</h1>
+      <p className="settings-page__hint">
+        通用设置（语言 / 字体 / 视觉主题 / 字号 / 阅读宽度）已挪到顶栏"通用"按钮弹窗。
+      </p>
 
       {/* === AI 默认值 === */}
       <section className="settings-page__section">
@@ -315,6 +166,22 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
           >
             <option value="zh">中文</option>
             <option value="en">English</option>
+          </select>
+        </div>
+
+        <div className="settings-page__row">
+          <label className="settings-page__label">默认 AI Provider</label>
+          <select
+            className="settings-page__input"
+            value={settings.defaultProviderId ?? ''}
+            onChange={(e) => void updateSettings({ defaultProviderId: e.target.value || null })}
+          >
+            <option value="">(未设置)</option>
+            {providers?.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}（{p.modelName}）
+              </option>
+            ))}
           </select>
         </div>
       </section>
@@ -369,10 +236,7 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
 
             {showProviderForm && (
               <ProviderForm
-                onSubmit={(input) => {
-                  if (!input.apiKey) return;
-                  return handleCreateProvider({ ...input, apiKey: input.apiKey });
-                }}
+                onSubmit={handleCreateProvider}
                 onCancel={() => setShowProviderForm(false)}
                 submitLabel="创建"
               />
@@ -407,13 +271,10 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
 
 interface ProviderFormProps {
   initial?: AIProvider;
-  onSubmit: (input: ProviderFormInput) => void | Promise<void>;
+  onSubmit: (input: AIProviderCreateInput | AIProviderUpdateInput) => void | Promise<void>;
   onCancel: () => void;
   submitLabel: string;
 }
-
-type ProviderFormInput = AIProviderUpdateInput &
-  Pick<AIProviderCreateInput, 'name' | 'baseUrl' | 'modelName'>;
 
 function ProviderForm({ initial, onSubmit, onCancel, submitLabel }: ProviderFormProps) {
   const [name, setName] = useState(initial?.name ?? '');
@@ -426,7 +287,7 @@ function ProviderForm({ initial, onSubmit, onCancel, submitLabel }: ProviderForm
     e.preventDefault();
     if (!name.trim() || !baseUrl.trim() || !modelName.trim()) return;
     if (!initial && !apiKey.trim()) return;
-    const input: ProviderFormInput = {
+    const input: AIProviderCreateInput | AIProviderUpdateInput = {
       name: name.trim(),
       baseUrl: baseUrl.trim(),
       modelName: modelName.trim(),

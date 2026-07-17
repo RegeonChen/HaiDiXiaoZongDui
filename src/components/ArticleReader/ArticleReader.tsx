@@ -19,6 +19,7 @@ import { useDataSource } from '../../context/DataSourceContext';
 import { EmptyView } from '../StatusView/EmptyView';
 import { LoadingView } from '../StatusView/LoadingView';
 import { ErrorView } from '../StatusView/ErrorView';
+import { renderMarkdown } from '../../utils/markdown';
 import './ArticleReader.css';
 
 export interface ArticleReaderProps {
@@ -54,6 +55,9 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   const [noteMarkdown, setNoteMarkdown] = useState('');
 
   useEffect(() => {
+    // Phase 3.4.1.3：切换文章时无条件清空 AI 结果区 + 折叠面板
+    // —— 不论 cleanedHtml 是否已存在，都要先 reset 4 个 AI 字段，
+    // 否则切换后旧文章的 summary / translation / tagSuggestions 仍残留。
     if (!article) {
       setContent({ html: null, loading: false, error: null });
       setActivePanel(null);
@@ -63,6 +67,13 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       setNoteMarkdown('');
       return;
     }
+    // 切换文章：清空 AI 字段（不依赖 content 状态）
+    setActivePanel(null);
+    setSummary('');
+    setTranslationParagraphs([]);
+    setTagSuggestions([]);
+    setNoteMarkdown('');
+
     if (article.cleanedHtml) {
       setContent({ html: article.cleanedHtml, loading: false, error: null });
       return;
@@ -331,7 +342,11 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
           <div className="article-reader__ai-panel">
             <h3>✨ 摘要</h3>
             {summary ? (
-              <div className="article-reader__ai-text">{summary}</div>
+              // Phase 3.4.1.5：简易 Markdown 渲染（**bold** / *italic* / `code` / 链接 / 段落）
+              <div
+                className="article-reader__ai-text"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(summary) }}
+              />
             ) : (
               <LoadingView message="正在生成摘要…" />
             )}
@@ -345,8 +360,15 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
               <ol className="article-reader__translation">
                 {translationParagraphs.map((p) => (
                   <li key={p.index} className="article-reader__translation-item">
-                    <div className="article-reader__translation-original">{p.original}</div>
-                    <div className="article-reader__translation-translated">{p.translated}</div>
+                    {/* Phase 3.4.1.4：原文/译文都做简易 Markdown 渲染 */}
+                    <div
+                      className="article-reader__translation-original"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(p.original) }}
+                    />
+                    <div
+                      className="article-reader__translation-translated"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(p.translated) }}
+                    />
                   </li>
                 ))}
               </ol>

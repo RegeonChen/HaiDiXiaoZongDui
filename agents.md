@@ -124,7 +124,23 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 2 集成已通过验收**。Phase 3 已初步开发完成但存在多项 P0/P1 bug（见已知问题和近期记录），正在修复中。
+- 当前活动里程碑：**Phase 3.4.1 + 3.4.4（7 项 UI 端工作）已完成并通过 8/8 smoke 验证**。Phase 4 Topic Tracking 待张晨阳/张宇凡/陈冠中协同开发。
+- **Phase 3.4 Bug Fix & UX Polish**（张晨阳）已完成：
+  - **3.4.1.1 未读列表不同步**：`App.handleSelectArticle` 标记已读时同步更新 `articlesState` + `allArticlesState`，列表实时移除该文章。
+  - **3.4.1.2 未读/星标计数不更新**：`handleToggleStar` 用同一个 `updateList` 闭包同步刷两个 state；`FeedList` 侧栏底部状态栏始终从 `allArticles` 计算 unread/starred 计数。
+  - **3.4.1.3 AI 结果区文章切换不消失**：`ArticleReader` 切换 `article.id` 时无条件 reset `summary/translationParagraphs/tagSuggestions/activePanel/noteMarkdown`，即使 `article.cleanedHtml` 已存在也要先清空（之前有 bug：`if (cleanedHtml) return;` 提前 return 跳过了 AI 字段 reset）。
+  - **3.4.1.4/.5 翻译/摘要结果不渲染 Markdown**：自写 `src/utils/markdown.ts`（不引 marked），`renderMarkdown(input)` = escape HTML → INLINE_RULES（链接/行内代码/加粗/斜体，URL scheme 仅允许 http/https/mailto/#/）→ 双换行分段 → 单换行 `<br>`；`ArticleReader` 用 `dangerouslySetInnerHTML={{ __html: renderMarkdown(s) }}` 替换纯文本 `<div>`。
+  - **3.4.1.6 删除订阅源提示数量始终为 0**：`handleDeleteFeed` 改用 `allArticles.filter(a => a.feedId === feed.id).length` 统计（之前用 `articles`，受当前筛选影响）。
+  - **3.4.4.1 6 page 返回按钮 + 当前页标题**：`Layout.tsx` 在 `.app-page` 容器顶部加 `.app-page__header`（back 按钮 + 当前 page title），通过 `navItems.find(n => n.id === currentPage)?.label` 取标题。
+  - **3.4.4.2 纸质 + 深色统一**：`useAppearance` 改为接收 `effectiveTheme: 'light' | 'dark'` 参数（从 `useTheme` 取 `effective`）；`applyToHtml` 只在 `visualTheme === 'paper' && effectiveTheme === 'light'` 时写暖黄变量；深色 + paper 时清掉所有 paper 变量 → 走 useTheme dark 调色板，与经典深色完全一致。
+  - **3.4.4.3 顶栏搜索框**：`src/components/SearchBar/SearchBar.tsx` 300ms 防抖 + 下拉浮层 + 8 条上限 + 失焦/Esc 关闭 + 点击结果跳到 reader（`selectFeed(target.feedId) → selectArticle(id) → setCurrentPage('reader')`）；`IpcDataSource.articles({ search })` 透传（陈冠中 3.4.3 已实现）。
+  - **3.4.4.4 通用设置弹窗 + AI 设置子页面**：
+    - 新组件 `src/components/GeneralSettingsModal/`（语言/字体/视觉/字号/阅读宽度 + 即时生效 + IPC 持久化）
+    - `SettingsPage` 拆为 AI only（Provider + AI 默认值）
+    - Layout nav 7 项：`general`(弹窗) / `ai`(子页) / tags / notes / digests / topics / logs；App.tsx 拦截 'general' → `setGeneralModalOpen(true) + setCurrentPage('reader')`
+  - **3.4.4.5 ArticleList 空态**：`filterHint` prop 三态（`'暂无星标文章'` / `'所有文章都已读完'` / `'暂无匹配文章'`），用 `EmptyView` 组件统一渲染。
+  - **smoke-3.4-integration 探针适配**：nav 7 项后索引全部 +1（general 走弹窗不占索引，ai=1, tags=2, ..., logs=6）；字体/视觉主题入口从 `.settings-page__font-card` 改为 `.general-modal__font-card`（点 navBtn[0] general 触发弹窗再验证），测试完后点 backdrop 关闭弹窗。
+  - **8/8 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration。integration 探针：navBtnCount=7、fontThemeCount=3、visualThemeCount=2、fontBefore→hei、visualBefore→paper、6 page 全部 rendered、tag/note CRUD、回到 reader 5 AI 按钮（实际 7：含星标/原文）。
 - **Phase 3 Integration（张晨阳）**：
   - **6 个 pages**（`src/pages/`）：SettingsPage（Provider CRUD + 字体/视觉主题 + 多语言 + AI 默认值 + 字号/阅读宽度）、TagsPage（标签 CRUD）、NotesPage（按文章选 + markdown 笔记 CRUD）、DigestsPage（文摘 CRUD + Markdown/HTML 导出）、TopicsPage（Phase 4 占位，stub handler 返回 NOT_IMPLEMENTED）、LogsPage（同占位）。
   - **顶栏 6 入口**（Layout 顶栏新增 nav 按钮组）：⚙ 设置 / # 标签 / ✎ 笔记 / ☷ 文摘 / ★ 专题 / 📋 日志；点击切换 `currentPage` state；非 reader 模式渲染对应 page slot，reader 模式保持三栏 layout。
@@ -286,6 +302,35 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 - **2026-07-16**：IpcDataSource 双包层修复（陈冠中，跨模块协助张晨阳）：
   - **根因**：`src/data/ipcDataSource.ts` 在所有 Tag/Note/Digest/Topic/AI/Settings/Log 方法调用 preload API 时多包了一层对象。例如 `window.api.settings.update({ settings })` → preload 内部再包一层 `{ settings: { settings: {...} } }` → Main handler 收到的是 `{ settings: {...} }` 而非 `Partial<AppSettings>` → 校验失败。
   - **修复**：移除 IpcDataSource 中 30+ 处调用的多余 `{}` 包裹，参数直接透传给 preload（preload 内部会统一包一层）。涵盖 tag (5 处)、note (4 处)、digest (4 处)、topic (5 处)、ai provider (4 处)、ai operations (6 处)、settings (1 处)、log (1 处)。
+- **2026-07-15 ~ 2026-07-17**：Phase 3.4 Bug Fix & UX Polish（张晨阳）：
+  - **3.4.1.1/.2 状态同步**：`App.handleSelectArticle` / `handleToggleStar` 同时更新 `articlesState` + `allArticlesState`，FeedList 状态栏计数始终从 allArticles 派生。
+  - **3.4.1.3 AI 结果区 reset bug 修复**：`ArticleReader` useEffect 切换 article.id 时先无条件清空 5 个 AI 字段（`activePanel/summary/translationParagraphs/tagSuggestions/noteMarkdown`），再走 cleanedHtml 短路或 fetch 分支。修复前 `if (article.cleanedHtml) return;` 提前 return 跳过了 reset。
+  - **3.4.1.4/.5 自写 Markdown 渲染**：`src/utils/markdown.ts`（不引 marked），escape HTML → INLINE_RULES（link/code/bold/italic，URL scheme 白名单 http/https/mailto/#/）→ 段落（双换行）+ 单换行 `<br>`。`ArticleReader` 摘要/翻译用 `dangerouslySetInnerHTML={{ __html: renderMarkdown(s) }}` 替换纯文本。
+  - **3.4.1.6 删除提示用 allArticles**：`handleDeleteFeed` 改用 `allArticles.filter(a => a.feedId === feed.id).length` 统计真实文章数（不受当前筛选影响）。
+  - **3.4.4.1 page 返回按钮 + 当前页标题**：`Layout.tsx` 在 `.app-page` 容器顶部加 `.app-page__header`（back 按钮 + 当前 page title），从 `navItems.find(n => n.id === currentPage)?.label` 取标题。
+  - **3.4.4.2 纸质 + 深色统一**：`useAppearance` 改为接收 `effectiveTheme: 'light' | 'dark'` 参数（从 `useTheme().effective` 取）；`applyToHtml` 只在 `visualTheme === 'paper' && effectiveTheme === 'light'` 时写暖黄变量；深色 + paper 时清掉所有 paper 变量 → 走 useTheme dark 调色板，与经典深色完全一致。
+  - **3.4.4.3 顶栏搜索框**：`src/components/SearchBar/SearchBar.tsx` 300ms 防抖 + 下拉浮层 + 8 条上限 + 失焦/Esc 关闭 + 点击结果跳到 reader（`selectFeed(target.feedId) → selectArticle(id) → setCurrentPage('reader')`）；`IpcDataSource.articles({ search })` 透传（陈冠中 3.4.3 已实现）。
+  - **3.4.4.4 通用设置弹窗 + AI 设置子页面拆分**：
+    - 新组件 `src/components/GeneralSettingsModal/`（语言/字体/视觉/字号/阅读宽度 + 即时生效 + IPC 持久化 + Esc/点 backdrop 关闭）
+    - `SettingsPage` 拆为 AI only（Provider + AI 默认值）
+    - Layout nav 7 项：`general`(弹窗) / `ai`(子页) / tags / notes / digests / topics / logs；App.tsx 拦截 'general' → `setGeneralModalOpen(true) + setCurrentPage('reader')`
+  - **3.4.4.5 ArticleList 空态用 EmptyView**：`filterHint` prop 三态（`'暂无星标文章'` / `'所有文章都已读完'` / `'暂无匹配文章'`）。
+  - **smoke 探针适配 nav 7 项**：`smoke-3.4-integration` 内联探针索引 +1（general 走弹窗不占索引，ai=1, tags=2, ..., logs=6）；字体/视觉主题入口从 `.settings-page__font-card` 改为 `.general-modal__font-card`（点 navBtn[0] general 触发弹窗再验证），测试完后点 backdrop 关闭弹窗；OK 判定 `page_settingsRendered` → `page_aiRendered`。
+  - **8/8 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration。integration 探针：navBtnCount=7、fontThemeCount=3、visualThemeCount=2、fontBefore=default→fontAfter=hei、visualBefore=classic→visualAfter=paper、6 page 全部 rendered、tag/note CRUD verified、回到 reader 5 AI 按钮（实际 7 个，含星标/原文）。
+- **2026-07-15 ~ 2026-07-17**：陈冠中 main 分支同步：
+  - `1b7e039 docs: add Phase 3.4 plan (bug fixes + UX polish + fuzzy search)`
+  - `30bd39e fix RSS detection and article cleanup`
+  - `c0cde1a Merge pull request #3 from RegeonChen/agent/phase3-fixes-macos-release`
+  - `76ee8fb fix Phase 3 data contracts and add macOS packaging`
+  - `d036c26 fix: 本次打开软件后刚清洗的文章AI按钮被禁用`
+  - `ba9f236 fix: testConnection maxTokens 10 too low for DeepSeek`
+  - `dbd6beb fix: AI结果读取错位 + testConnection诊断信息不足`
+  - `90d3f22 fix: 设置项(字体/字号/阅读宽度)切换后Reader不生效`
+  - `097735a fix: 外观切换错误提示'外观切换失败' — setter返回值被.then(()=>undefined)吞掉`
+  - `c03d478 fix: IpcDataSource 双包层导致设置/Provider等全部IPC操作失败`
+- **2026-07-17**：Seed 模式（张晨阳）：
+  - 新增 `scripts/seed-test-feeds.cjs`（6 推荐 URL：阮一峰 / 少数派 / antirez / HN / Simon Willison / JSON Feed Spec，知乎日报 404 移除） + 主进程 `runSeedFeeds()` + `SMOKE_FLAGS.seedFeeds/seedList` + `app.setPath` 加 seedFeeds 分支
+  - 6 源共 165 篇文章入数据库；保留 userData 不删，方便 dev 模式直接查看（默认写到 OS userData，JUHE_SHIVI_USER_DATA env 覆盖）
 
 ## 路线图
 

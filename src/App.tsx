@@ -24,6 +24,7 @@ import { AddFeedDialog } from './components/AddFeedDialog/AddFeedDialog';
 import { Toast, type ToastItem } from './components/Toast/Toast';
 import { ConfirmDialog, type ConfirmDialogHandle } from './components/ConfirmDialog/ConfirmDialog';
 import { ContextMenuHost } from './components/ContextMenu/ContextMenu';
+import { SearchBar } from './components/SearchBar/SearchBar';
 import { LoadingView } from './components/StatusView/LoadingView';
 import { ErrorView } from './components/StatusView/ErrorView';
 import { SettingsPage } from './pages/SettingsPage/SettingsPage';
@@ -32,6 +33,7 @@ import { NotesPage } from './pages/NotesPage/NotesPage';
 import { DigestsPage } from './pages/DigestsPage/DigestsPage';
 import { TopicsPage } from './pages/TopicsPage/TopicsPage';
 import { LogsPage } from './pages/LogsPage/LogsPage';
+import { GeneralSettingsModal } from './components/GeneralSettingsModal/GeneralSettingsModal';
 import './index.css';
 
 type FeedsState =
@@ -50,6 +52,8 @@ export function App() {
   const { widths, setSidebar, setList } = usePaneWidths();
 
   const [currentPage, setCurrentPage] = useState<AppPage>('reader');
+  // Phase 3.4.4.4：通用设置弹窗（独立 state，不走 page 切换）
+  const [generalModalOpen, setGeneralModalOpen] = useState(false);
   const [feedsState, setFeedsState] = useState<FeedsState>({ kind: 'loading' });
   const [articlesState, setArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   const [allArticlesState, setAllArticlesState] = useState<ArticlesState>({ kind: 'loading' });
@@ -267,9 +271,11 @@ export function App() {
   // 删除订阅源
   const handleDeleteFeed = useCallback(
     async (feed: Feed) => {
+      // Phase 3.4.1.6：用 allArticles 统计真正的文章数（不受当前筛选影响）
+      const articleCount = allArticles.filter((a) => a.feedId === feed.id).length;
       const ok = await confirmRef.current?.open({
         title: '删除订阅源',
-        message: `确定要删除「${feed.siteTitle || feed.title}」？此操作会同时删除其全部 ${articles.filter((a) => a.feedId === feed.id).length} 篇文章，无法撤销。`,
+        message: `确定要删除「${feed.siteTitle || feed.title}」？此操作会同时删除其全部 ${articleCount} 篇文章，无法撤销。`,
         confirmLabel: '删除',
         cancelLabel: '取消',
         danger: true
@@ -426,6 +432,12 @@ export function App() {
         selectedArticleId={selection.articleId}
         onSelect={handleSelectArticle}
         filterLabel={filterLabel}
+        filterHint={
+          // Phase 3.4.4.5：给空态一个明确提示
+          selection.feedId === 'starred' ? '暂无星标文章' :
+          selection.feedId === 'unread' ? '所有文章都已读完' :
+          '暂无匹配文章'
+        }
       />
     );
 
@@ -438,10 +450,26 @@ export function App() {
     />
   );
 
+  // Phase 3.4.4.3：搜索跳转：切到对应 feed + 选中文章，回到 reader
+  const handleSearchSelect = useCallback(
+    (articleId: string) => {
+      const target = articles.find((a) => a.id === articleId) ?? allArticles.find((a) => a.id === articleId);
+      if (!target) {
+        pushToast('该文章已不在当前列表中', 'error');
+        return;
+      }
+      selectFeed(target.feedId);
+      selectArticle(articleId);
+      setCurrentPage('reader');
+    },
+    [articles, allArticles, selectArticle, selectFeed, pushToast]
+  );
+
   // ----- 渲染页面（reader 之外的页面） -----
+  // Phase 3.4.4.4：nav 7 项 — general 弹窗 / ai 子页面 / 5 个原 page
   let pageSlot: JSX.Element;
   switch (currentPage) {
-    case 'settings':
+    case 'ai':
       pageSlot = <SettingsPage onToast={pushToast} />;
       break;
     case 'tags':
@@ -459,8 +487,10 @@ export function App() {
     case 'logs':
       pageSlot = <LogsPage />;
       break;
+    case 'general':
     case 'reader':
     default:
+      // 'general' 走弹窗不走 page slot
       pageSlot = <></>;
       break;
   }
@@ -481,8 +511,17 @@ export function App() {
         onResizeSidebar={setSidebar}
         onResizeList={setList}
         currentPage={currentPage}
-        onPageChange={setCurrentPage}
+        onPageChange={(p) => {
+          if (p === 'general') {
+            setGeneralModalOpen(true);
+            setCurrentPage('reader'); // 保持 reader 视图
+            return;
+          }
+          setGeneralModalOpen(false);
+          setCurrentPage(p);
+        }}
         pageSlot={pageSlot}
+        searchSlot={<SearchBar feeds={feeds} onSelect={handleSearchSelect} />}
       />
       <AddFeedDialog
         open={addDialogOpen}
@@ -492,6 +531,11 @@ export function App() {
       <ConfirmDialog ref={confirmRef} />
       <ContextMenuHost />
       <Toast items={toasts} onDismiss={dismissToast} />
+      <GeneralSettingsModal
+        open={generalModalOpen}
+        onClose={() => setGeneralModalOpen(false)}
+        onToast={pushToast}
+      />
     </>
   );
 }

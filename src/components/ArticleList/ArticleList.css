@@ -153,3 +153,10 @@
   color: var(--muted);
   font-size: 12px;
 }
+
+.article-list__empty-wrap {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: block;
+}

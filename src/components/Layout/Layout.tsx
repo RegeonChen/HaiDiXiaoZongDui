@@ -17,7 +17,7 @@ import { OpmlButtons } from '../OpmlButtons/OpmlButtons';
 import { ResizeHandle } from '../ResizeHandle/ResizeHandle';
 import './Layout.css';
 
-export type AppPage = 'reader' | 'settings' | 'tags' | 'notes' | 'digests' | 'topics' | 'logs';
+export type AppPage = 'reader' | 'general' | 'ai' | 'tags' | 'notes' | 'digests' | 'topics' | 'logs';
 
 export interface LayoutProps {
   feedsSlot: ReactNode;
@@ -43,6 +43,8 @@ export interface LayoutProps {
   onPageChange: (page: AppPage) => void;
   /** 页面渲染插槽（reader 之外的页面） */
   pageSlot?: ReactNode;
+  /** Phase 3.4.4.3：顶栏搜索槽 */
+  searchSlot?: ReactNode;
 }
 
 export function Layout({
@@ -60,7 +62,8 @@ export function Layout({
   onResizeList,
   currentPage,
   onPageChange,
-  pageSlot
+  pageSlot,
+  searchSlot
 }: LayoutProps) {
   // 拖拽用：ref 到 main 容器，取真实宽度
   const mainRef = useRef<HTMLElement>(null);
@@ -101,9 +104,10 @@ export function Layout({
   const readerPercent = 100 - sidebarPercent - listPercent;
 
   // Mercury 风格顶栏入口：icon-only + tooltip
-  // 6 个 page 入口 + 1 个 "unread" 过滤（reader 模式下独立）
-  const navItems: Array<{ id: AppPage; label: string; icon: string; title: string }> = [
-    { id: 'settings', label: '设置', icon: '⚙', title: '设置（AI Provider、字体主题、视觉主题、多语言）' },
+  // Phase 3.4.4.4：nav 7 项 — general 弹窗 / ai 子页面 / 5 个原 page
+  const navItems: Array<{ id: AppPage; label: string; icon: string; title: string; opensModal?: boolean }> = [
+    { id: 'general', label: '通用', icon: '⚙', title: '通用设置（语言 / 字体 / 视觉 / 字号 / 阅读宽度）', opensModal: true },
+    { id: 'ai', label: 'AI', icon: '✨', title: 'AI 设置（Provider / 默认值）' },
     { id: 'tags', label: '标签', icon: '#', title: '标签管理' },
     { id: 'notes', label: '笔记', icon: '✎', title: '笔记' },
     { id: 'digests', label: '文摘', icon: '☷', title: '文摘导出' },
@@ -144,6 +148,7 @@ export function Layout({
         </div>
         <div className="app-header__right">
           {/* 页面切换（Phase 3 Integration 新增） */}
+          {searchSlot && <div className="app-header__search">{searchSlot}</div>}
           <nav className="app-header__nav" aria-label="页面导航">
             {navItems.map((item) => (
               <button
@@ -153,6 +158,7 @@ export function Layout({
                 onClick={() => onPageChange(item.id)}
                 title={item.title}
                 aria-current={currentPage === item.id ? 'page' : undefined}
+                data-page={item.id}
               >
                 <span className="app-header__nav-icon" aria-hidden="true">{item.icon}</span>
                 <span className="app-header__nav-label">{item.label}</span>
@@ -203,6 +209,20 @@ export function Layout({
         </main>
       ) : (
         <main className="app-page" data-page={currentPage}>
+          {/* Phase 3.4.4.1：6 page 顶部"← 返回阅读"按钮 + 当前页标题 */}
+          <div className="app-page__header">
+            <button
+              type="button"
+              className="app-page__back-btn"
+              onClick={() => onPageChange('reader')}
+              title="返回阅读主界面"
+            >
+              ← 返回阅读
+            </button>
+            <span className="app-page__title">
+              {navItems.find((n) => n.id === currentPage)?.label ?? ''}
+            </span>
+          </div>
           {pageSlot}
         </main>
       )}

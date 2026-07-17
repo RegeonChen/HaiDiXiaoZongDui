@@ -87,6 +87,12 @@
   background: var(--bg-elev);
 }
 
+.app-header__search {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .app-header__nav-btn {
   appearance: none;
   border: 1px solid transparent;
@@ -133,6 +139,42 @@
   overflow: auto;
   background: var(--bg);
   color: var(--fg);
+}
+
+.app-page__header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+  flex-shrink: 0;
+}
+
+.app-page__back-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 100ms ease;
+}
+
+.app-page__back-btn:hover {
+  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
+}
+
+.app-page__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-soft);
 }
 
 .app-header__add-btn {

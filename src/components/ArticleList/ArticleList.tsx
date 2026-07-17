@@ -6,6 +6,7 @@
  */
 import { useMemo } from 'react';
 import type { Article, Feed } from '@shared/types';
+import { EmptyView } from '../StatusView/EmptyView';
 import './ArticleList.css';
 
 export interface ArticleListProps {
@@ -14,6 +15,8 @@ export interface ArticleListProps {
   selectedArticleId: string | null;
   onSelect: (id: string) => void;
   filterLabel: string;
+  /** 当前的 filter 描述，用于空态提示（Phase 3.4.4.5） */
+  filterHint?: string;
 }
 
 function formatRelative(iso: string | null): string {
@@ -37,7 +40,7 @@ function formatAbsolute(iso: string | null): string {
   return new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filterLabel }: ArticleListProps) {
+export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filterLabel, filterHint }: ArticleListProps) {
   const feedTitleById = useMemo(() => {
     const m = new Map<string, string>();
     for (const f of feeds) m.set(f.id, f.siteTitle || f.title);
@@ -52,7 +55,12 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filt
       </div>
       <ul className="article-list__items" role="listbox" aria-label="文章列表">
         {articles.length === 0 ? (
-          <li className="article-list__empty">没有匹配的文章</li>
+          <li className="article-list__empty-wrap">
+            <EmptyView
+              title={filterHint ?? '暂无匹配文章'}
+              hint={filterHint ? '换个筛选条件或回到"所有订阅源"试试' : '从侧栏切换其他订阅源或搜索关键词'}
+            />
+          </li>
         ) : (
           articles.map((a) => {
             const isSelected = a.id === selectedArticleId;

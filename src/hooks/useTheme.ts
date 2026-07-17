@@ -62,5 +62,5 @@ export function useTheme() {
     setTheme(next);
   }, []);
 
-  return { theme, setTheme: setAndSave };
+  return { theme, effective: resolve(theme), setTheme: setAndSave };
 }

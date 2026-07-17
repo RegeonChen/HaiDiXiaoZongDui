@@ -1,0 +1,239 @@
+.general-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.general-modal {
+  width: min(640px, 90vw);
+  max-height: 85vh;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.general-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.general-modal__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.general-modal__close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 3px;
+}
+
+.general-modal__close:hover {
+  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
+  color: var(--fg);
+}
+
+.general-modal__body {
+  padding: 16px 18px;
+  overflow-y: auto;
+}
+
+.general-modal__section {
+  margin-bottom: 18px;
+}
+
+.general-modal__section:last-child {
+  margin-bottom: 0;
+}
+
+.general-modal__section-title {
+  font-size: 11px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-soft);
+}
+
+.general-modal__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.general-modal__label {
+  flex: 0 0 96px;
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.general-modal__input {
+  flex: 0 0 100px;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: inherit;
+}
+
+.general-modal__hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.general-modal__radio-group {
+  display: flex;
+  gap: 6px;
+}
+
+.general-modal__radio {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.general-modal__radio.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.general-modal__font-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.general-modal__font-card {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 130px;
+  font-family: inherit;
+}
+
+.general-modal__font-card.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.general-modal__font-preview {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.general-modal__font-label {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.general-modal__visual-list {
+  display: flex;
+  gap: 8px;
+}
+
+.general-modal__visual-card {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 10px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 130px;
+  font-family: inherit;
+}
+
+.general-modal__visual-card.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.general-modal__visual-card--classic .general-modal__visual-swatch {
+  background: #ffffff;
+  border: 1px solid #d0d0d0;
+}
+
+.general-modal__visual-card--paper .general-modal__visual-swatch {
+  background: #f4ecd8;
+  border: 1px solid #d6c8a4;
+}
+
+.general-modal__visual-swatch {
+  display: block;
+  width: 100%;
+  height: 22px;
+  border-radius: 3px;
+}
+
+.general-modal__visual-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.general-modal__visual-desc {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.general-modal__footer {
+  padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.general-modal__btn {
+  appearance: none;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: white;
+  padding: 5px 18px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.general-modal__btn:hover {
+  filter: brightness(1.08);
+}

@@ -67,12 +67,22 @@ export class MockDataSource implements DataSource {
     feedId?: string;
     isRead?: boolean;
     isStarred?: boolean;
+    search?: string;
   }): Promise<DataSourceState<Article[]>> {
     await delay(150);
     let items = this.articlesState;
     if (filter.feedId) items = items.filter((a) => a.feedId === filter.feedId);
     if (filter.isRead !== undefined) items = items.filter((a) => a.isRead === filter.isRead);
     if (filter.isStarred !== undefined) items = items.filter((a) => a.isStarred === filter.isRead);
+    // Phase 3.4.3.3：mock 模式简易搜索
+    if (filter.search && filter.search.trim()) {
+      const q = filter.search.toLowerCase();
+      items = items.filter((a) =>
+        a.title.toLowerCase().includes(q) ||
+        (a.cleanedMarkdown ?? '').toLowerCase().includes(q) ||
+        (a.summary ?? '').toLowerCase().includes(q)
+      );
+    }
     items = [...items].sort((a, b) => {
       const ta = a.publishedAt ? Date.parse(a.publishedAt) : 0;
       const tb = b.publishedAt ? Date.parse(b.publishedAt) : 0;

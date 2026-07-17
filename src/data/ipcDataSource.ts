@@ -127,6 +127,7 @@ export class IpcDataSource implements FullDataSource {
     feedId?: string;
     isRead?: boolean;
     isStarred?: boolean;
+    search?: string;
   }): Promise<DataSourceState<Article[]>> {
     const r = await window.api.article.list(filter);
     if (!r.success) return toError(r);
