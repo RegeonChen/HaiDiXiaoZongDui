@@ -7,7 +7,7 @@
  *   - 切换时只换 Provider，不改组件代码
  *   - 所有方法都返回 Result 风格（成功/失败/加载），统一错误处理
  */
-import type { Article, Feed } from '@shared/types';
+import type { Article, ArticleFilter, Feed } from '@shared/types';
 
 export type DataSourceState<T> =
   | { kind: 'loading' }
@@ -18,9 +18,7 @@ export interface DataSource {
   /** 拉取所有订阅源 */
   feeds(): Promise<DataSourceState<Feed[]>>;
   /** 按筛选条件拉取文章 */
-  articles(filter: { feedId?: string; isRead?: boolean; isStarred?: boolean }): Promise<
-    DataSourceState<Article[]>
-  >;
+  articles(filter: ArticleFilter): Promise<DataSourceState<Article[]>>;
   /** 标记已读/未读 */
   markRead(articleId: string, isRead: boolean): Promise<void>;
   /** 标记星标/取消 */

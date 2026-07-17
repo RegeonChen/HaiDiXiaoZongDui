@@ -82,6 +82,30 @@ describe('database integrity', () => {
     expect(ArticleRepository.list({ feedId: feed.id }).total).toBe(0);
   });
 
+  it('ranks article search matches by relevance and limits results', () => {
+    const feed = FeedRepository.create({
+      url: 'https://search.example/feed.xml',
+      title: 'Search feed'
+    });
+    const articles = Array.from({ length: 23 }, (_, index) => article({
+      id: `search-${index}`,
+      feedId: feed.id,
+      guid: `search-guid-${index}`,
+      title: index === 0 ? 'machine learning' : index === 1 ? 'Practical machine learning' : `Article ${index}`,
+      rawText: index >= 2 ? 'A body about machine learning.' : 'Other content',
+      publishedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString()
+    }));
+    expect(ArticleRepository.insertBatch(articles)).toBe(23);
+
+    const result = ArticleRepository.list({ search: 'machine learning' });
+
+    expect(result.total).toBe(23);
+    expect(result.items).toHaveLength(20);
+    expect(result.items[0].id).toBe('search-0');
+    expect(result.items[1].id).toBe('search-1');
+    expect(ArticleRepository.list({ search: 'not present' })).toEqual({ items: [], total: 0 });
+  });
+
   it('persists pending in-memory changes when the connection closes', async () => {
     const timestamp = '2026-07-14T08:00:00.000Z';
     getDatabase().run(

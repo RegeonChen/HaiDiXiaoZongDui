@@ -44,7 +44,12 @@ const server = http.createServer((req, res) => {
   }
   if (req.url === '/a' || req.url === '/b') {
     res.writeHead(200, { 'content-type': 'text/html' });
-    res.end('<html><body><article><h1>Body</h1><p>Integration test content with English mixed 中文测试.</p></article></body></html>');
+    res.end(`<html><body><article>
+      <h1>Body</h1>
+      <p>Integration test content with English mixed 中文测试.</p>
+      <pre><code class="language-typescript">const veryLongValue = "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";</code></pre>
+      <table><thead><tr><th>名称</th><th>Value</th></tr></thead><tbody><tr><td>长链接</td><td>https://example.com/a/very/long/path/for/narrow/reader/verification</td></tr></tbody></table>
+    </article></body></html>`);
     return;
   }
   res.writeHead(404).end();
@@ -76,7 +81,9 @@ server.listen(0, '127.0.0.1', () => {
   }, 40_000);
   child.on('exit', (code) => {
     clearTimeout(timer);
-    const passed = /SMOKE_REPORT_PASS/.test(out) && /"integration":\{"ok":true/.test(out);
+    const passed = /SMOKE_REPORT_PASS/.test(out) &&
+      /"uiIpc":\{"ok":true/.test(out) &&
+      /"integration":\{"ok":true/.test(out);
     console.log(`[smoke-integration] electron 退出 code=${code}`);
     console[passed ? 'log' : 'error'](
       passed

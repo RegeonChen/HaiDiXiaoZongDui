@@ -12,7 +12,6 @@
  */
 import { useEffect } from 'react';
 import type { Language } from '@shared/types';
-import { useDataSource } from '../../context/DataSourceContext';
 import { useAppearance } from '../../hooks/useAppearance';
 import { useTheme } from '../../hooks/useTheme';
 import './GeneralSettingsModal.css';
@@ -36,7 +35,6 @@ const VISUAL_THEMES: Array<{ id: 'classic' | 'paper'; label: string; description
 
 export function GeneralSettingsModal({ open, onClose, onToast }: GeneralSettingsModalProps) {
   // 必须在所有 hooks 之前
-  const ds = useDataSource();
   const { effective: effectiveTheme } = useTheme();
   const appearance = useAppearance(effectiveTheme);
 

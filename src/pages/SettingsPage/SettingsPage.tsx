@@ -269,14 +269,20 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
 
 // ============== ProviderForm ==============
 
-interface ProviderFormProps {
-  initial?: AIProvider;
-  onSubmit: (input: AIProviderCreateInput | AIProviderUpdateInput) => void | Promise<void>;
+type ProviderFormProps = {
+  initial?: undefined;
+  onSubmit: (input: AIProviderCreateInput) => void | Promise<void>;
   onCancel: () => void;
   submitLabel: string;
-}
+} | {
+  initial: AIProvider;
+  onSubmit: (input: AIProviderUpdateInput) => void | Promise<void>;
+  onCancel: () => void;
+  submitLabel: string;
+};
 
-function ProviderForm({ initial, onSubmit, onCancel, submitLabel }: ProviderFormProps) {
+function ProviderForm(props: ProviderFormProps) {
+  const { initial, onCancel, submitLabel } = props;
   const [name, setName] = useState(initial?.name ?? '');
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? 'https://api.openai.com/v1');
   const [modelName, setModelName] = useState(initial?.modelName ?? 'gpt-4o-mini');
@@ -287,14 +293,18 @@ function ProviderForm({ initial, onSubmit, onCancel, submitLabel }: ProviderForm
     e.preventDefault();
     if (!name.trim() || !baseUrl.trim() || !modelName.trim()) return;
     if (!initial && !apiKey.trim()) return;
-    const input: AIProviderCreateInput | AIProviderUpdateInput = {
+    const input = {
       name: name.trim(),
       baseUrl: baseUrl.trim(),
       modelName: modelName.trim(),
       isDefault,
       ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {})
     };
-    void onSubmit(input);
+    if (props.initial) {
+      void props.onSubmit(input);
+    } else {
+      void props.onSubmit({ ...input, apiKey: apiKey.trim() });
+    }
   };
 
   return (

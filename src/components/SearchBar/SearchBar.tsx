@@ -40,6 +40,7 @@ export function SearchBar({ feeds, onSelect, onClear }: SearchBarProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const requestIdRef = useRef(0);
   const feedTitleById = new Map(feeds.map((f) => [f.id, f.siteTitle || f.title]));
 
   // 防抖触发搜索
@@ -48,6 +49,7 @@ export function SearchBar({ feeds, onSelect, onClear }: SearchBarProps) {
       clearTimeout(debounceRef.current);
     }
     const q = query.trim();
+    const requestId = ++requestIdRef.current;
     if (!q) {
       setResults([]);
       setLoading(false);
@@ -55,14 +57,20 @@ export function SearchBar({ feeds, onSelect, onClear }: SearchBarProps) {
     }
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
-      const r = await ds.articles({ search: q });
-      if (r.kind === 'ready') {
-        // 截取前 MAX_RESULTS 条
-        setResults(r.data.slice(0, MAX_RESULTS));
-      } else {
-        setResults([]);
+      try {
+        const r = await ds.articles({ search: q });
+        if (requestId !== requestIdRef.current) return;
+        if (r.kind === 'ready') {
+          // 截取前 MAX_RESULTS 条
+          setResults(r.data.slice(0, MAX_RESULTS));
+        } else {
+          setResults([]);
+        }
+      } catch {
+        if (requestId === requestIdRef.current) setResults([]);
+      } finally {
+        if (requestId === requestIdRef.current) setLoading(false);
       }
-      setLoading(false);
     }, DEBOUNCE_MS);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
