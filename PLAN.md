@@ -128,6 +128,79 @@
   - 视觉主题：切换后三栏及工具栏即时变色；"经典"白底深字、"纸质"暖黄底深棕字；阅读区对比度达 WCAG AA 级，代码高亮可读。
   - 两种主题重启后均保持用户上次选择。
 
+## Phase 3.4: Bug Fix & UX Polish
+
+**Overall Goal:** 修复 Phase 3 遗留 Bug，优化用户体验，添加文章模糊搜索功能。
+
+### Task 3.4.1 - UI Bug Fixes & State Management (张晨阳)
+
+- **Task Detail:**
+  1. 修复"未读"文章列表不同步：确保 `refreshArticles({ isRead: false })` 返回正确的未读文章集合，且文章标记已读后列表实时移除。
+  2. 修复"未读""星标文章"侧栏计数不更新：星标/已读状态变更后同步刷新 `allArticles` 中的 counts，确保 FeedList 底栏的计数始终准确。
+  3. 修复 AI 结果区文章切换不消失：`ArticleReader` 在 `article.id` 变化时将 `summary`/`translationParagraphs`/`tagSuggestions`/`activePanel` 重置为空（已有 useEffect 但有遗漏，需确认所有字段被清空）。
+  4. 修复翻译结果区不渲染 Markdown：将翻译段落的原文/译文从纯文本 `<div>` 改为简单的 Markdown 渲染（加粗 `**`、斜体 `*`、行内代码 `` ` ``）。
+  5. 修复摘要结果区不渲染 Markdown：摘要文本 `content` 渲染前做简易 Markdown → HTML 转换。
+  6. 修复删除订阅源提示数量始终为 0：`handleDeleteFeed` 中 `articles.filter` 改用 `allArticles` 而非当前筛选后的 `articles`。
+- **Affected Areas:** `App.tsx`（handleSelectArticle/handleToggleStar 的状态同步）、`ArticleReader.tsx`（useEffect reset + Markdown 渲染）、`FeedList.tsx`（计数显示）、`ArticleList.tsx`（已读后移除）。
+- **Verification:**
+  - 标记一篇未读文章为已读 → 未读列表自动移除该文章，侧栏计数减 1。
+  - 点击星标 → 星标文章列表更新，计数更新。
+  - 生成摘要/翻译 → 切换文章 → 结果区清空，不再残留上篇文章内容。
+  - 翻译/摘要结果中包含 `**加粗**` → 渲染为粗体；包含 `- 列表` → 保留换行。
+  - 右键删除有 5 篇文章的订阅源 → 提示"删除其全部 5 篇文章"。
+
+### Task 3.4.2 - AI & Content Reliability (张宇凡)
+
+- **Task Detail:**
+  1. 修复翻译经常只翻译子标题：调整 `translation-agent.ts` 的默认 Prompt 模板，增加"翻译整段完整内容，不要只翻译标题"的约束；在分块过长的段落时做截断保护。
+  2. 确保摘要内容的 Markdown 结构完整：验证 `summary-agent.ts` 输出的内容格式（标题、列表、加粗等）可被前端一致渲染。
+  3. 补充固定测试样本：为翻译输出和摘要输出建立离线 fixture 测试。
+- **Affected Areas:** `summary-agent.ts`、`translation-agent.ts`、Agent 测试样本。
+- **Verification:**
+  - 一篇含 3 段正文的英文文章翻译 → 每段都有完整的原文+译文对照，不只有标题。
+  - 摘要生成含 `## Key Points` 和 `- item` → 前端渲染为二级标题和无序列表。
+
+### Task 3.4.3 - Database Query & Search (陈冠中)
+
+- **Task Detail:**
+  1. 确认 `ArticleRepository.list({ isRead: false })` 的分页和排序正确性：确保未读筛选 + 分页 + 时间倒序组合使用时不会漏掉文章或重复。
+  2. 实现文章模糊搜索的排序算法：在 `ArticleRepository.list()` 中，当 `filter.search` 非空时，对匹配结果按相关性评分排序（标题命中权重 10 + 正文命中权重 1 + 完全匹配额外加分），截取前 20 条返回。
+  3. 将 `src/data/ipcDataSource.ts` 的 `articles()` 方法增加 `search` 参数透传，使前端可直接调用 `ds.articles({ search: keyword })`。
+- **Affected Areas:** `article-repository.ts`（list 方法排序增强）、`ipcDataSource.ts`（search 参数透传）。
+- **Verification:**
+  - 搜索"machine learning" → 标题含"machine learning"的文章排在最前，正文含该词的文章排在后，上限 20 篇。
+  - 搜索无匹配关键词 → 返回空列表。
+  - 未读筛选 + 分页组合 → 第二页不会出现第一页已展示的文章。
+
+### Task 3.4.4 - UX Polish & Search UI (张晨阳)
+
+- **Task Detail:**
+  1. 六个二级页面（设置/标签/笔记/文摘/专题/日志）右上角添加"← 返回主界面"按钮，点击回到阅读三栏视图。
+  2. 当视觉主题为"纸质"且切换到深色模式时，深色 UI 与"经典"深色一致（via `useAppearance` 中的 `applyToHtml`：深色模式下忽略 visualTheme 差异，统一使用 `data-theme='dark'` 的 CSS 变量）。
+  3. 文章模糊搜索 UI：在顶栏或文章列表上方添加搜索输入框（带 300ms 防抖），实时调用 `ds.articles({ search: keyword })` 获取结果，以下拉列表形式展示（标题 + 订阅源名 + 时间），点击跳转到该文章。
+  4. 原有"设置"按钮拆分为"通用设置"（弹窗）和"AI 设置"（子页面）：
+     - 顶栏 nav 按钮从 6 个变为 7 个：移除 `settings`，新增 `general` 和 `ai`。
+     - 点击"通用设置"（语言/字体/视觉主题/字号/阅读宽度）→ 弹出 Modal 弹窗，不跳转子页面，修改即时生效并持久化。
+     - 点击"AI 设置"（AI Provider CRUD + AI 默认值）→ 跳转现有 SettingsPage 子页面的 AI 部分。
+  5. 搜索/过滤/未读/星标等状态变更后 `articles` 列表为空时展示 `EmptyView` 提示"暂无匹配文章"。
+- **Affected Areas:** `Layout.tsx`（返回按钮 / nav 拆分）、`SettingsPage.tsx`（拆分为 GeneralModal + AiSettingsPage）、`useAppearance.ts`（深色模式统一）、`App.tsx`（搜索状态管理）、`ArticleList.tsx`（搜索 UI + 空状态）、新增 `GeneralSettingsModal` 组件。
+- **Verification:**
+  - 进入标签页 → 右上角有"← 返回"按钮 → 点击回到三栏阅读。
+  - 设置视觉主题为"纸质" → 切深色 → 界面显示与"经典"深色完全一致。
+  - 在搜索框输入"Python" → 300ms 后下拉列表出现匹配文章（标题+来源+时间）→ 点击文章 → 跳转到阅读视图。
+  - 点击顶栏"通用设置" → 弹出 Modal（语言/字体/视觉/字号/宽度）→ 修改 → 即时生效不退出手动查看 → 关闭弹窗回到阅读。
+  - 点击顶栏"AI 设置" → 跳转现有 SettingsPage 的 AI Provider + AI 默认值部分。
+
+### Phase 3.4 Integration (张晨阳 + 张宇凡 + 陈冠中)
+
+- 张晨阳的 Bug 修复 + UX 优化 + 搜索 UI → 接通陈冠中的搜索后端 → 张宇凡的翻译/摘要优化。
+- **Verification:**
+  - 搜索框输入 → 后端返回排序后的匹配文章 → 点击跳转阅读。
+  - 翻译一篇英文文章 → 每段完整对照 → Markdown 正确渲染 → 切换文章结果区清空。
+  - 删除订阅源 → 提示正确文章数 → 侧栏计数同步更新。
+  - 纸质深色模式与经典深色一致。
+  - 通用设置弹窗即时生效，AI 设置跳转子页面。
+
 ## Phase 4: Topic Tracking
 
 **Overall Goal:** 汇合三条主线，实现项目的特色功能“专题追踪与多源简报”。
