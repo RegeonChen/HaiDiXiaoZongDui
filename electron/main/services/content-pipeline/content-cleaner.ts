@@ -13,6 +13,17 @@ const ALLOWED_TAGS = [
   'em', 'strong', 'br', 'hr'
 ];
 
+const NOISE_SELECTORS = [
+  'nav',
+  'aside',
+  '[role="navigation"]',
+  '.toc',
+  '.table-of-contents',
+  '.ox-hugo-toc',
+  '#TableOfContents',
+  '#table-of-contents'
+];
+
 export function cleanArticleContent(sourceHtml: string, articleUrl: string): CleanedContent {
   assertHttpUrl(articleUrl);
   if (!sourceHtml.trim()) {
@@ -26,6 +37,7 @@ export function cleanArticleContent(sourceHtml: string, articleUrl: string): Cle
     throw new ContentPipelineError('CONTENT_PARSE_FAILED', '文章 HTML 解析失败', error);
   }
 
+  removeKnownNoise(document);
   absolutizeContentUrls(document, articleUrl);
 
   const readable = new Readability(document.cloneNode(true) as Document, {
@@ -67,6 +79,14 @@ export function cleanArticleContent(sourceHtml: string, articleUrl: string): Cle
     cleanedHtml,
     cleanedMarkdown: htmlToMarkdown(cleanedHtml)
   };
+}
+
+function removeKnownNoise(document: Document): void {
+  for (const selector of NOISE_SELECTORS) {
+    for (const element of document.querySelectorAll(selector)) {
+      element.remove();
+    }
+  }
 }
 
 function htmlToMarkdown(html: string): string {

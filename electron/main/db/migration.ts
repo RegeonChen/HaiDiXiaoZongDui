@@ -198,6 +198,25 @@ const migrations: Migration[] = [
       `);
       db.run(`CREATE INDEX IF NOT EXISTS idx_ai_results_article_type ON ai_results(article_id, result_type)`);
     }
+  },
+  {
+    version: 6,
+    up(db) {
+      // Cleaner v2 removes in-article navigation/TOC noise before Readability.
+      // Invalidate only derived content; keep the persisted source HTML so the
+      // next open can rebuild locally without another network request.
+      db.run(`
+        UPDATE articles
+        SET content_title = NULL,
+            content_byline = NULL,
+            content_excerpt = NULL,
+            cleaned_html = NULL,
+            cleaned_markdown = NULL,
+            cleaning_status = 'pending',
+            cleaning_error = NULL
+        WHERE cleaned_html IS NOT NULL OR cleaned_markdown IS NOT NULL
+      `);
+    }
   }
 ];
 

@@ -64,4 +64,28 @@ describe('cleanArticleContent', () => {
     expect(result.cleanedMarkdown).toContain('| 名称 | Value |');
     expect(result.cleanedMarkdown).toMatch(/1\.\s+第一项/);
   });
+
+  it('removes generated table-of-contents blocks before Readability extraction', () => {
+    const result = cleanArticleContent(`
+      <article>
+        <blockquote><p>现代化、可以灵活定制的自然叫牌法。</p></blockquote>
+        <div class="ox-hugo-toc toc">
+          <div class="heading">Table of Contents</div>
+          <ul>
+            <li><a href="#basics">基本概念</a></li>
+            <li><a href="#principles">基本原则</a></li>
+          </ul>
+        </div>
+        <h2 id="basics">基本概念</h2>
+        <p>这是文章真正的正文内容，包含足够长的中文说明，用于确保正文提取器能够稳定识别主要内容而不是目录导航。</p>
+        <h2 id="principles">基本原则</h2>
+        <p>这里继续解释文章的基本原则；章节标题与正文必须保留，但前面的重复目录链接应当被清除。</p>
+      </article>
+    `, 'https://soulhacker.me/posts/bridge-17/');
+
+    expect(result.cleanedHtml).not.toContain('Table of Contents');
+    expect(result.cleanedHtml).not.toContain('href="#basics"');
+    expect(result.cleanedHtml).toContain('<h2>基本概念</h2>');
+    expect(result.cleanedHtml).toContain('文章真正的正文内容');
+  });
 });

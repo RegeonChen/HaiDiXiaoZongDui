@@ -23,6 +23,27 @@ describe('parseFeed', () => {
     expect(result.articles[0]?.rawHtml).toContain('<strong>content</strong>');
   });
 
+  it('accepts XML processing instructions before the RSS root element', async () => {
+    const result = await parseFeed(`
+      <?xml version="1.0" encoding="UTF-8"?>
+      <?xml-stylesheet type="text/xsl" href="/css/rss.xsl"?>
+      <!-- Browser presentation only; not part of the feed payload. -->
+      <rss version="2.0"><channel>
+        <title>Styled RSS</title>
+        <link>https://idiallo.com</link>
+        <item>
+          <title>Article</title>
+          <link>https://idiallo.com/blog/article</link>
+          <guid>https://idiallo.com/blog/article</guid>
+        </item>
+      </channel></rss>
+    `, 'https://idiallo.com/feed.rss');
+
+    expect(result.feedType).toBe('rss');
+    expect(result.title).toBe('Styled RSS');
+    expect(result.articles).toHaveLength(1);
+  });
+
   it('normalizes Atom and resolves relative links', async () => {
     const result = await parseFeed(await fixture('atom.xml'), 'https://example.org/feed.atom');
 

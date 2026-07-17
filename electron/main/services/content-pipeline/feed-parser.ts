@@ -171,8 +171,10 @@ function jsonFeedAuthor(item: Record<string, unknown>): string | null {
 function detectXmlFeedType(source: string): FeedType {
   const withoutProlog = source
     .replace(/^\uFEFF/, '')
-    .replace(/^\s*<\?xml[\s\S]*?\?>/i, '')
-    .replace(/^\s*<!--([\s\S]*?)-->/, '')
+    // XML feeds may contain more than the declaration before the root node,
+    // for example `<?xml-stylesheet ...?>`. Skip all leading processing
+    // instructions and comments instead of only handling `<?xml ...?>`.
+    .replace(/^(?:\s*(?:<\?[\s\S]*?\?>|<!--[\s\S]*?-->))+\s*/i, '')
     .trimStart();
 
   if (/^<feed(?:\s|>)/i.test(withoutProlog)) return 'atom';

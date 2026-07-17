@@ -7,6 +7,11 @@ const runRealFeedTest = process.env['JUHE_REAL_FEEDS'] === '1' ? it : it.skip;
 
 const realFeeds = [
   {
+    name: 'iDiallo styled RSS',
+    url: 'https://idiallo.com/feed.rss',
+    expectedType: 'rss'
+  },
+  {
     name: 'NASA News Releases RSS',
     url: 'https://www.nasa.gov/news-release/feed/',
     expectedType: 'rss'
