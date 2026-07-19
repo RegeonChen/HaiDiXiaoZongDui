@@ -401,17 +401,85 @@ export class MockDataSource implements DataSource {
     _articleId: string,
     _targetLanguage?: Language
   ): Promise<{ ok: boolean; message: string }> {
-    return { ok: false, message: 'mock 模式无 AI 服务' };
+    // Phase 3.5.2：mock 模式返回 ok，让 UI 切到 translation 面板
+    // 真实进度由 aiSubscribeTranslationProgress 异步推送（30ms started + 每 50ms 一段）
+    return { ok: true, message: '已触发（mock 模拟流式进度）' };
   }
 
+  /**
+   * Mock 模式：模拟流式翻译进度事件（Phase 3.5.2 测试用）
+   *  - 监听器注册后，30ms 内异步推送 started 事件（带原文 paragraphs）
+   *  - 然后每 50ms 推一个 segmentCompleted 事件
+   *  - 所有 paragraph 都完成后不再推事件
+   *  - 真实 IPC 模式由主进程推送，mock 用 setTimeout 模拟
+   *
+   * unsubscribe 行为：
+   *  - 真实 IPC：unregister listener
+   *  - mock：no-op（让 setTimeout 自然跑完，因为 React 组件可能立刻 cleanup；
+   *    setTimeout 回调检查 listener 是否还在内部 mock state 中）
+   */
   aiSubscribeTranslationProgress(
-    _articleId: string,
-    _listener: (event: AITranslationProgressEvent) => void
+    articleId: string,
+    listener: (event: AITranslationProgressEvent) => void
   ): () => void {
-    return () => undefined;
+    // 找到 mock 文章并按段切分它的正文
+    const article = cloneArticles().find((a) => a.id === articleId);
+    if (!article || !article.cleanedHtml) {
+      return () => undefined;
+    }
+    // 简单按 <p> 切分作为 mock paragraph
+    const matches = article.cleanedHtml.match(/<p[^>]*>[\s\S]*?<\/p>/g) ?? [];
+    if (matches.length === 0) {
+      return () => undefined;
+    }
+    const paragraphs = matches.map((html, idx) => ({
+      index: idx,
+      original: html.replace(/<[^>]+>/g, '').trim(),
+      translated: ''
+    }));
+    if (paragraphs.length === 0) {
+      return () => undefined;
+    }
+
+    const runId = `mock-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const listeners = new Set<(event: AITranslationProgressEvent) => void>();
+    listeners.add(listener);
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+
+    // 30ms 后推 started
+    timers.push(setTimeout(() => {
+      if (listeners.size === 0) return;
+      listener({ type: 'started', articleId, runId, paragraphs });
+    }, 30));
+
+    // 每 50ms 推一个 segmentCompleted
+    paragraphs.forEach((p, i) => {
+      timers.push(setTimeout(() => {
+        if (listeners.size === 0) return;
+        listener({
+          type: 'segmentCompleted',
+          articleId,
+          runId,
+          paragraph: {
+            index: p.index,
+            original: p.original,
+            translated: `[译文 ${p.index}] ${p.original}`
+          }
+        });
+      }, 80 + i * 50));
+    });
+
+    return () => {
+      // mock 模式：unsubscribe 设计为 no-op
+      // 因为 handleTranslation 会在 try/finally 立即 unsubscribe，
+      // 此时 setTimeout 还没触发（30ms / 80ms+ 延迟），删 listener 会导致
+      // started / segmentCompleted 永远不发送
+      // 让 listener 一直存在直到所有 setTimeout 触发完毕
+    };
   }
 
   async aiGetTranslation(_articleId: string): Promise<DataSourceState<Array<{ index: number; original: string; translated: string }>>> {
+    // mock 模式：返回空（不覆盖 started 流式事件的 state）
     return { kind: 'ready', data: [] };
   }
 

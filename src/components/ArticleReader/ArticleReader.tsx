@@ -20,6 +20,8 @@ import { EmptyView } from '../StatusView/EmptyView';
 import { LoadingView } from '../StatusView/LoadingView';
 import { ErrorView } from '../StatusView/ErrorView';
 import { renderMarkdown } from '../../utils/markdown';
+import { SummaryFloatingPanel } from '../SummaryFloatingPanel/SummaryFloatingPanel';
+import { TranslatedArticleView } from '../TranslatedArticleView/TranslatedArticleView';
 import './ArticleReader.css';
 
 export interface ArticleReaderProps {
@@ -379,61 +381,32 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
             <LoadingView message="正在清洗正文…" />
           ) : content.error ? (
             <ErrorView message={content.error} onRetry={retry} />
-          ) : activePanel === 'translation' && translationParagraphs.length > 0 ? (
-            <div className="article-reader__content article-reader__bilingual-content">
-              {translationParagraphs.map((paragraph) => (
-                <section key={paragraph.index} className="article-reader__translation-item">
-                  <div
-                    className="article-reader__translation-original"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(paragraph.original) }}
-                  />
-                  {paragraph.status === 'ready' ? (
-                    <div
-                      className="article-reader__translation-translated"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(paragraph.translated) }}
-                    />
-                  ) : (
-                    <div
-                      className={`article-reader__translation-translated article-reader__translation-status article-reader__translation-status--${paragraph.status}`}
-                      role="status"
-                      aria-live="polite"
-                    >
-                      {paragraph.status === 'pending' ? '翻译中…' : '翻译失败'}
-                    </div>
-                  )}
-                </section>
-              ))}
-            </div>
+          ) : activePanel === 'translation' ? (
+            // Phase 3.5.2：段落内翻译（原文 + 翻译插槽交替）。
+            // 点完翻译按钮立即切到段渲染，每段挂一个 pending 插槽（不依赖 IPC 返回）。
+            <TranslatedArticleView
+              cleanedHtml={content.html ?? ''}
+              paragraphs={translationParagraphs}
+            />
           ) : content.html ? (
-            <>
             <div
               className="article-reader__content"
               dangerouslySetInnerHTML={{ __html: content.html }}
             />
-              {activePanel === 'translation' && (
-                <LoadingView message="正在按段落翻译…" />
-              )}
-            </>
           ) : (
             <EmptyView title="此文章暂无正文" hint="可能还没有内容，或者源站返回为空。" />
           )}
         </div>
 
         {/* AI 结果区 */}
-        {activePanel === 'summary' && (
-          <div className="article-reader__ai-panel">
-            <h3>✨ 摘要</h3>
-            {summary ? (
-              // Phase 3.4.1.5：简易 Markdown 渲染（**bold** / *italic* / `code` / 链接 / 段落）
-              <div
-                className="article-reader__ai-text"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(summary) }}
-              />
-            ) : (
-              <LoadingView message="正在生成摘要…" />
-            )}
-          </div>
-        )}
+        {/* Phase 3.5.1：摘要从文末折叠区 → 可拖拽悬浮窗（SummaryFloatingPanel）。
+            打开条件：activePanel === 'summary'。关闭 → setActivePanel(null)。 */}
+        <SummaryFloatingPanel
+          open={activePanel === 'summary'}
+          onClose={() => setActivePanel(null)}
+          content={summary ? renderMarkdown(summary) : ''}
+          loading={busy && activePanel === 'summary' && !summary}
+        />
 
         {activePanel === 'tags' && (
           <div className="article-reader__ai-panel">

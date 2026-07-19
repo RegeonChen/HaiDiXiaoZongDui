@@ -1,0 +1,77 @@
+/**
+ * TranslationSlot 样式（Mercury 风格）
+ */
+.translation-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 16px 0;
+  padding: 10px 14px;
+  background: var(--bg-elev);
+  border-left: 3px solid var(--accent-soft, var(--accent));
+  border-radius: 0 4px 4px 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.translation-slot--ready {
+  border-left-color: var(--accent);
+}
+
+.translation-slot--failed {
+  border-left-color: #e0a8a8;
+}
+
+.translation-slot__original {
+  color: var(--fg-soft);
+  font-size: 13px;
+  user-select: text;
+  cursor: text;
+}
+
+.translation-slot__original p {
+  margin: 0 0 4px 0;
+}
+.translation-slot__original p:last-child {
+  margin-bottom: 0;
+}
+
+.translation-slot__translated {
+  color: var(--fg);
+  user-select: text;
+  cursor: text;
+}
+
+.translation-slot__translated p {
+  margin: 0 0 4px 0;
+}
+.translation-slot__translated p:last-child {
+  margin-bottom: 0;
+}
+
+.translation-slot__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-soft);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.translation-slot__status--failed {
+  color: #c0392b;
+  font-style: normal;
+}
+
+.translation-slot__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: translation-slot-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes translation-slot-spin {
+  to { transform: rotate(360deg); }
+}

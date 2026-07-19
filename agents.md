@@ -124,7 +124,39 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 4.1 专题 UI 完整化已完成**（A）。Task 4.2（张宇凡）已完成；Task 4.3（陈冠中）Topic 仓储 + 匹配 + Briefing Agent 仍 stub 待落地。
+- 当前活动里程碑：**Phase 3.5.2 UI 段落内翻译插槽前期准备已完成**（A）。4.1 + 3.5.1 + 3.5.2 UI 骨架 + 3.5.3 AI 持久化均已就绪；等张宇凡 `splitCleanedHtmlIntoBlocks` 正式工具就位后切换 mock 实现。
+- **Task 3.5.2 UI 段落内翻译插槽**（张晨阳 — 前期准备）：
+  - **复用现有组件**（4.1 commit 已写好）：
+    - `src/utils/html-split.ts` —— `splitCleanedHtmlIntoBlocks(html): { blocks: HtmlBlock[], fallback }` 按顶层块级元素（`<p>`/`<h1-6>`/`<pre>`/`<ul>`/`<ol>`/`<blockquote>`/`<table>`/`<figure>`）切分，浏览器内置 DOMParser 不引第三方库
+    - `src/components/TranslatedArticleView/TranslatedArticleView.tsx` —— 按段渲染（原文 + 插槽交替），fallback 单块
+    - `src/components/TranslationSlot/TranslationSlot.tsx` —— 三态：pending（"Waiting for AI response…" spinner）/ ready（Markdown 渲染译文）/ failed
+  - **关键修**：`ArticleReader` 渲染条件从 `activePanel === 'translation' && translationParagraphs.length > 0` 改为 `activePanel === 'translation'`，**点完按钮立即走段渲染**（每段挂 pending 插槽，不依赖 IPC 返回）
+  - **smoke:inline-trans 探针**（A 之前在 4.1 已写好，10 项校验）：
+    - 8 项 OK 判定：viewRendered / slotsMin1 / blockPairsMatchSlots / blocksRendered / initialPending / allReady / translatedTextContains / noFailed
+    - 验证：view 渲染、slot ≥ 1、block-pair = slot 数（1:1）、所有 slot 初始 pending、mock 流式完成后 all ready、译文含"译文"、无 failed
+  - **11/11 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / smoke:summary / **smoke:inline-trans**
+- **Task 3.5.1 摘要悬浮窗**（张晨阳）：
+  - **新组件** `src/components/SummaryFloatingPanel/SummaryFloatingPanel.tsx` + `.css`
+    - 标题栏 mousedown + document mousemove/mouseup 拖拽；位置/大小实时变化
+    - 8 个 resize handle（4 边 + 4 角）+ 完整 cursor 提示
+    - 边界检测：拖出 viewport 自动 clamp 到视口内（最小 300×200px）
+    - 持久化：`localStorage[juhe-shivi.summary-panel.position]` 存 x/y/width/height
+    - viewport resize 时重新 clamp
+    - Esc 键关闭
+    - 内容：Loading spinner + "Waiting for AI response…"（条件：`loading || !content`）→ Markdown 渲染后的摘要
+    - 状态栏显示 size 数字（调试可见）
+  - **ArticleReader 集成**：
+    - 移除旧 `article-reader__ai-panel` 摘要折叠区
+    - `<SummaryFloatingPanel open={activePanel === 'summary'} onClose={...} content={renderMarkdown(summary)} loading={busy && ...} />`
+    - 与 3.5.3 持久化协同：文章挂载时若 `article.summary` 有缓存 → 自动打开 panel
+  - **smoke-3.5.1 探针**（10 项校验）+ `npm run smoke:summary`：
+    - 初始 panel 隐藏 / 点摘要后渲染 / loading 状态可见 / 8 个 resize handle
+    - 拖拽生效（mousedown titlebar + mousemove + mouseup，验证 left/top 变化）
+    - resize 生效（se 角，验证 width/height 变化）
+    - 边界检测（拖到 9999,9999 后 clamp 到视口内）
+    - localStorage 持久化（读取 `juhe-shivi.summary-panel.position`）
+    - Esc 关闭
+  - **10/10 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / **smoke:summary**（新增）。
 - **Task 4.1 专题 UI 完整化**（张晨阳）：
   - **FullDataSource 接口扩展**：6 个新方法 `topicGetTimeline` / `topicGetEventGroups` / `topicGenerateBriefing` / `topicGetBriefing` / `topicUpdateBriefing` / `topicExportBriefing`，IpcDataSource + MockDataSource 同步实现
   - **TopicsPage 完整化**（替代占位 stub）：
@@ -360,6 +392,19 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
     - EventGroups tab：可折叠卡片 + 按需加载组内文章
     - Briefing tab：生成 / 编辑 / 导出 Markdown/HTML（Blob 下载）+ 结论追溯 [N] 列表 + 支撑文章 ID + viewpointDiff
   - smoke-4.1 探针（7 项校验）+ `npm run smoke:topic` script
+- **2026-07-19**：Task 3.5.1 摘要悬浮窗（张晨阳）：
+  - 新组件 `SummaryFloatingPanel`：可拖拽（标题栏 mousedown + document mousemove/up）+ 8 个 resize handle（4 边 + 4 角）+ 边界检测（自动 clamp 到 viewport，最小 300×200px）+ Esc 关闭
+  - 持久化：位置/大小存 `localStorage[juhe-shivi.summary-panel.position]`，viewport resize 重新 clamp
+  - 内容：Loading spinner + "Waiting for AI response…"（条件 `loading || !content`）→ Markdown 渲染后的摘要
+  - ArticleReader 集成：移除旧 `article-reader__ai-panel` 摘要折叠区；与 3.5.3 持久化协同（文章挂载时若 `article.summary` 有缓存自动打开 panel）
+  - smoke-3.5.1 探针（10 项校验：初始隐藏 / 渲染 / loading / 8 handle / 拖拽 / resize / 边界 clamp / localStorage / Esc 关闭）+ `npm run smoke:summary`
+  - **10/10 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / **smoke:summary**
+- **2026-07-19**：Task 3.5.2 UI 段落内翻译插槽 — 前期准备（张晨阳）：
+  - 复用 4.1 commit 写好的 3 个组件：`html-split.ts`（`splitCleanedHtmlIntoBlocks` 浏览器 DOMParser mock）/ `TranslatedArticleView`（按段渲染）/ `TranslationSlot`（pending/ready/failed 三态）
+  - 修 `ArticleReader` 渲染条件：`activePanel === 'translation'` 即切段渲染（不等 IPC paragraphs 返回），每段立即挂 pending 插槽
+  - smoke:inline-trans 探针沿用 4.1 已写的 10 项校验（viewRendered / slotsMin1 / blockPairsMatchSlots / blocksRendered / initialPending / allReady / translatedTextContains / noFailed）
+  - 等张宇凡 `splitCleanedHtmlIntoBlocks` 正式工具就位，切换 import 即可
+  - **11/11 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / smoke:summary / **smoke:inline-trans**
   - smoke-3.4-integration 探针适配 `topicsPlaceholder` 选择器（`.topics-page__placeholder, .topics-page .status-view`）
   - **9/9 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic
 

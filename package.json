@@ -25,6 +25,9 @@
     "smoke:task33": "npm run build && node scripts/smoke-3.3.cjs",
     "smoke:integration": "npm run build && node scripts/smoke-3.4-integration.cjs",
     "smoke:topic": "npm run build && node scripts/smoke-4.1.cjs",
+    "smoke:summary": "npm run build && node scripts/smoke-3.5.1.cjs",
+    "smoke:translation": "npm run build && node scripts/smoke-3.5.2-ui.cjs",
+    "smoke:inline-trans": "npm run build && node scripts/smoke-3.5.2-ui.cjs",
     "dist:mac": "npm run typecheck && npm run build && electron-builder --mac dmg"
   },
   "dependencies": {

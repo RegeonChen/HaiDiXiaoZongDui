@@ -1,0 +1,81 @@
+/**
+ * TranslatedArticleView 样式
+ */
+.translated-article-view {
+  display: flex;
+  flex-direction: column;
+}
+
+.translated-article-view__block-pair {
+  display: flex;
+  flex-direction: column;
+}
+
+.translated-article-view__block {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--fg);
+  user-select: text;
+  cursor: text;
+}
+
+.translated-article-view__block p {
+  margin: 0 0 14px 0;
+}
+.translated-article-view__block p:last-child {
+  margin-bottom: 0;
+}
+.translated-article-view__block h1,
+.translated-article-view__block h2,
+.translated-article-view__block h3,
+.translated-article-view__block h4,
+.translated-article-view__block h5,
+.translated-article-view__block h6 {
+  margin: 20px 0 10px 0;
+  color: var(--fg);
+}
+.translated-article-view__block h1 { font-size: 22px; }
+.translated-article-view__block h2 { font-size: 19px; }
+.translated-article-view__block h3 { font-size: 17px; }
+.translated-article-view__block h4 { font-size: 15px; }
+.translated-article-view__block pre {
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 13px;
+  margin: 12px 0;
+}
+.translated-article-view__block code {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+.translated-article-view__block pre code {
+  background: transparent;
+  padding: 0;
+}
+.translated-article-view__block ul,
+.translated-article-view__block ol {
+  margin: 10px 0;
+  padding-left: 28px;
+}
+.translated-article-view__block blockquote {
+  margin: 12px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--border);
+  color: var(--fg-soft);
+  background: var(--bg);
+  border-radius: 0 4px 4px 0;
+}
+.translated-article-view__block a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.translated-article-view__block a:hover {
+  text-decoration: underline;
+}

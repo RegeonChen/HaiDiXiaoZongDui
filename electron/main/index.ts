@@ -96,6 +96,10 @@ const SMOKE_FLAGS = {
   smokeRealFeed: process.env['JUHE_SHIVI_SMOKE_REAL_FEED'] === '1',
   smokeTask33: process.env['JUHE_SHIVI_SMOKE_TASK33'] === '1',
   smokeTopic: process.env['JUHE_SHIVI_SMOKE_TOPIC'] === '1',
+  smokeSummary: process.env['JUHE_SHIVI_SMOKE_SUMMARY'] === '1',
+  // smokeInlineTrans: Phase 3.5.2 UI 段落内翻译插槽（沿用 4.1 commit 时的命名）
+  smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
+  smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
   seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
   seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
@@ -185,13 +189,287 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeUiReal = SMOKE_FLAGS.smokeUiReal;
   const smokeTask33 = SMOKE_FLAGS.smokeTask33;
   const smokeTopic = SMOKE_FLAGS.smokeTopic;
+  const smokeSummary = SMOKE_FLAGS.smokeSummary;
+  const smokeInlineTrans = SMOKE_FLAGS.smokeInlineTrans;
   const feedUrl = SMOKE_FLAGS.feedUrl;
   const aiBaseUrl = SMOKE_FLAGS.aiBaseUrl;
   const aiKey = SMOKE_FLAGS.aiKey;
   let probe: string;
 
   // Phase 4.1 smoke: 优先级最高，避免被 smokeUiReal 拦截
-  if (smokeTopic) {
+  if (smokeInlineTrans) {
+    // Phase 3.5.2 UI smoke: 段落内翻译插槽（前期准备）
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { inlineTrans: { ok: false, error: null, checks: {} } };
+        try {
+          // 1) 等 reader 视图
+          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          // 2) 找带 cleanedHtml 的文章（mockData.ts 有 3 篇有 cleanedHtml）
+          //    简单地找第一个 article-list__item 并点击
+          const articles = document.querySelectorAll('.article-list__item');
+          if (articles.length === 0) {
+            report.inlineTrans.error = 'mock 模式没有文章';
+            return JSON.stringify(report);
+          }
+          articles[0].click();
+          await waitFor(() => !!document.querySelector('.article-reader'), { timeout: 3000 });
+          // 3) 等 reader toolbar + 翻译按钮
+          await waitFor(
+            () => Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'))
+              .some((b) => (b.textContent || '').includes('翻译')),
+            { timeout: 5000 }
+          );
+          // 4) 抓取 cleanedHtml（通过 IPC）
+          const articleId = window.location.pathname; // 占位，下面用 reader 状态
+          // 用 ds.articles 拿当前选中文章 — 但 mock 不暴露 selected
+          // 改用直接查询 article reader 当前的 data 属性
+          // mock 模式文章有 cleanedHtml，触发 getCleanedHtml 才能看到内容
+          // 简化：通过点 🌐 翻译按钮触发整条链路
+          const transBtn = Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'))
+            .find((b) => (b.textContent || '').includes('翻译'));
+          if (!transBtn) {
+            report.inlineTrans.error = '找不到 🌐 翻译 按钮';
+            return JSON.stringify(report);
+          }
+          transBtn.click();
+          // 5) 等 TranslatedArticleView 渲染
+          await waitFor(() => !!document.querySelector('.translated-article-view'), { timeout: 3000 });
+          const view = document.querySelector('.translated-article-view');
+          if (!view) {
+            // 调试：把 article-reader 内部状态 dump 出来
+            const readerHtml = document.querySelector('.article-reader__body')?.innerHTML?.slice(0, 2000) || '(no body)';
+            report.inlineTrans.debugBody = readerHtml;
+            report.inlineTrans.debugActiveBtn = transBtn.disabled ? 'disabled' : 'enabled';
+            const allToolbar = Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn')).map(b => b.textContent || '');
+            report.inlineTrans.debugToolbar = allToolbar;
+          }
+          report.inlineTrans.checks.viewRendered = !!view;
+          // 6) 等 TranslationSlot 出现（started 事件 30ms 后）
+          await waitFor(() => document.querySelectorAll('.translation-slot').length > 0, { timeout: 2000 });
+          const slots = document.querySelectorAll('.translation-slot');
+          report.inlineTrans.checks.slotsCount = slots.length;
+          report.inlineTrans.checks.slotsMin1 = slots.length >= 1;
+          // 调试
+          report.inlineTrans.debugSlotDetails = Array.from(slots).map((s) => ({
+            index: s.getAttribute('data-translation-index'),
+            status: s.getAttribute('data-translation-status')
+          }));
+          // 7) 验证 block-pair 数 = slot 数（一对一）
+          const blockPairs = document.querySelectorAll('.translated-article-view__block-pair');
+          report.inlineTrans.checks.blockPairCount = blockPairs.length;
+          report.inlineTrans.checks.blockPairsMatchSlots = blockPairs.length === slots.length;
+          // 8) 验证 blocks（HTML 块）有内容
+          const blocks = document.querySelectorAll('.translated-article-view__block');
+          report.inlineTrans.checks.blocksRendered = blocks.length > 0;
+          report.inlineTrans.debugBlockDetails = Array.from(blocks).map((b) => ({
+            index: b.getAttribute('data-block-index'),
+            tag: b.getAttribute('data-block-tag')
+          }));
+          // 9) 初始所有 slot 是 pending（mock 流式事件还没推完）
+          const pendingSlots = document.querySelectorAll('.translation-slot--pending');
+          report.inlineTrans.checks.initialPending = pendingSlots.length > 0;
+          // 10) 等 mock 流式完成（每段 50ms + 30ms 启动，最多 30+50*slots）
+          const totalWait = 30 + 50 * slots.length + 200;
+          await sleep(totalWait);
+          const readySlots = document.querySelectorAll('.translation-slot--ready');
+          report.inlineTrans.checks.readySlotsCount = readySlots.length;
+          report.inlineTrans.checks.allReady = readySlots.length === slots.length;
+          // 11) 验证 ready slot 显示译文（"[译文 N] ..."）
+          const firstReady = document.querySelector('.translation-slot--ready .translation-slot__translated');
+          const translatedText = firstReady?.textContent || '';
+          report.inlineTrans.checks.translatedTextContains = translatedText.includes('译文');
+          // 12) 验证没有 failed
+          const failedSlots = document.querySelectorAll('.translation-slot--failed');
+          report.inlineTrans.checks.noFailed = failedSlots.length === 0;
+
+          report.inlineTrans.ok = [
+            'viewRendered', 'slotsMin1', 'blockPairsMatchSlots', 'blocksRendered',
+            'initialPending', 'allReady', 'translatedTextContains', 'noFailed'
+          ].every((k) => report.inlineTrans.checks[k] === true);
+        } catch (e) {
+          report.inlineTrans.error = String(e);
+          report.inlineTrans.stack = (e instanceof Error) ? e.stack : null;
+        }
+        return JSON.stringify(report);
+      })()
+    `;
+  } else if (smokeSummary) {
+    // Phase 3.5.1 smoke: 摘要悬浮窗（拖拽 / resize / 边界 / 持久化 / 关闭）
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { summary: { ok: false, error: null, checks: {} } };
+        try {
+          // 1) 等待 reader 视图 + 至少一篇文章
+          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          const articles = document.querySelectorAll('.article-list__item');
+          if (articles.length === 0) {
+            // 需要先 seed 数据，但 smokeUiReal 模式不自动 seed
+            // 改为直接通过 IPC 注入一个 article + feed（参考 smokeUiReal seed 模式）
+            const seedFeed = await window.api.feed.create({
+              url: 'http://127.0.0.1:' + (window.location.port || '0') + '/seed.xml',
+              title: 'Summary Smoke Feed'
+            });
+            // seed 数据需要 HTTP server 才能 sync —— 简化为通过 uiIpc 路径已 seed 的情况
+            // 若 articles 仍为空，验证 AI 按钮的 disabled 态即可
+          }
+          // 尝试点击第一篇文章（如果存在）
+          if (articles.length > 0) {
+            articles[0].click();
+            await waitFor(() => !!document.querySelector('.article-reader'), { timeout: 3000 });
+          }
+          // 等待 reader toolbar 出现
+          await waitFor(() => document.querySelectorAll('.article-reader__toolbar .article-reader__btn').length >= 5, { timeout: 5000 });
+          const toolbarBtns = Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'));
+          const summaryBtn = toolbarBtns.find((b) => b.textContent && b.textContent.includes('摘要'));
+          if (!summaryBtn) {
+            report.summary.error = '找不到 ✨ 摘要 按钮';
+            return JSON.stringify(report);
+          }
+          // 2) 验证悬浮窗初始不存在
+          report.summary.checks.panelInitiallyHidden = !document.querySelector('.summary-floating-panel');
+
+          // 3) 点摘要 → 悬浮窗渲染
+          summaryBtn.click();
+          await waitFor(() => !!document.querySelector('.summary-floating-panel'), { timeout: 2000 });
+          const panel = document.querySelector('.summary-floating-panel');
+          report.summary.checks.panelRendered = !!panel;
+          // 验证 loading 状态
+          await waitFor(() => !!document.querySelector('.summary-floating-panel__loading'), { timeout: 2000 });
+          report.summary.checks.loadingVisible = !!document.querySelector('.summary-floating-panel__loading');
+
+          // 4) 8 个 resize handle 存在
+          const handles = document.querySelectorAll('.summary-floating-panel__resize');
+          report.summary.checks.resizeHandles = handles.length === 8;
+
+          // 5) 拖拽：mousedown 标题栏 + mousemove + mouseup
+          const titlebar = document.querySelector('.summary-floating-panel__titlebar');
+          const rectBeforeDrag = {
+            x: parseInt(panel.style.left || '0', 10),
+            y: parseInt(panel.style.top || '0', 10)
+          };
+          // 用原生事件分发
+          const fireMouseEvent = (target, type, x, y) => {
+            const ev = new MouseEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              button: 0,
+              buttons: type === 'mouseup' ? 0 : 1,
+              clientX: x,
+              clientY: y
+            });
+            target.dispatchEvent(ev);
+          };
+          // 模拟在 titlebar 中心 mousedown
+          const tbRect = titlebar.getBoundingClientRect();
+          const startX = tbRect.left + tbRect.width / 2;
+          const startY = tbRect.top + tbRect.height / 2;
+          fireMouseEvent(titlebar, 'mousedown', startX, startY);
+          await sleep(20);
+          fireMouseEvent(document, 'mousemove', startX + 100, startY + 80);
+          await sleep(20);
+          fireMouseEvent(document, 'mouseup', startX + 100, startY + 80);
+          await sleep(50);
+          const rectAfterDrag = {
+            x: parseInt(panel.style.left || '0', 10),
+            y: parseInt(panel.style.top || '0', 10)
+          };
+          report.summary.checks.dragMoved = (rectBeforeDrag.x !== rectAfterDrag.x) || (rectBeforeDrag.y !== rectAfterDrag.y);
+          report.summary.checks.dragFromX = rectBeforeDrag.x;
+          report.summary.checks.dragToX = rectAfterDrag.x;
+          report.summary.checks.dragFromY = rectBeforeDrag.y;
+          report.summary.checks.dragToY = rectAfterDrag.y;
+
+          // 6) resize: 拖拽 se 角
+          const seHandle = Array.from(handles).find((h) => h.getAttribute('data-resize') === 'se');
+          const sizeBefore = {
+            w: parseInt(panel.style.width || '0', 10),
+            h: parseInt(panel.style.height || '0', 10)
+          };
+          const seRect = seHandle.getBoundingClientRect();
+          const seStartX = seRect.left + seRect.width / 2;
+          const seStartY = seRect.top + seRect.height / 2;
+          fireMouseEvent(seHandle, 'mousedown', seStartX, seStartY);
+          await sleep(20);
+          fireMouseEvent(document, 'mousemove', seStartX + 60, seStartY + 40);
+          await sleep(20);
+          fireMouseEvent(document, 'mouseup', seStartX + 60, seStartY + 40);
+          await sleep(50);
+          const sizeAfter = {
+            w: parseInt(panel.style.width || '0', 10),
+            h: parseInt(panel.style.height || '0', 10)
+          };
+          report.summary.checks.resizeChanged = (sizeBefore.w !== sizeAfter.w) || (sizeBefore.h !== sizeAfter.h);
+          report.summary.checks.sizeFromW = sizeBefore.w;
+          report.summary.checks.sizeToW = sizeAfter.w;
+          report.summary.checks.sizeFromH = sizeBefore.h;
+          report.summary.checks.sizeToH = sizeAfter.h;
+
+          // 7) 边界检测：拖拽到超大位置（远离 viewport），验证 clamp
+          fireMouseEvent(titlebar, 'mousedown', startX, startY);
+          await sleep(20);
+          fireMouseEvent(document, 'mousemove', 9999, 9999);
+          await sleep(20);
+          fireMouseEvent(document, 'mouseup', 9999, 9999);
+          await sleep(50);
+          const rectAfterClamp = {
+            x: parseInt(panel.style.left || '0', 10),
+            y: parseInt(panel.style.top || '0', 10),
+            w: parseInt(panel.style.width || '0', 10),
+            h: parseInt(panel.style.height || '0', 10)
+          };
+          const vw = window.innerWidth;
+          const vh = window.innerHeight;
+          report.summary.checks.boundsClampedX = rectAfterClamp.x >= 0 && rectAfterClamp.x + 300 <= vw;
+          report.summary.checks.boundsClampedY = rectAfterClamp.y >= 0 && rectAfterClamp.y + 200 <= vh;
+
+          // 8) localStorage 持久化
+          const stored = localStorage.getItem('juhe-shivi.summary-panel.position');
+          report.summary.checks.localStoragePersisted = !!stored && stored.includes('"x"');
+
+          // 9) Esc 关闭
+          const escEvent = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+          document.dispatchEvent(escEvent);
+          await sleep(50);
+          report.summary.checks.escClosed = !document.querySelector('.summary-floating-panel');
+
+          report.summary.ok = [
+            'panelInitiallyHidden', 'panelRendered', 'loadingVisible', 'resizeHandles',
+            'dragMoved', 'resizeChanged',
+            'boundsClampedX', 'boundsClampedY',
+            'localStoragePersisted', 'escClosed'
+          ].every((k) => report.summary.checks[k] === true);
+        } catch (e) {
+          report.summary.error = String(e);
+          report.summary.stack = (e instanceof Error) ? e.stack : null;
+        }
+        return JSON.stringify(report);
+      })()
+    `;
+  } else if (smokeTopic) {
     // Phase 4.1 smoke: 专题 UI 完整化（list + 4 tab 详情）+ IPC stub 调用
     probe = `
       (async () => {
@@ -1060,6 +1338,12 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"realFeed":{"ok":true');
     } else if (smokeTopic) {
       pass = raw.includes('"topic":{"ok":true');
+    } else if (smokeSummary) {
+      pass = raw.includes('"summary":{"ok":true');
+    } else if (smokeInlineTrans) {
+      pass = raw.includes('"inlineTrans":{"ok":true');
+    } else if (smokeInlineTrans) {
+      pass = raw.includes('"inlineTrans":{"ok":true');
     } else if (smokeV2) {
       pass = raw.includes('"db":{"ok":true');
     } else if (smokeUiReal) {
