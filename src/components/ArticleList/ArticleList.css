@@ -105,18 +105,14 @@
   min-width: 0;
 }
 
-/* Mercury 风格：已读文章加删除线 + 透明度降低 */
+/* Phase 3.6.4：已读文章仅灰色，无删除线 */
 .article-list__item.is-read:not(.is-active) .article-list__article-title {
-  text-decoration: line-through;
-  text-decoration-color: var(--muted);
-  text-decoration-thickness: 1px;
-  opacity: 0.55;
   color: var(--muted);
 }
 
 .article-list__item.is-read:not(.is-active) .article-list__feed,
 .article-list__item.is-read:not(.is-active) .article-list__time {
-  opacity: 0.6;
+  color: var(--muted);
 }
 
 .article-list__star {

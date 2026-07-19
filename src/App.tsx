@@ -64,6 +64,12 @@ export function App() {
   const toastIdRef = useRef(0);
   const confirmRef = useRef<ConfirmDialogHandle>(null);
 
+  // Phase 3.6.3：数据库精确计数
+  const [counts, setCounts] = useState<{ all: number; unread: number; starred: number }>({ all: 0, unread: 0, starred: 0 });
+  // Phase 3.6.2：同步进度
+  const [syncingProgress, setSyncingProgress] = useState<{ feedName: string; completed: number; total: number; okCount: number; failCount: number } | null>(null);
+  const [failedFeedIds, setFailedFeedIds] = useState<string[]>([]);
+
   const pushToast = useCallback((message: string, kind: ToastItem['kind'] = 'info') => {
     toastIdRef.current += 1;
     const id = toastIdRef.current;
@@ -103,9 +109,18 @@ export function App() {
     [ds]
   );
 
+  // Phase 3.6.3：刷新侧栏精确计数
+  const refreshCounts = useCallback(async () => {
+    const r = await ds.articleCounts();
+    if (r.kind === 'ready') {
+      setCounts(r.data);
+    }
+  }, [ds]);
+
   // 初次拉取 feeds + 全部文章（侧栏计数）
   useEffect(() => {
     void refreshFeeds();
+    void refreshCounts();
     void (async () => {
       const result = await ds.articles({});
       if (result.kind === 'ready') {
@@ -133,6 +148,7 @@ export function App() {
   useEffect(() => {
     const handler = () => {
       void refreshFeeds();
+      void refreshCounts();
       void (async () => {
         const r = await ds.articles({});
         if (r.kind === 'ready') setAllArticlesState({ kind: 'ready', data: r.data });
@@ -140,7 +156,7 @@ export function App() {
     };
     window.addEventListener('juhe:refresh', handler);
     return () => window.removeEventListener('juhe:refresh', handler);
-  }, [refreshFeeds, ds]);
+  }, [refreshFeeds, refreshCounts, ds]);
 
   const feeds = feedsState.kind === 'ready' ? feedsState.data : [];
   const articles = articlesState.kind === 'ready' ? articlesState.data : [];
@@ -184,9 +200,10 @@ export function App() {
             data: prev.data.map((x) => (x.id === id ? { ...x, isRead: true } : x))
           };
         });
+        void refreshCounts();
       }
     },
-    [articles, ds, selectArticle]
+    [articles, ds, selectArticle, refreshCounts]
   );
 
   const handleToggleStar = useCallback(
@@ -198,8 +215,9 @@ export function App() {
       };
       setArticlesState(updateList);
       setAllArticlesState(updateList);
+      void refreshCounts();
     },
-    [ds]
+    [ds, refreshCounts]
   );
 
   // 添加订阅源
@@ -238,36 +256,57 @@ export function App() {
     [ds, pushToast, refreshFeeds, selectFeed]
   );
 
-  // 同步全部
+  // 同步全部（Phase 3.6.2：加入进度反馈）
   const handleSyncAll = useCallback(async () => {
     if (syncing) return;
     setSyncing(true);
+    setSyncingProgress(null);
+    const failedIds: string[] = [];
+    let okCount = 0;
+    let failCount = 0;
+    const total = feeds.length;
+
+    if (total === 0) {
+      pushToast('没有可同步的订阅源', 'info');
+      setSyncing(false);
+      return;
+    }
+
     try {
-      let okCount = 0;
-      let failCount = 0;
-      for (const f of feeds) {
+      for (let i = 0; i < feeds.length; i++) {
+        const f = feeds[i];
+        setSyncingProgress({
+          feedName: f.siteTitle || f.title || f.url,
+          completed: i + 1,
+          total,
+          okCount,
+          failCount
+        });
         const r = await ds.syncFeed(f.id);
         if (r.ok) okCount += 1;
-        else failCount += 1;
+        else { failCount += 1; failedIds.push(f.id); }
       }
+      setSyncingProgress(null);
+      setFailedFeedIds(failedIds);
       await refreshFeeds();
       const result = await ds.articles({});
       if (result.kind === 'ready') {
         setAllArticlesState({ kind: 'ready', data: result.data });
       }
-      if (feeds.length === 0) {
-        pushToast('没有可同步的订阅源', 'info');
-      } else if (failCount === 0) {
-        pushToast(`同步完成：${okCount}/${feeds.length} 成功`, 'success');
+      void refreshCounts();
+
+      if (failCount === 0) {
+        pushToast(`同步完成：${okCount}/${total} 成功`, 'success');
       } else {
-        pushToast(`同步部分失败：成功 ${okCount}，失败 ${failCount}`, 'error');
+        pushToast(`同步部分完成：成功 ${okCount}，失败 ${failCount}。未成功同步的订阅源已用红点标出`, 'error');
       }
     } catch (e) {
+      setSyncingProgress(null);
       pushToast(`同步出错：${String(e)}`, 'error');
     } finally {
       setSyncing(false);
     }
-  }, [syncing, feeds, ds, refreshFeeds, pushToast]);
+  }, [syncing, feeds, ds, refreshFeeds, refreshCounts, pushToast]);
 
   // 删除订阅源
   const handleDeleteFeed = useCallback(
@@ -301,12 +340,13 @@ export function App() {
         if (result.kind === 'ready') {
           setAllArticlesState({ kind: 'ready', data: result.data });
         }
+        void refreshCounts();
         pushToast(`已删除「${feed.siteTitle || feed.title}」`, 'success');
       } catch (e) {
         pushToast(`删除失败：${String(e)}`, 'error');
       }
     },
-    [articles, ds, pushToast, refreshFeeds, selectFeed, selection.feedId]
+    [articles, ds, pushToast, refreshFeeds, refreshCounts, selectFeed, selection.feedId]
   );
 
   // OPML 导入
@@ -399,6 +439,10 @@ export function App() {
         selected={selection.feedId}
         onSelect={selectFeed}
         onDeleteFeed={handleDeleteFeed}
+        allCount={counts.all}
+        unreadCount={counts.unread}
+        starredCount={counts.starred}
+        failedFeedIds={syncing ? undefined : failedFeedIds}
         onSyncFeed={async (feed: Feed) => {
           pushToast(`正在同步「${feed.siteTitle || feed.title}」…`, 'info');
           const r = await ds.syncFeed(feed.id);
@@ -409,6 +453,7 @@ export function App() {
             if (result.kind === 'ready') {
               setAllArticlesState({ kind: 'ready', data: result.data });
             }
+            void refreshCounts();
           }
         }}
         onExportOpml={handleOpmlExport}
@@ -532,6 +577,14 @@ export function App() {
       <ConfirmDialog ref={confirmRef} />
       <ContextMenuHost />
       <Toast items={toasts} onDismiss={dismissToast} />
+      {/* Phase 3.6.2：同步进度条 */}
+      {syncingProgress && (
+        <div className="sync-progress-bar" role="status" aria-live="polite">
+          <span className="sync-progress-bar__text">
+            正在同步：{syncingProgress.feedName} 进度：{syncingProgress.completed}/{syncingProgress.total}
+          </span>
+        </div>
+      )}
       <GeneralSettingsModal
         open={generalModalOpen}
         onClose={() => setGeneralModalOpen(false)}

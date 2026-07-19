@@ -21,6 +21,12 @@ export interface FeedListProps {
   onSyncFeed?: (feed: Feed) => void;
   onExportOpml?: () => void;
   onAddFeed?: (url: string) => Promise<{ ok: boolean; message: string }>;
+  /** Phase 3.6.3：数据库精确计数（由 App.tsx 传下），未提供时 fallback 到 articles 本地计算 */
+  allCount?: number;
+  unreadCount?: number;
+  starredCount?: number;
+  /** Phase 3.6.2：同步失败的订阅源 ID 列表（红点标记） */
+  failedFeedIds?: string[];
 }
 
 type Tab = 'sources' | 'tags';
@@ -32,20 +38,21 @@ interface VirtualEntry {
   count: number;
 }
 
-export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, onSyncFeed, onExportOpml, onAddFeed }: FeedListProps) {
+export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, onSyncFeed, onExportOpml, onAddFeed, allCount, unreadCount, starredCount, failedFeedIds }: FeedListProps) {
   const [tab, setTab] = useState<Tab>('sources');
   const [showAll, setShowAll] = useState(true);
   const [feedUrl, setFeedUrl] = useState('');
   const [adding, setAdding] = useState(false);
 
-  const unreadCount = useMemo(() => articles.filter((a) => !a.isRead).length, [articles]);
-  const starredCount = useMemo(() => articles.filter((a) => a.isStarred).length, [articles]);
-  const totalCount = articles.length;
+  // Phase 3.6.3：优先使用数据库精确计数，未提供时 fallback 到本地计算
+  const resolvedUnread = unreadCount ?? articles.filter((a) => !a.isRead).length;
+  const resolvedStarred = starredCount ?? articles.filter((a) => a.isStarred).length;
+  const resolvedAll = allCount ?? articles.length;
 
   const virtuals: VirtualEntry[] = [
-    { id: 'all', label: '所有订阅源', icon: '◎', count: totalCount },
-    { id: 'unread', label: '未读', icon: '●', count: unreadCount },
-    { id: 'starred', label: '星标文章', icon: '★', count: starredCount }
+    { id: 'all', label: '所有订阅源', icon: '◎', count: resolvedAll },
+    { id: 'unread', label: '未读', icon: '●', count: resolvedUnread },
+    { id: 'starred', label: '星标文章', icon: '★', count: resolvedStarred }
   ];
 
   const unreadByFeed = useMemo(() => {
@@ -237,7 +244,7 @@ export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, on
                     </span>
                     <span className="feed-list__label">{f.siteTitle || f.title}</span>
                     {unread > 0 && <span className="feed-list__count">{unread}</span>}
-                    {!f.lastSyncSuccess && (
+                    {(failedFeedIds?.includes(f.id) || !f.lastSyncSuccess) && (
                       <span
                         className="feed-list__status-dot"
                         title={f.lastSyncError ?? '同步失败'}
@@ -261,9 +268,9 @@ export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, on
       <div className="feed-list__statusbar">
         <span>{feeds.length} 源</span>
         <span>·</span>
-        <span>{totalCount} 篇文章</span>
+        <span>{resolvedAll} 篇文章</span>
         <span>·</span>
-        <span>{unreadCount} 未读</span>
+        <span>{resolvedUnread} 未读</span>
       </div>
     </div>
   );

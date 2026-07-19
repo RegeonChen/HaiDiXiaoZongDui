@@ -113,3 +113,33 @@ export function renderMarkdown(input: string): string {
     })
     .join('');
 }
+
+/**
+ * Phase 3.6.1：翻译专用 Markdown 过滤。
+ * 仅保留粗体（** **）、斜体（* *）、下划线（__ __）三种内联格式；
+ * 移除标题、列表、代码块、引用、行内代码、链接等块级/复杂 Markdown。
+ * 段落分割和换行保留，保证译文的可读性。
+ */
+export function filterInlineMarkdown(input: string): string {
+  if (!input) return '';
+  let out = escapeHtml(input);
+
+  // 移除代码块（```...```）
+  out = out.replace(/```[\s\S]*?```/g, '');
+  // 移除行内代码（`code`）
+  out = out.replace(/`([^`\n]+)`/g, '$1');
+  // 链接 → 纯文本（[text](url) → text）
+  out = out.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  // 粗体：**bold** 或 __bold__
+  out = out.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/__([^_\n]+)__/g, '<u>$1</u>');
+  // 斜体：*italic* 或 _italic_
+  out = out.replace(/(?<![*\w])\*([^*\n]+)\*(?!\w)/g, '<em>$1</em>');
+  out = out.replace(/(?<![_\w])_([^_\n]+)_(?!\w)/g, '<em>$1</em>');
+
+  // 段落分割
+  const paragraphs = out.split(/\n{2,}/);
+  return paragraphs
+    .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}

@@ -80,3 +80,24 @@ a {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--muted);
 }
+
+/* Phase 3.6.2：同步进度条 */
+.sync-progress-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 24px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  animation: sync-progress-in 0.2s ease;
+}
+
+@keyframes sync-progress-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}

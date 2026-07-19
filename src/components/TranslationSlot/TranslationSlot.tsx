@@ -1,12 +1,15 @@
 /**
- * TranslationSlot — 单个翻译插槽（Phase 3.5.2 张晨阳 前期准备）
+ * TranslationSlot — 单个翻译插槽（Phase 3.5.2 + Phase 3.6.1）
+ *
+ * Phase 3.6.1：翻译框只展示中文译文（不展示英文原文），
+ * 并使用 filterInlineMarkdown 过滤只保留粗体/斜体/下划线。
  *
  * 三态：
  *   - pending：显示 spinner + "Waiting for AI response…"
- *   - ready：显示 Markdown 渲染后的译文
+ *   - ready：显示过滤后的中文译文
  *   - failed：显示错误提示
  */
-import { renderMarkdown } from '../../utils/markdown';
+import { filterInlineMarkdown } from '../../utils/markdown';
 import './TranslationSlot.css';
 
 export type TranslationParagraphStatus = 'pending' | 'ready' | 'failed';
@@ -18,8 +21,7 @@ export interface TranslationSlotProps {
   status: TranslationParagraphStatus;
 }
 
-export function TranslationSlot({ index, status, original, translated }: TranslationSlotProps) {
-  // 始终展示原文（用于上下文对照）
+export function TranslationSlot({ index, status, translated }: TranslationSlotProps) {
   return (
     <div
       className={`translation-slot translation-slot--${status}`}
@@ -27,14 +29,10 @@ export function TranslationSlot({ index, status, original, translated }: Transla
       data-translation-index={index}
       data-translation-status={status}
     >
-      <div
-        className="translation-slot__original"
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(original) }}
-      />
       {status === 'ready' ? (
         <div
           className="translation-slot__translated"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(translated) }}
+          dangerouslySetInnerHTML={{ __html: filterInlineMarkdown(translated) }}
         />
       ) : status === 'pending' ? (
         <div className="translation-slot__status translation-slot__status--pending" role="status" aria-live="polite">
