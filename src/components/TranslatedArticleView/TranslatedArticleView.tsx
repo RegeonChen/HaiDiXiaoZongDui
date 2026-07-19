@@ -18,6 +18,7 @@ import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../StatusView/LoadingView';
 import { ErrorView } from '../StatusView/ErrorView';
 import { TranslationSlot, type TranslationParagraphStatus } from '../TranslationSlot/TranslationSlot';
+import { SplitController } from '../../utils/split-controller';
 import './TranslatedArticleView.css';
 
 export interface TranslatedArticleViewProps {
@@ -43,63 +44,33 @@ type SplitState =
 export function TranslatedArticleView({ cleanedHtml, paragraphs }: TranslatedArticleViewProps) {
   const ds = useDataSource();
   const [split, setSplit] = useState<SplitState>({ kind: 'ready', blocks: [] });
-  // 缓存上次切分的 cleanedHtml，避免 React 18 父组件 re-render 时 useEffect
-  // 反复跑导致 ready 状态被 setLoading 覆盖的无限循环
-  // （cleanedHtml prop 引用每次 render 都新，依赖 [cleanedHtml] 会持续触发）
-  const lastSplitHtmlRef = useRef<string>('');
+  // SplitController：用 token 计数替代 effect 局部 cancelled，
+  // 避免 React 18 StrictMode dev 双调 mount 把 split 永远卡在"正在切分段落…"
+  // （之前局部 cancelled 变量方案在 dev 模式会因 cleanup1 把 async 取消，
+  // 即使 mount 2 没重跑，async 完成时 setSplit({ready}) 也被 cancel 掉）。
+  // 详见 src/utils/split-controller.ts 单元测试。
+  const controllerRef = useRef<SplitController | null>(null);
+  if (controllerRef.current === null) {
+    controllerRef.current = new SplitController();
+  }
 
-  // Phase 3.5.2：每篇文章用 DataSource.htmlBlockSplit 切块（走 IPC 调到张宇凡的
-  // splitCleanedHtmlIntoBlocks）。
-  // 关键：只在 cleanedHtml 实际内容变化时重跑（用 useRef 比较避免引用比较的循环）。
-  //
-  // 重要：异步块必须 try/catch 兜底——
-  //   如果 ds.htmlBlockSplit 抛异常（IPC preload 错、主进程 handler 异常、JSDOM 解析异常），
-  //   setSplit({ready}) 永远不会触发，UI 会永远卡在"正在切分段落…"，即使后端翻译已经
-  //   完成。catch 时 fallback 到单块 ready，译文能正常显示。
   useEffect(() => {
-    if (cleanedHtml === lastSplitHtmlRef.current) {
-      // 引用虽然变了（每次 render 新字符串），但内容相同——不重跑
-      return;
-    }
-    if (!cleanedHtml.trim()) {
-      lastSplitHtmlRef.current = cleanedHtml;
-      setSplit({ kind: 'ready', blocks: [] });
-      return;
-    }
-    lastSplitHtmlRef.current = cleanedHtml;
-    setSplit({ kind: 'loading' });
-    let cancelled = false;
-    void (async () => {
-      try {
-        const r = await ds.htmlBlockSplit(cleanedHtml);
-        if (cancelled) return;
-        if (r.kind === 'ready' && Array.isArray(r.data)) {
-          setSplit({ kind: 'ready', blocks: r.data });
-        } else if (r.kind === 'error') {
-          setSplit({ kind: 'error', error: r.error });
-        } else {
-          // 未识别的 kind（ready 但 data 不是数组等）—— fallback 到单块 ready，
-          // 让译文至少能渲染
-          // eslint-disable-next-line no-console
-          console.warn('[TranslatedArticleView] htmlBlockSplit 返回非预期 kind，fallback 单块:', r.kind);
-          setSplit({
-            kind: 'ready',
-            blocks: [{ index: 0, html: cleanedHtml, tag: 'DIV' }]
-          });
-        }
-      } catch (e) {
-        if (cancelled) return;
-        // eslint-disable-next-line no-console
-        console.error('[TranslatedArticleView] htmlBlockSplit 异常，fallback 单块:', e);
-        setSplit({
+    const controller = controllerRef.current!;
+    controller.start(
+      cleanedHtml,
+      (html) => ds.htmlBlockSplit(html),
+      {
+        onLoading: () => setSplit({ kind: 'loading' }),
+        onReady: (blocks) => setSplit({ kind: 'ready', blocks }),
+        onError: (error) => setSplit({ kind: 'error', error }),
+        onFallback: (html) => setSplit({
           kind: 'ready',
-          blocks: [{ index: 0, html: cleanedHtml, tag: 'DIV' }]
-        });
+          blocks: [{ index: 0, html, tag: 'DIV' }]
+        })
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    );
+    // 不需要 cleanup：SplitController.start 内部用 token 校验，
+    // 下次 start 会让前一次 async 回调自动忽略
   }, [cleanedHtml, ds]);
 
   // 把 paragraphs 按 index 索引化，方便按块查找
