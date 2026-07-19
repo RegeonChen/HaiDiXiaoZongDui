@@ -1,6 +1,6 @@
 {
   "name": "juhe-shivi",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "聚合拾遗 — 跨平台、本地优先的桌面 RSS 阅读器",
   "private": true,
   "author": "聚合拾遗团队",
@@ -78,7 +78,6 @@
     },
     "mac": {
       "category": "public.app-category.news",
-      "identity": "-",
       "hardenedRuntime": false,
       "target": [
         {
