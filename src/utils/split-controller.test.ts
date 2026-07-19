@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { SplitController, type SplitCallback } from './split-controller';
+import { SplitController } from './split-controller';
 import type { DataSourceState } from '../types/dataSource';
 import type { HtmlBlock } from '@shared/types';
 

@@ -1,6 +1,6 @@
 {
   "name": "juhe-shivi",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "聚合拾遗 — 跨平台、本地优先的桌面 RSS 阅读器",
   "private": true,
   "author": "聚合拾遗团队",
@@ -29,9 +29,9 @@
     "smoke:translation": "npm run build && node scripts/smoke-3.5.2-ui.cjs",
     "smoke:inline-trans": "npm run build && node scripts/smoke-3.5.2-ui.cjs",
     "smoke:inline-trans:split-error": "npm run build && node scripts/smoke-3.5.2-split-error.cjs",
-    "dist:mac": "npm run build && electron-builder --mac dmg",
-    "dist:win": "npm run build && electron-builder --win nsis",
-    "dist": "npm run build && electron-builder --mac dmg --win nsis"
+    "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "dist": "npm run build && electron-builder --mac dmg --win nsis --publish never"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
@@ -78,6 +78,7 @@
     },
     "mac": {
       "category": "public.app-category.news",
+      "identity": null,
       "hardenedRuntime": false,
       "target": [
         {
