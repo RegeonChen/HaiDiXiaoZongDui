@@ -124,7 +124,12 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 3.5.2 UI 段落内翻译插槽前期准备已完成**（A）。4.1 + 3.5.1 + 3.5.2 UI 骨架 + 3.5.3 AI 持久化均已就绪；等张宇凡 `splitCleanedHtmlIntoBlocks` 正式工具就位后切换 mock 实现。
+- 当前活动里程碑：**Phase 3.5.2 内容管线正式分块工具已完成**（张宇凡）。4.1 + 3.5.1 + 3.5.2 UI 骨架 + 3.5.3 AI 持久化均已就绪；主进程正式实现与渲染层实现统一使用 `{ index, html, tag }` 契约，后续集成验收需继续核对 HTML 块与翻译段落的索引一致性。
+- **Task 3.5.2 内容管线分块**（张宇凡 — 已完成）：
+  - `content-cleaner.ts` 新增正式 `HtmlBlock` 类型和 `splitCleanedHtmlIntoBlocks(html): HtmlBlock[]`，按顶层标题、段落、代码块、列表、引用、表格等语义块切分。
+  - `pre` / `ul` / `ol` / `blockquote` / `table` / `figure` 保持原子结构，内部节点不会生成额外翻译插槽；顶层文本和行内标记合并为合成段落。
+  - `content-cleaner.test.ts` 新增 4 项测试，覆盖“5 段 + 2 标题 + 1 代码块 = 8 块”、复杂结构不拆分、容器展开与行内标记保留、空输入。
+  - 内容管线公共入口已导出函数与类型；主进程实现依赖 `jsdom`，渲染层不能跨进程直接 import，继续保留浏览器 `DOMParser` 实现并维持同一数据契约。
 - **Task 3.5.2 UI 段落内翻译插槽**（张晨阳 — 前期准备）：
   - **复用现有组件**（4.1 commit 已写好）：
     - `src/utils/html-split.ts` —— `splitCleanedHtmlIntoBlocks(html): { blocks: HtmlBlock[], fallback }` 按顶层块级元素（`<p>`/`<h1-6>`/`<pre>`/`<ul>`/`<ol>`/`<blockquote>`/`<table>`/`<figure>`）切分，浏览器内置 DOMParser 不引第三方库
@@ -403,7 +408,7 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 复用 4.1 commit 写好的 3 个组件：`html-split.ts`（`splitCleanedHtmlIntoBlocks` 浏览器 DOMParser mock）/ `TranslatedArticleView`（按段渲染）/ `TranslationSlot`（pending/ready/failed 三态）
   - 修 `ArticleReader` 渲染条件：`activePanel === 'translation'` 即切段渲染（不等 IPC paragraphs 返回），每段立即挂 pending 插槽
   - smoke:inline-trans 探针沿用 4.1 已写的 10 项校验（viewRendered / slotsMin1 / blockPairsMatchSlots / blocksRendered / initialPending / allReady / translatedTextContains / noFailed）
-  - 等张宇凡 `splitCleanedHtmlIntoBlocks` 正式工具就位，切换 import 即可
+  - 张宇凡的正式内容管线工具已就位；渲染层因进程边界保留浏览器实现，集成时按同一 `{ index, html, tag }` 契约校验结果
   - **11/11 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / smoke:summary / **smoke:inline-trans**
   - smoke-3.4-integration 探针适配 `topicsPlaceholder` 选择器（`.topics-page__placeholder, .topics-page .status-view`）
   - **9/9 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic

@@ -1,7 +1,8 @@
 export { ArticleContentPipeline } from './article-content-pipeline';
 export { ArticleContentService } from './article-content-service';
 export type { ArticleContentStore } from './article-content-service';
-export { cleanArticleContent } from './content-cleaner';
+export { cleanArticleContent, splitCleanedHtmlIntoBlocks } from './content-cleaner';
+export type { HtmlBlock } from './content-cleaner';
 export { ContentPipelineError } from './errors';
 export { parseFeed, normalizeHttpUrl } from './feed-parser';
 export { FeedPipeline } from './feed-pipeline';

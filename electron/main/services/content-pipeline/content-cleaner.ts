@@ -24,6 +24,91 @@ const NOISE_SELECTORS = [
   '#table-of-contents'
 ];
 
+const CONTENT_BLOCK_TAGS = new Set([
+  'P',
+  'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+  'PRE',
+  'UL', 'OL',
+  'BLOCKQUOTE',
+  'TABLE',
+  'FIGURE',
+  'HR'
+]);
+
+const TRANSPARENT_CONTAINER_TAGS = new Set([
+  'ARTICLE', 'MAIN', 'SECTION', 'DIV'
+]);
+
+/** A top-level cleaned HTML block that can own one inline translation slot. */
+export interface HtmlBlock {
+  /** Stable zero-based position used to match a translation paragraph. */
+  index: number;
+  /** Complete HTML for this block, including its outer tag. */
+  html: string;
+  /** Uppercase HTML tag name, for example `P`, `H2`, or `PRE`. */
+  tag: string;
+}
+
+/**
+ * Split sanitized article HTML into top-level semantic blocks.
+ *
+ * Lists, block quotes, code blocks, tables, and figures remain atomic so their
+ * internal Markdown/HTML structure is never fragmented. Top-level text and
+ * inline elements are collected into a synthetic paragraph instead of being
+ * dropped. Sanitizer-style wrapper elements are transparent.
+ */
+export function splitCleanedHtmlIntoBlocks(html: string): HtmlBlock[] {
+  if (!html.trim()) return [];
+
+  const fragment = JSDOM.fragment(html);
+  const blocks: HtmlBlock[] = [];
+  let inlineNodes: Node[] = [];
+
+  const appendBlock = (htmlContent: string, tag: string): void => {
+    blocks.push({ index: blocks.length, html: htmlContent, tag });
+  };
+
+  const flushInlineNodes = (): void => {
+    if (inlineNodes.length === 0) return;
+
+    const paragraph = fragment.ownerDocument.createElement('p');
+    for (const node of inlineNodes) paragraph.appendChild(node.cloneNode(true));
+    inlineNodes = [];
+
+    const hasText = !!paragraph.textContent?.trim();
+    const hasVisibleElement = paragraph.querySelector('img, br, hr') !== null;
+    if (hasText || hasVisibleElement) appendBlock(paragraph.outerHTML, 'P');
+  };
+
+  const visit = (node: Node): void => {
+    if (node.nodeType === 3) {
+      const text = node.textContent ?? '';
+      if (text.trim() || inlineNodes.length > 0) inlineNodes.push(node);
+      return;
+    }
+    if (node.nodeType !== 1) return;
+
+    const element = node as Element;
+    const tag = element.tagName.toUpperCase();
+    if (CONTENT_BLOCK_TAGS.has(tag)) {
+      flushInlineNodes();
+      appendBlock(element.outerHTML, tag);
+      return;
+    }
+
+    if (TRANSPARENT_CONTAINER_TAGS.has(tag)) {
+      for (const child of Array.from(element.childNodes)) visit(child);
+      return;
+    }
+
+    inlineNodes.push(node);
+  };
+
+  for (const node of Array.from(fragment.childNodes)) visit(node);
+  flushInlineNodes();
+  return blocks;
+}
+
 export function cleanArticleContent(sourceHtml: string, articleUrl: string): CleanedContent {
   assertHttpUrl(articleUrl);
   if (!sourceHtml.trim()) {

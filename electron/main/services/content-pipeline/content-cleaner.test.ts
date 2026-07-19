@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanArticleContent } from './content-cleaner';
+import { cleanArticleContent, splitCleanedHtmlIntoBlocks } from './content-cleaner';
 
 const articleHtml = `
 <!doctype html>
@@ -87,5 +87,62 @@ describe('cleanArticleContent', () => {
     expect(result.cleanedHtml).not.toContain('href="#basics"');
     expect(result.cleanedHtml).toContain('<h2>基本概念</h2>');
     expect(result.cleanedHtml).toContain('文章真正的正文内容');
+  });
+});
+
+describe('splitCleanedHtmlIntoBlocks', () => {
+  it('splits five paragraphs, two headings, and one code block into eight blocks', () => {
+    const blocks = splitCleanedHtmlIntoBlocks(`
+      <h1>Article title</h1>
+      <p>Paragraph one.</p>
+      <p>Paragraph two with <strong>formatting</strong>.</p>
+      <h2>Second section</h2>
+      <p>Paragraph three.</p>
+      <pre><code class="language-typescript">const answer = 42;\nconsole.log(answer);</code></pre>
+      <p>Paragraph four.</p>
+      <p>Paragraph five.</p>
+    `);
+
+    expect(blocks).toHaveLength(8);
+    expect(blocks.map((block) => block.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(blocks.map((block) => block.tag)).toEqual([
+      'H1', 'P', 'P', 'H2', 'P', 'PRE', 'P', 'P'
+    ]);
+    expect(blocks[2].html).toContain('<strong>formatting</strong>');
+    expect(blocks[5].html).toContain('console.log(answer);');
+  });
+
+  it('keeps lists, block quotes, and tables intact as atomic blocks', () => {
+    const blocks = splitCleanedHtmlIntoBlocks(`
+      <ul><li>First item</li><li>Second item</li></ul>
+      <blockquote><p>A quoted paragraph.</p><p>Another quoted paragraph.</p></blockquote>
+      <table>
+        <thead><tr><th>Name</th><th>Value</th></tr></thead>
+        <tbody><tr><td>A</td><td>1</td></tr></tbody>
+      </table>
+    `);
+
+    expect(blocks.map((block) => block.tag)).toEqual(['UL', 'BLOCKQUOTE', 'TABLE']);
+    expect(blocks[0].html.match(/<li>/g)).toHaveLength(2);
+    expect(blocks[1].html.match(/<p>/g)).toHaveLength(2);
+    expect(blocks[2].html).toContain('<tbody><tr><td>A</td><td>1</td></tr></tbody>');
+  });
+
+  it('unwraps layout containers and preserves top-level inline markup', () => {
+    const blocks = splitCleanedHtmlIntoBlocks(`
+      <article>
+        Intro <strong>bold text</strong><br>continued.
+        <h2>Heading</h2>
+        <span>Trailing <em>inline text</em>.</span>
+      </article>
+    `);
+
+    expect(blocks.map((block) => block.tag)).toEqual(['P', 'H2', 'P']);
+    expect(blocks[0].html).toContain('Intro <strong>bold text</strong><br>continued.');
+    expect(blocks[2].html).toContain('<span>Trailing <em>inline text</em>.</span>');
+  });
+
+  it('returns no blocks for empty input', () => {
+    expect(splitCleanedHtmlIntoBlocks('  \n  ')).toEqual([]);
   });
 });
