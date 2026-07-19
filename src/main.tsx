@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { App } from './App';
+import App from './App';
 import { DataSourceProvider } from './context/DataSourceContext';
 import { createDataSource } from './data/dataSourceFactory';
 import './index.css';

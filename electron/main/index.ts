@@ -1603,6 +1603,19 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
     }
   });
 
+  // Phase 3.6.3：侧栏计数
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_COUNTS, async (): Promise<IpcResult<{ all: number; unread: number; starred: number }>> => {
+    try {
+      return ok({
+        all: ArticleRepository.countAll(),
+        unread: ArticleRepository.countUnread(),
+        starred: ArticleRepository.countStarred()
+      });
+    } catch (e) {
+      return fail('ARTICLE_COUNTS_FAILED', String(e));
+    }
+  });
+
   // ============= AI Provider (Task 3.3) =============
 
   trustedIpcMain.handle(IPC_CHANNELS.AI_PROVIDER_LIST, async (): Promise<IpcResult<AIProvider[]>> => {

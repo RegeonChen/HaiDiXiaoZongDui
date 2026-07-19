@@ -23,6 +23,11 @@ export interface DataSource {
   markRead(articleId: string, isRead: boolean): Promise<void>;
   /** 标记星标/取消 */
   markStarred(articleId: string, isStarred: boolean): Promise<void>;
+  /**
+   * Phase 3.6.3：获取侧栏三个分类的精确计数。
+   * 返回 { all, unread, starred }，分别对应所有文章、未读文章、星标文章的总数。
+   */
+  articleCounts(): Promise<DataSourceState<{ all: number; unread: number; starred: number }>>;
   /** 同步一个 feed */
   syncFeed(feedId: string): Promise<{ ok: boolean; message: string }>;
   /**

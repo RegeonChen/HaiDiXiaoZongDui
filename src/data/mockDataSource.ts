@@ -111,6 +111,13 @@ export class MockDataSource implements DataSource {
     console.log('[mock:ds] markStarred', { articleId, isStarred });
   }
 
+  async articleCounts(): Promise<DataSourceState<{ all: number; unread: number; starred: number }>> {
+    const all = this.articlesState.length;
+    const unread = this.articlesState.filter(a => !a.isRead).length;
+    const starred = this.articlesState.filter(a => a.isStarred).length;
+    return { kind: 'ready', data: { all, unread, starred } };
+  }
+
   async syncFeed(feedId: string): Promise<{ ok: boolean; message: string }> {
     if (feedId === 'feed-36kr') {
       return { ok: false, message: '远程服务器返回错误: 503' };

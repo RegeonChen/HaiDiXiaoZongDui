@@ -161,6 +161,11 @@ export class IpcDataSource implements FullDataSource {
     throwOnError(r, 'markStarred');
   }
 
+  // Phase 3.6.3：侧栏计数
+  async articleCounts(): Promise<DataSourceState<{ all: number; unread: number; starred: number }>> {
+    return unwrap(await window.api.article.counts());
+  }
+
   async syncFeed(feedId: string): Promise<{ ok: boolean; message: string }> {
     const r = await window.api.sync.feed(feedId);
     if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };

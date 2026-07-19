@@ -87,6 +87,9 @@ export const IPC_CHANNELS = {
   ARTICLE_MARK_STARRED: 'article:markStarred',
   ARTICLE_BATCH_MARK_READ: 'article:batchMarkRead',
 
+  // -- Article Counts（Phase 3.6.3：侧栏计数） --
+  ARTICLE_COUNTS:  'article:counts',
+
   // -- Sync（同步） --
   SYNC_ALL:        'sync:all',
   SYNC_FEED:       'sync:feed',
@@ -196,6 +199,9 @@ export interface IpcRequestMap {
   [IPC_CHANNELS.ARTICLE_MARK_READ]:       { args: { id: string; isRead: boolean };      result: void };
   [IPC_CHANNELS.ARTICLE_MARK_STARRED]:    { args: { id: string; isStarred: boolean };   result: void };
   [IPC_CHANNELS.ARTICLE_BATCH_MARK_READ]: { args: { ids: string[]; isRead: boolean };   result: void };
+
+  // -- Article Counts（Phase 3.6.3） --
+  [IPC_CHANNELS.ARTICLE_COUNTS]: { args: void; result: { all: number; unread: number; starred: number } };
 
   // -- Sync --
   [IPC_CHANNELS.SYNC_ALL]:      { args: void;                                  result: SyncResult[] };

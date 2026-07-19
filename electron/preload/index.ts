@@ -73,7 +73,11 @@ const api = {
       invoke(IPC_CHANNELS.ARTICLE_MARK_STARRED, { id, isStarred }),
 
     batchMarkRead: (ids: string[], isRead: boolean): Promise<IpcResponse<typeof IPC_CHANNELS.ARTICLE_BATCH_MARK_READ>> =>
-      invoke(IPC_CHANNELS.ARTICLE_BATCH_MARK_READ, { ids, isRead })
+      invoke(IPC_CHANNELS.ARTICLE_BATCH_MARK_READ, { ids, isRead }),
+
+    // Phase 3.6.3：侧栏计数
+    counts: (): Promise<IpcResponse<typeof IPC_CHANNELS.ARTICLE_COUNTS>> =>
+      invokeVoid(IPC_CHANNELS.ARTICLE_COUNTS)
   },
 
   // —— Sync ——

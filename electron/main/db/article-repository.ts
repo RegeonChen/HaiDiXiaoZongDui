@@ -280,6 +280,33 @@ export const ArticleRepository = {
   },
 
   /**
+   * Phase 3.6.3：获取所有文章总数（含已读/未读）。
+   */
+  countAll(): number {
+    const db = getDatabase();
+    const rows = db.exec('SELECT COUNT(*) AS cnt FROM articles');
+    return rows.length > 0 ? (rows[0].values[0][0] as number) : 0;
+  },
+
+  /**
+   * Phase 3.6.3：获取所有未读文章数。
+   */
+  countUnread(): number {
+    const db = getDatabase();
+    const rows = db.exec('SELECT COUNT(*) AS cnt FROM articles WHERE is_read = 0');
+    return rows.length > 0 ? (rows[0].values[0][0] as number) : 0;
+  },
+
+  /**
+   * Phase 3.6.3：获取所有星标文章数（含已读/未读）。
+   */
+  countStarred(): number {
+    const db = getDatabase();
+    const rows = db.exec('SELECT COUNT(*) AS cnt FROM articles WHERE is_starred = 1');
+    return rows.length > 0 ? (rows[0].values[0][0] as number) : 0;
+  },
+
+  /**
    * 获取指定 feed 下最近文章的 guid 集合（用于同步后判断哪些是新文章）。
    * 返回 Set 供 Feed 同步服务使用。
    */
