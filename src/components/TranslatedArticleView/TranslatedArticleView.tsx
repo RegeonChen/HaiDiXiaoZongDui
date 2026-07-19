@@ -69,7 +69,7 @@ export function TranslatedArticleView({ cleanedHtml, paragraphs }: TranslatedArt
       if (cancelled) return;
       if (r.kind === 'ready') {
         setSplit({ kind: 'ready', blocks: r.data });
-      } else {
+      } else if (r.kind === 'error') {
         setSplit({ kind: 'error', error: r.error });
       }
     })();
