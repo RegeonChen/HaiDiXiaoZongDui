@@ -4,7 +4,7 @@
  * 渲染逻辑：
  *   1. 用 useEffect 通过 DataSource.htmlBlockSplit 切分 cleanedHtml
  *   2. 每块渲染原文（dangerouslySetInnerHTML）
- *   3. 紧跟一个 TranslationSlot
+ *   3. 有正文文本的块紧跟一个 TranslationSlot；纯图片/分隔线块不创建插槽
  *   4. Slot 的 index 与块 index 对应；translationParagraphs[i] 缺失则保持 pending 占位
  *
  * 数据流：
@@ -19,6 +19,7 @@ import { LoadingView } from '../StatusView/LoadingView';
 import { ErrorView } from '../StatusView/ErrorView';
 import { TranslationSlot, type TranslationParagraphStatus } from '../TranslationSlot/TranslationSlot';
 import { SplitController } from '../../utils/split-controller';
+import { htmlBlockHasTranslatableText } from '../../utils/html-split';
 import './TranslatedArticleView.css';
 
 export interface TranslatedArticleViewProps {
@@ -34,6 +35,8 @@ export interface TranslatedArticleViewProps {
     translated: string;
     status: TranslationParagraphStatus;
   }>;
+  /** 隐藏双语视图并回到原始正文。 */
+  onClose: () => void;
 }
 
 type SplitState =
@@ -41,7 +44,7 @@ type SplitState =
   | { kind: 'ready'; blocks: HtmlBlock[] }
   | { kind: 'error'; error: string };
 
-export function TranslatedArticleView({ cleanedHtml, paragraphs }: TranslatedArticleViewProps) {
+export function TranslatedArticleView({ cleanedHtml, paragraphs, onClose }: TranslatedArticleViewProps) {
   const ds = useDataSource();
   const [split, setSplit] = useState<SplitState>({ kind: 'ready', blocks: [] });
   // SplitController：用 token 计数替代 effect 局部 cancelled，
@@ -113,8 +116,18 @@ export function TranslatedArticleView({ cleanedHtml, paragraphs }: TranslatedArt
       data-split-state="ready"
       data-fallback={blocks.length === 0 ? 'true' : 'false'}
     >
+      <div className="translated-article-view__controls">
+        <button
+          type="button"
+          className="translated-article-view__hide-button"
+          onClick={onClose}
+        >
+          隐藏翻译，返回原文
+        </button>
+      </div>
       {effectiveBlocks.map((block) => {
         const slot = paragraphByIndex.get(block.index);
+        const hasTranslatableText = htmlBlockHasTranslatableText(block.html);
         return (
           <div key={block.index} className="translated-article-view__block-pair">
             <div
@@ -123,12 +136,14 @@ export function TranslatedArticleView({ cleanedHtml, paragraphs }: TranslatedArt
               data-block-tag={block.tag}
               dangerouslySetInnerHTML={{ __html: block.html }}
             />
-            <TranslationSlot
-              index={block.index}
-              original={slot?.original ?? ''}
-              translated={slot?.translated ?? ''}
-              status={slot?.status ?? 'pending'}
-            />
+            {hasTranslatableText && (
+              <TranslationSlot
+                index={block.index}
+                original={slot?.original ?? ''}
+                translated={slot?.translated ?? ''}
+                status={slot?.status ?? 'pending'}
+              />
+            )}
           </div>
         );
       })}

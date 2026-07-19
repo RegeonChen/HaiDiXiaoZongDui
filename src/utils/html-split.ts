@@ -33,6 +33,17 @@ export interface SplitResult {
   fallback: boolean;
 }
 
+/** 图片、分隔线等无正文文本的块不应创建翻译插槽。 */
+export function htmlBlockHasTranslatableText(html: string): boolean {
+  const text = html
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;|&#160;|&#x0*a0;/gi, ' ')
+    .trim();
+  return text.length > 0;
+}
+
 /**
  * 切分 cleaned HTML 为独立块。
  * @param html Cleaned HTML 字符串（必须可信：已经过 sanitize-html 白名单清洗）

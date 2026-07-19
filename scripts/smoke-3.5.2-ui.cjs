@@ -8,6 +8,8 @@
  *  - 每个 slot 显示 "Waiting for AI response…"
  *  - 原文块按 [data-block-index] 渲染
  *  - slot 与 block 按 index 一一对应
+ *  - 翻译视图中的超宽图片不会撑破阅读栏
+ *  - 可隐藏翻译回到原文，并从缓存再次显示
  *
  * 运行：npm run smoke:translation
  */

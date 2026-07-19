@@ -76,20 +76,29 @@ export async function generateTranslation(
 
   const template = customPromptTemplate || DEFAULT_TRANSLATION_PROMPT;
 
-  const chunks = splitMarkdownIntoChunks(articleContent, MAX_CHUNK_CHARACTERS);
+  const chunks = splitMarkdownIntoChunks(articleContent, MAX_CHUNK_CHARACTERS)
+    .map((original, index) => ({
+      index,
+      original: stripMarkdownImages(original).trim()
+    }))
+    .filter((chunk) => chunk.original.length > 0);
   const translated: TranslatedParagraph[] = [];
 
   // 先发布完整的原文段落快照。这样在第一个模型请求完成前，阅读器就能给每段
   // 原文后插入“翻译中”框，而不是等到整篇翻完才开始渲染双语内容。
   onProgress?.({
     type: 'started',
-    paragraphs: chunks.map((original, index) => ({ index, original, translated: '' }))
+    paragraphs: chunks.map((chunk) => ({
+      index: chunk.index,
+      original: chunk.original,
+      translated: ''
+    }))
   });
 
   for (const chunk of chunks) {
     const prompt = template
       .replace(/\{\{title\}\}/g, '')
-      .replace(/\{\{content\}\}/g, chunk)
+      .replace(/\{\{content\}\}/g, chunk.original)
       .replace(/\{\{targetLanguage\}\}/g, languageName);
 
     const output = await chatCompletion(
@@ -103,8 +112,10 @@ export async function generateTranslation(
     );
 
     const paragraph = {
-      index: translated.length,
-      original: chunk,
+      // 保留清洗后 Markdown 的原始块索引。图片独占块会被跳过，因此这里
+      // 不能再用 translated.length，否则后续译文会错挂到下一张图片下面。
+      index: chunk.index,
+      original: chunk.original,
       translated: extractTranslatedText(output)
     };
     translated.push(paragraph);
@@ -112,6 +123,80 @@ export async function generateTranslation(
   }
 
   return translated;
+}
+
+/**
+ * 删除 Markdown/HTML 图片，只把真正需要翻译的文字发给模型。
+ *
+ * 独占图片的段落会因此变成空字符串并被 generateTranslation 跳过；混合段落
+ * 则保留图片前后的说明文字。扫描圆括号而不是只靠正则，以兼容 URL 中的括号。
+ */
+export function stripMarkdownImages(content: string): string {
+  let result = '';
+  let cursor = 0;
+
+  while (cursor < content.length) {
+    const imageStart = content.indexOf('![', cursor);
+    if (imageStart < 0) {
+      result += content.slice(cursor);
+      break;
+    }
+
+    result += content.slice(cursor, imageStart);
+    const altEnd = findUnescapedClosing(content, imageStart + 2, '[', ']');
+    if (altEnd < 0) {
+      result += content.slice(imageStart);
+      break;
+    }
+
+    let destinationStart = altEnd + 1;
+    while (/\s/.test(content[destinationStart] ?? '')) destinationStart += 1;
+    if (content[destinationStart] !== '(') {
+      // 不是内联图片语法，保守保留原内容。
+      result += content.slice(imageStart, altEnd + 1);
+      cursor = altEnd + 1;
+      continue;
+    }
+
+    const destinationEnd = findUnescapedClosing(
+      content,
+      destinationStart + 1,
+      '(',
+      ')'
+    );
+    if (destinationEnd < 0) {
+      result += content.slice(imageStart);
+      break;
+    }
+    cursor = destinationEnd + 1;
+  }
+
+  return result
+    .replace(/<img\b[^>]*>/gi, '')
+    // 链接图片会在移除内部 ![](...) 后留下 [](...)，一并清掉。
+    .replace(/\[\s*\]\([^\n)]*\)/g, '');
+}
+
+function findUnescapedClosing(
+  content: string,
+  from: number,
+  opening: '[' | '(',
+  closing: ']' | ')'
+): number {
+  let depth = 1;
+  for (let index = from; index < content.length; index += 1) {
+    const character = content[index];
+    if (character === '\\') {
+      index += 1;
+      continue;
+    }
+    if (character === opening) depth += 1;
+    else if (character === closing) {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
 }
 
 // ============================================================

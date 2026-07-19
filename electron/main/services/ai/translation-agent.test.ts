@@ -3,7 +3,11 @@ import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProvider } from '../../../../shared/types';
 import { chatCompletion } from './openai-client';
-import { generateTranslation, splitMarkdownIntoChunks } from './translation-agent';
+import {
+  generateTranslation,
+  splitMarkdownIntoChunks,
+  stripMarkdownImages
+} from './translation-agent';
 
 vi.mock('./openai-client', () => ({ chatCompletion: vi.fn() }));
 
@@ -78,6 +82,62 @@ describe('generateTranslation', () => {
       { type: 'segmentCompleted', count: 1, translated: '第一段译文。' },
       { type: 'segmentCompleted', count: 1, translated: '第二段译文。' }
     ]);
+  });
+
+  it('does not send image blocks or image URLs to the model and preserves source indexes', async () => {
+    vi.mocked(chatCompletion)
+      .mockResolvedValueOnce('第一段。')
+      .mockResolvedValueOnce('图注。')
+      .mockResolvedValueOnce('最后一段。');
+    const started: Array<{ index: number; original: string }> = [];
+    const source = [
+      'First paragraph.',
+      '![Screenshot](https://cdn.example.com/a_(large).png)',
+      'Caption before ![inline image](https://cdn.example.com/inline.png) caption after.',
+      'Last paragraph.'
+    ].join('\n\n');
+
+    const result = await generateTranslation(provider, source, {
+      onProgress: (event) => {
+        if (event.type === 'started') started.push(...event.paragraphs);
+      }
+    });
+
+    expect(chatCompletion).toHaveBeenCalledTimes(3);
+    expect(result.map((item) => item.index)).toEqual([0, 2, 3]);
+    expect(started.map((item) => item.index)).toEqual([0, 2, 3]);
+    expect(result[1]?.original).toBe('Caption before  caption after.');
+    const prompts = vi.mocked(chatCompletion).mock.calls
+      .map((call) => call[1][0]?.content ?? '')
+      .join('\n');
+    expect(prompts).not.toContain('cdn.example.com');
+    expect(prompts).not.toContain('![');
+  });
+
+  it('uses no model tokens when the article block only contains an image', async () => {
+    const progress: Array<{ type: string; count: number }> = [];
+
+    const result = await generateTranslation(
+      provider,
+      '![Screenshot](https://cdn.example.com/only-image.png)',
+      {
+        onProgress: (event) => {
+          if (event.type === 'started') {
+            progress.push({ type: event.type, count: event.paragraphs.length });
+          }
+        }
+      }
+    );
+
+    expect(result).toEqual([]);
+    expect(progress).toEqual([{ type: 'started', count: 0 }]);
+    expect(chatCompletion).not.toHaveBeenCalled();
+  });
+
+  it('strips linked images and HTML images while keeping nearby prose', () => {
+    expect(stripMarkdownImages(
+      'Before [![alt](https://example.com/a.png)](https://example.com/full) after <img src="x">.'
+    )).toBe('Before  after .');
   });
 
   it('bounds long input chunks and preserves all source text', () => {

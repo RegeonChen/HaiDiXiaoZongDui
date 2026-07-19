@@ -13,7 +13,7 @@
  *  - 笔记：noteCreate 写入 notes 表
  *  - 专题：topicCreate 占位（Phase 4 接入后真正生效）
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Article, Feed, NoteCreateInput } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { EmptyView } from '../StatusView/EmptyView';
@@ -64,6 +64,8 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   const [translationParagraphs, setTranslationParagraphs] = useState<TranslationDisplayParagraph[]>([]);
   const [tagSuggestions, setTagSuggestions] = useState<Array<{ name: string; confidence: number; reason: string }>>([]);
   const [noteMarkdown, setNoteMarkdown] = useState('');
+  const currentArticleIdRef = useRef<string | null>(article?.id ?? null);
+  currentArticleIdRef.current = article?.id ?? null;
 
   useEffect(() => {
     if (!article) {
@@ -77,12 +79,12 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
     }
     // Phase 3.5.3：检查文章是否已有缓存的 AI 结果，有则自动加载
     setActivePanel(null);
+    setBusy(false);
     setTagSuggestions([]);
     setNoteMarkdown('');
 
     if (article.summary) {
       setSummary(article.summary);
-      setActivePanel('summary');
     } else {
       setSummary('');
     }
@@ -91,7 +93,6 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       setTranslationParagraphs(
         article.translatedParagraphs.map((p) => ({ ...p, status: 'ready' as const }))
       );
-      setActivePanel((prev) => prev ?? 'translation');
     } else {
       setTranslationParagraphs([]);
     }
@@ -158,12 +159,26 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
 
   const handleTranslation = useCallback(async () => {
     if (!article) return;
+    if (activePanel === 'translation') {
+      setActivePanel(null);
+      return;
+    }
+    // 已有本地/数据库缓存时只切换显示，不重新请求模型。
+    if (translationParagraphs.length > 0) {
+      setActivePanel('translation');
+      return;
+    }
+    if (busy) return;
+
+    const requestedArticleId = article.id;
+    const isCurrentArticle = (): boolean => currentArticleIdRef.current === requestedArticleId;
     setBusy(true);
     setActivePanel('translation');
     setTranslationParagraphs([]);
     let activeRunId = '';
     let receivedInitialParagraphs = false;
     const unsubscribe = ds.aiSubscribeTranslationProgress(article.id, (event) => {
+      if (!isCurrentArticle()) return;
       if (event.type === 'started') {
         activeRunId = event.runId;
         receivedInitialParagraphs = true;
@@ -191,6 +206,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
     });
     try {
       const gen = await ds.aiGenerateTranslation(article.id);
+      if (!isCurrentArticle()) return;
       if (!gen.ok) {
         onToast(`翻译失败：${gen.message}`, 'error');
         // 在模型请求之前就失败（例如未配置 Provider）时没有段落状态框可保留，
@@ -199,6 +215,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
         return;
       }
       const r = await ds.aiGetTranslation(article.id);
+      if (!isCurrentArticle()) return;
       if (r.kind === 'ready') {
         setTranslationParagraphs(r.data.map((paragraph) => ({ ...paragraph, status: 'ready' })));
         onToast('翻译已生成', 'success');
@@ -207,9 +224,9 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       }
     } finally {
       unsubscribe();
-      setBusy(false);
+      if (isCurrentArticle()) setBusy(false);
     }
-  }, [article, ds, onToast]);
+  }, [activePanel, article, busy, ds, onToast, translationParagraphs.length]);
 
   const handleSuggestTags = useCallback(async () => {
     if (!article) return;
@@ -344,10 +361,23 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
               type="button"
               className="article-reader__btn"
               onClick={() => void handleTranslation()}
-              disabled={busy || needsContent}
-              title={needsContent ? '正文未清洗' : '生成双语翻译'}
+              disabled={needsContent || (busy && activePanel !== 'translation')}
+              aria-pressed={activePanel === 'translation'}
+              title={needsContent
+                ? '正文未清洗'
+                : activePanel === 'translation'
+                  ? '隐藏翻译并返回原文'
+                  : translationParagraphs.length > 0
+                    ? '显示已生成的翻译（不会重新调用模型）'
+                    : '生成双语翻译'}
             >
-              {busy && activePanel === 'translation' ? '⏳ 翻译中…' : '🌐 翻译'}
+              {activePanel === 'translation'
+                ? '🙈 隐藏翻译'
+                : busy
+                  ? '⏳ 翻译中…'
+                  : translationParagraphs.length > 0
+                    ? '🌐 显示翻译'
+                    : '🌐 翻译'}
             </button>
             <button
               type="button"
@@ -387,6 +417,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
             <TranslatedArticleView
               cleanedHtml={content.html ?? ''}
               paragraphs={translationParagraphs}
+              onClose={() => setActivePanel(null)}
             />
           ) : content.html ? (
             <div

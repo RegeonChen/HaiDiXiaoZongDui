@@ -420,9 +420,46 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const failedSlots = document.querySelectorAll('.translation-slot--failed');
           report.inlineTrans.checks.noFailed = failedSlots.length === 0;
 
+          // 13) 翻译视图里的超宽图片必须被阅读栏约束，不能撑破右侧窗口。
+          const firstBlockForImage = document.querySelector('.translated-article-view__block');
+          if (firstBlockForImage) {
+            const oversizedImage = document.createElement('img');
+            oversizedImage.width = 2000;
+            oversizedImage.height = 100;
+            oversizedImage.alt = 'oversized smoke image';
+            oversizedImage.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+            firstBlockForImage.appendChild(oversizedImage);
+            await sleep(50);
+            const imageWidth = oversizedImage.getBoundingClientRect().width;
+            const blockWidth = firstBlockForImage.getBoundingClientRect().width;
+            report.inlineTrans.checks.imageWidthConstrained = imageWidth > 0 && imageWidth <= blockWidth + 1;
+            oversizedImage.remove();
+          } else {
+            report.inlineTrans.checks.imageWidthConstrained = false;
+          }
+
+          // 14) 翻译视图必须能随时隐藏，并能从本地 state 再次显示。
+          const hideButton = document.querySelector('.translated-article-view__hide-button');
+          report.inlineTrans.checks.hideButtonVisible = !!hideButton;
+          hideButton?.click();
+          report.inlineTrans.checks.translationHidden = await waitFor(
+            () => !!document.querySelector('.article-reader__content') &&
+              !document.querySelector('.translated-article-view'),
+            { timeout: 2000 }
+          );
+          const showCachedButton = Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'))
+            .find((b) => (b.textContent || '').includes('显示翻译'));
+          report.inlineTrans.checks.cachedButtonVisible = !!showCachedButton;
+          showCachedButton?.click();
+          report.inlineTrans.checks.cachedTranslationReopened = await waitFor(
+            () => document.querySelector('.translated-article-view')?.getAttribute('data-split-state') === 'ready',
+            { timeout: 2000 }
+          );
+
           report.inlineTrans.ok = [
             'viewRendered', 'slotsMin1', 'blockPairsMatchSlots', 'blocksRendered',
-            'allReady', 'translatedTextContains', 'noFailed'
+            'allReady', 'translatedTextContains', 'noFailed', 'imageWidthConstrained', 'hideButtonVisible',
+            'translationHidden', 'cachedButtonVisible', 'cachedTranslationReopened'
             // 注：'initialPending' 不强求——mock 流式推 30ms 起步 + 50ms/段，
             // 探针到达时可能已全部 ready（用 allReady 验证完整性）
           ].every((k) => report.inlineTrans.checks[k] === true);
