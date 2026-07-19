@@ -99,7 +99,6 @@ const SMOKE_FLAGS = {
   smokeSummary: process.env['JUHE_SHIVI_SMOKE_SUMMARY'] === '1',
   // smokeInlineTrans: Phase 3.5.2 UI 段落内翻译插槽（沿用 4.1 commit 时的命名）
   smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
-  smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
   seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
   seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
@@ -1340,8 +1339,6 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"topic":{"ok":true');
     } else if (smokeSummary) {
       pass = raw.includes('"summary":{"ok":true');
-    } else if (smokeInlineTrans) {
-      pass = raw.includes('"inlineTrans":{"ok":true');
     } else if (smokeInlineTrans) {
       pass = raw.includes('"inlineTrans":{"ok":true');
     } else if (smokeV2) {
