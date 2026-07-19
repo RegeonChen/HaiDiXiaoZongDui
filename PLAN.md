@@ -201,6 +201,72 @@
   - 纸质深色模式与经典深色一致。
   - 通用设置弹窗即时生效，AI 设置跳转子页面。
 
+## Phase 3.5: AI Reading UX Enhancement
+
+**Overall Goal:** 优化 AI 摘要和翻译的 UI 交互体验，增加 AI 结果的持久化与自动加载。
+
+### Task 3.5.1 - Summary Floating Window (张晨阳)
+
+- **Task Detail:**
+  1. 实现可拖拽 + 可调整大小的摘要悬浮窗组件（`SummaryFloatingPanel`），用户鼠标拖拽边框自由改变大小和位置。
+  2. 点击"✨ 摘要"按钮 → 悬浮窗立即渲染（含标题栏 + 关闭按钮），内部显示 Loading 状态（"Waiting for AI response…"），不等待 AI Provider 返回。
+  3. AI 返回结果后更新悬浮窗内容（Markdown 渲染后的摘要正文），保留拖拽位置和大小。
+  4. 悬浮窗始终在阅读区视口内（边界检测，防止拖出可视区域）。
+  5. 替换现有文末 `article-reader__ai-panel` 摘要折叠区。
+- **Affected Areas:** `ArticleReader.tsx`（移除旧摘要面板，接入悬浮窗）、新增 `SummaryFloatingPanel` 组件。
+- **Verification:**
+  - 点击摘要按钮 → 屏幕中央出现悬浮窗，显示"Waiting for AI response…"。
+  - 鼠标拖拽标题栏 → 悬浮窗跟随移动，松手后停留在目标位置。
+  - 鼠标拖拽边框 → 悬浮窗大小实时变化，最小 300×200px。
+  - AI 摘要返回后悬浮窗内容替换为 Markdown 渲染后的正文。
+  - 关闭悬浮窗后再点摘要 → 重新打开，若已有缓存内容则直接展示。
+
+### Task 3.5.2 - Inline Translation Between Paragraphs (张晨阳 + 张宇凡)
+
+- **Task Detail (张宇凡 — 内容管线):**
+  1. 提供 `splitCleanedHtmlIntoBlocks(html: string): HtmlBlock[]` 工具函数，将 Cleaned HTML 按段落/标题/代码块/列表切分为独立块（每个 `<p>` / `<h2>` / `<pre>` / `<ul>` 为一个块）。
+  2. 确保切分后的块边界正确，不破坏 Markdown 结构（代码块、表格不切分内部）。
+  3. 为切分逻辑补充单元测试（`content-cleaner.test.ts` 新增用例）。
+- **Task Detail (张晨阳 — UI):**
+  1. 修改 `ArticleReader`：渲染文章时不再使用单一 `dangerouslySetInnerHTML`，而是按段渲染，每段之间预留翻译插槽。
+  2. 点击"🌐 翻译"按钮 → 每段之后立即出现占位文本框（显示"Waiting for AI response…"），不等待 AI 返回。
+  3. AI 逐段返回后，对应占位框更新为译文内容（Markdown 渲染）。
+  4. 翻译结果保留原文+译文对照格式，支持 Markdown 渲染（加粗/斜体/代码）。
+  5. 替换现有文末 `article-reader__ai-panel` 翻译折叠区。
+- **Affected Areas:** 
+  - 张宇凡：`content-cleaner.ts`（新增 `HtmlBlock` 类型 + `splitCleanedHtmlIntoBlocks`）、`content-cleaner.test.ts`。
+  - 张晨阳：`ArticleReader.tsx`（分段渲染 + 翻译插槽）、`ArticleReader.css`（段落间翻译框样式）、`src/utils/markdown.ts`（复用现有渲染器）。
+- **Verification:**
+  - 一篇含 5 段正文 + 2 个标题 + 1 个代码块的文章 → 渲染为 8 个独立块，每个块之间有翻译插槽位。
+  - 点击翻译 → 每个块下方立即出现"Waiting for AI response…"文本框。
+  - AI 返回翻译后 → 各段下方显示对应译文（原文+译文对照，Markdown 正确渲染）。
+  - 代码块、表格内部不出现翻译插槽（不被误切分）。
+
+### Task 3.5.3 - AI Result Persistence & Auto-Load (陈冠中)
+
+- **Task Detail:**
+  1. AI 生成摘要/翻译后，除写入 `ai_results` 缓存表外，同步回写到 `articles` 表的 `summary` / `translated_paragraphs` 字段。
+  2. 在 `ArticleRepository.getById()` 中确保 `summary` 和 `translatedParagraphs` 字段已被查询（现有 SELECT 已包含，确认可用）。
+  3. 文章打开时（`ArticleReader` 挂载），自动检查 `article.summary` 和 `article.translatedParagraphs` 是否已有值；若有则直接展示缓存内容，用户无需重新点击按钮即可看到上次生成的结果。
+  4. 用户再次点击生成按钮 → 覆盖原有缓存（同时更新 `articles` 和 `ai_results` 两处）。
+  5. 确认摘要/翻译与文章 ID 的对应关系严格正确：不同文章不串数据，删除文章后其 AI 缓存也被清理。
+- **Affected Areas:** `electron/main/index.ts`（AI 生成 handler 中增加 `articles` 表回写）、`article-repository.ts`（确认字段查询完整）、`ArticleReader.tsx`（挂载时自动加载缓存结果）。
+- **Verification:**
+  - 为文章 A 生成摘要 → 切换到文章 B → 切回文章 A → 摘要自动显示，无需重新点击。
+  - 重启应用 → 打开文章 A → 上次生成的摘要/翻译自动显示。
+  - 再次点击翻译 → 覆盖旧译文，新译文保存并自动展示。
+  - 删除文章 A → 其摘要和翻译缓存不再存在于 DB 中。
+  - 文章 A 的摘要检查不出现文章 B 的内容。
+
+### Phase 3.5 Integration (张晨阳 + 张宇凡 + 陈冠中)
+
+- 张宇凡提供段落切分 → 张晨阳接入分段翻译 UI → 陈冠中提供持久化 → 张晨阳接入自动加载。
+- **Verification:**
+  - 打开一篇英文文章 → 段落正确分块渲染 → 点击翻译 → 每段下方立即出现等待框 → AI 返回后译文逐段填充 → Markdown 正确渲染。
+  - 切换到其他文章 → 再切回 → 译文和摘要仍在原位显示。
+  - 拖拽摘要悬浮窗 → 位置和大小正确 → 关闭后再次打开位置保持或复位。
+  - 重启应用 → 摘要和翻译自动加载展示。
+
 ## Phase 4: Topic Tracking
 
 **Overall Goal:** 汇合三条主线，实现项目的特色功能“专题追踪与多源简报”。
