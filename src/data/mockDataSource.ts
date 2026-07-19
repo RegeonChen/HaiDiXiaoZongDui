@@ -37,6 +37,9 @@ import type {
 } from '@shared/types';
 import type { DataSource, DataSourceState } from '../types/dataSource';
 import { MOCK_ARTICLES, MOCK_FEEDS } from './mockData';
+// 浏览器端 mock split：与主进程（张宇凡 b53e7a2）行为对齐 —
+// 顶层块级元素独立成块，行内节点合并为合成 <p>，代码/表格不切内部。
+import { splitCleanedHtmlIntoBlocks } from '../utils/html-split';
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -161,6 +164,18 @@ export class MockDataSource implements DataSource {
     const article = this.articlesState.find((a) => a.id === articleId);
     if (!article) return { kind: 'error', error: `文章 ${articleId} 不存在` };
     return { kind: 'ready', data: article.cleanedMarkdown ?? article.cleanedHtml ?? '' };
+  }
+
+  // Phase 3.5.2：mock 模式直接走浏览器 DOMParser 实现
+  // （与主进程 splitCleanedHtmlIntoBlocks 行为对齐）
+  // 注意：返回时手动扁平化为 HtmlBlock[]（utils 版本返回 {blocks, fallback}）
+  async htmlBlockSplit(html: string): Promise<DataSourceState<HtmlBlock[]>> {
+    const result = splitCleanedHtmlIntoBlocks(html);
+    // 调试：ensure we return blocks
+    if (result.kind === 'ready' && result.blocks) {
+      return { kind: 'ready', data: result.blocks };
+    }
+    return { kind: 'ready', data: [] };
   }
 
   // ============== Tag ==============

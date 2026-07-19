@@ -124,7 +124,22 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
   - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
   - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 3.5.2 内容管线正式分块工具已完成**（张宇凡）。4.1 + 3.5.1 + 3.5.2 UI 骨架 + 3.5.3 AI 持久化均已就绪；主进程正式实现与渲染层实现统一使用 `{ index, html, tag }` 契约，后续集成验收需继续核对 HTML 块与翻译段落的索引一致性。
+- 当前活动里程碑：**Phase 3.5.2 UI 段落内翻译插槽接 IPC 完成**（A + 张宇凡 b53e7a2）。所有 Phase 3.5 子任务 + Phase 4.1 + Phase 4.2 全部就绪；等陈冠中 4.3 Topic 后端 stub 替换。
+- **Task 3.5.2 UI 段落内翻译插槽接 IPC**（张晨阳 — 接张宇凡 b53e7a2 正式 split 工具）：
+  - **新 IPC 通道** `HTML_BLOCK_SPLIT: 'content:splitHtmlBlocks'`（shared/ipc.ts）
+    - args: `{ html: string }` → result: `HtmlBlock[]`（与主进程 splitCleanedHtmlIntoBlocks 签名对齐）
+  - **共享类型** `HtmlBlock { index, html, tag }`（shared/types.ts）— 张宇凡版本的同名接口
+  - **主进程 handler**（`electron/main/services/content-pipeline/ipc-handlers.ts`）：注册 `HTML_BLOCK_SPLIT`，调 `splitCleanedHtmlIntoBlocks(html)`
+  - **preload 暴露** `window.api.content.splitHtmlBlocks(html)`（electron/preload/index.ts）
+  - **FullDataSource 接口** + `IpcDataSource` + `MockDataSource` 同步实现 `htmlBlockSplit(html): Promise<DataSourceState<HtmlBlock[]>>`
+  - **UI 改造**（`src/components/TranslatedArticleView/TranslatedArticleView.tsx`）：
+    - 移除同步 `splitCleanedHtmlIntoBlocks` 调用，改为 useEffect + DataSource.htmlBlockSplit
+    - 始终渲染外层 div（loading/error 时也保留容器），加 `data-split-state` 属性供 smoke 探针检测
+    - useRef 缓存上次 cleanedHtml 内容，避免 React 18 父组件 re-render 时 useEffect 反复跑导致无限循环
+  - **bug 修复**（重构中暴露）：
+    - `ReferenceError: article is not defined` — useEffect 用了 article prop 但组件没接收
+    - 无限循环 — useState 初始为 loading + useEffect 反复 setSplit(loading) 覆盖 ready 状态
+  - **11/11 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / smoke:summary / **smoke:inline-trans**
 - **Task 3.5.2 内容管线分块**（张宇凡 — 已完成）：
   - `content-cleaner.ts` 新增正式 `HtmlBlock` 类型和 `splitCleanedHtmlIntoBlocks(html): HtmlBlock[]`，按顶层标题、段落、代码块、列表、引用、表格等语义块切分。
   - `pre` / `ul` / `ol` / `blockquote` / `table` / `figure` 保持原子结构，内部节点不会生成额外翻译插槽；顶层文本和行内标记合并为合成段落。
@@ -404,6 +419,17 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - ArticleReader 集成：移除旧 `article-reader__ai-panel` 摘要折叠区；与 3.5.3 持久化协同（文章挂载时若 `article.summary` 有缓存自动打开 panel）
   - smoke-3.5.1 探针（10 项校验：初始隐藏 / 渲染 / loading / 8 handle / 拖拽 / resize / 边界 clamp / localStorage / Esc 关闭）+ `npm run smoke:summary`
   - **10/10 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / **smoke:summary**
+- **2026-07-19**：Task 3.5.2 UI 段落内翻译插槽 — 接张宇凡 b53e7a2 正式 split 工具（张晨阳）：
+  - 新 IPC 通道 `HTML_BLOCK_SPLIT: 'content:splitHtmlBlocks'`（shared/ipc.ts）
+  - 共享类型 `HtmlBlock { index, html, tag }`（shared/types.ts，与张宇凡版本对齐）
+  - 主进程 handler 注册（ipc-handlers.ts），调 `splitCleanedHtmlIntoBlocks(html)`
+  - preload 暴露 `window.api.content.splitHtmlBlocks(html)`
+  - FullDataSource + IpcDataSource + MockDataSource 同步实现 `htmlBlockSplit`
+  - `TranslatedArticleView` 改造：useEffect 异步 split + useRef 缓存 cleanedHtml 避免重渲染循环
+  - 修复：`ReferenceError: article is not defined` + useState 初始 loading 引起的无限循环
+  - 始终渲染外层 div（含 data-split-state="loading|ready|error"），探针能稳定检测组件挂载
+  - smoke:inline-trans 探针增加 split ready 检测（data-split-state 等待 5s）
+  - **11/11 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / smoke:summary / **smoke:inline-trans**
 - **2026-07-19**：Task 3.5.2 UI 段落内翻译插槽 — 前期准备（张晨阳）：
   - 复用 4.1 commit 写好的 3 个组件：`html-split.ts`（`splitCleanedHtmlIntoBlocks` 浏览器 DOMParser mock）/ `TranslatedArticleView`（按段渲染）/ `TranslationSlot`（pending/ready/failed 三态）
   - 修 `ArticleReader` 渲染条件：`activePanel === 'translation'` 即切段渲染（不等 IPC paragraphs 返回），每段立即挂 pending 插槽

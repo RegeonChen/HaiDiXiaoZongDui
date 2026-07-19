@@ -22,6 +22,7 @@ import type {
   Briefing,
   TimelineEntry,
   EventGroup,
+  HtmlBlock,
   AIProvider,
   AIProviderCreateInput,
   AIProviderUpdateInput,
@@ -133,6 +134,10 @@ export interface FullDataSource extends DataSource {
 
   // --- Content ---
   getCleanedMarkdown(articleId: string): Promise<DataSourceState<string>>;
+
+  // --- Content（Phase 3.5.2 段落内翻译插槽：张宇凡 b53e7a2）---
+  /** 把 cleaned HTML 切分为顶层块（每个块挂一个 TranslationSlot） */
+  htmlBlockSplit(html: string): Promise<DataSourceState<HtmlBlock[]>>;
 }
 
 export class IpcDataSource implements FullDataSource {
@@ -189,6 +194,10 @@ export class IpcDataSource implements FullDataSource {
 
   async getCleanedMarkdown(articleId: string): Promise<DataSourceState<string>> {
     return unwrap(await window.api.content.getCleanedMarkdown(articleId));
+  }
+
+  async htmlBlockSplit(html: string): Promise<DataSourceState<HtmlBlock[]>> {
+    return unwrap(await window.api.content.splitHtmlBlocks(html));
   }
 
   // ============== Tag ==============

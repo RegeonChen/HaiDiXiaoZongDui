@@ -224,6 +224,12 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           }
           articles[0].click();
           await waitFor(() => !!document.querySelector('.article-reader'), { timeout: 3000 });
+          // 2.1) 等正文加载（content.html 或 article.cleanedHtml）
+          await waitFor(
+            () => !!document.querySelector('.article-reader__content'),
+            { timeout: 5000 }
+          );
+          await sleep(200);
           // 3) 等 reader toolbar + 翻译按钮
           await waitFor(
             () => Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'))
@@ -242,29 +248,54 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.inlineTrans.error = '找不到 🌐 翻译 按钮';
             return JSON.stringify(report);
           }
+          // click 之前状态
+          const arBefore = document.querySelector('.article-reader');
+          report.inlineTrans.debugBeforeClick = {
+            reader: !!arBefore,
+            body: !!document.querySelector('.article-reader__body'),
+            title: arBefore?.querySelector('.article-reader__title')?.textContent || null,
+            translated: !!document.querySelector('.translated-article-view')
+          };
+          // 捕获 console.error 看 React 异常
+          const consoleErrors = [];
+          const origError = console.error;
+          console.error = (...args) => {
+            consoleErrors.push(args.map(a => String(a)).join(' ').slice(0, 500));
+            origError.apply(console, args);
+          };
+          // 捕获 window.onerror
+          const origOnError = window.onerror;
+          window.onerror = (msg, src, line, col, err) => {
+            consoleErrors.push('[onerror] ' + String(msg) + ' ' + String(err?.stack || '').slice(0, 500));
+            if (origOnError) return origOnError(msg, src, line, col, err);
+            return false;
+          };
           transBtn.click();
+          await sleep(50);
+          report.inlineTrans.consoleErrors = consoleErrors;
+          console.error = origError;
+          window.onerror = origOnError;
           // 5) 等 TranslatedArticleView 渲染
           await waitFor(() => !!document.querySelector('.translated-article-view'), { timeout: 3000 });
-          const view = document.querySelector('.translated-article-view');
-          if (!view) {
-            // 调试：把 article-reader 内部状态 dump 出来
-            const readerHtml = document.querySelector('.article-reader__body')?.innerHTML?.slice(0, 2000) || '(no body)';
-            report.inlineTrans.debugBody = readerHtml;
-            report.inlineTrans.debugActiveBtn = transBtn.disabled ? 'disabled' : 'enabled';
-            const allToolbar = Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn')).map(b => b.textContent || '');
-            report.inlineTrans.debugToolbar = allToolbar;
+          // 5.1) 等 split 完成（data-split-state === 'ready'）
+          //   Phase 3.5.2 后 split 走 IPC 异步（content:splitHtmlBlocks 调到主进程）
+          const splitReady = await waitFor(
+            () => document.querySelector('.translated-article-view')?.getAttribute('data-split-state') === 'ready',
+            { timeout: 5000 }
+          );
+          if (!splitReady) {
+            const state = document.querySelector('.translated-article-view')?.getAttribute('data-split-state') || 'gone';
+            report.inlineTrans.error = 'split 状态没切到 ready (current: ' + state + ')';
+            report.inlineTrans.consoleErrors = consoleErrors;
+            return JSON.stringify(report);
           }
+          const view = document.querySelector('.translated-article-view');
           report.inlineTrans.checks.viewRendered = !!view;
           // 6) 等 TranslationSlot 出现（started 事件 30ms 后）
           await waitFor(() => document.querySelectorAll('.translation-slot').length > 0, { timeout: 2000 });
           const slots = document.querySelectorAll('.translation-slot');
           report.inlineTrans.checks.slotsCount = slots.length;
           report.inlineTrans.checks.slotsMin1 = slots.length >= 1;
-          // 调试
-          report.inlineTrans.debugSlotDetails = Array.from(slots).map((s) => ({
-            index: s.getAttribute('data-translation-index'),
-            status: s.getAttribute('data-translation-status')
-          }));
           // 7) 验证 block-pair 数 = slot 数（一对一）
           const blockPairs = document.querySelectorAll('.translated-article-view__block-pair');
           report.inlineTrans.checks.blockPairCount = blockPairs.length;
@@ -272,11 +303,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           // 8) 验证 blocks（HTML 块）有内容
           const blocks = document.querySelectorAll('.translated-article-view__block');
           report.inlineTrans.checks.blocksRendered = blocks.length > 0;
-          report.inlineTrans.debugBlockDetails = Array.from(blocks).map((b) => ({
-            index: b.getAttribute('data-block-index'),
-            tag: b.getAttribute('data-block-tag')
-          }));
-          // 9) 初始所有 slot 是 pending（mock 流式事件还没推完）
+          // 9) 初始所有 slot 是 pending（mock 流式事件可能还没推完）—— 软目标
           const pendingSlots = document.querySelectorAll('.translation-slot--pending');
           report.inlineTrans.checks.initialPending = pendingSlots.length > 0;
           // 10) 等 mock 流式完成（每段 50ms + 30ms 启动，最多 30+50*slots）
@@ -295,7 +322,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
           report.inlineTrans.ok = [
             'viewRendered', 'slotsMin1', 'blockPairsMatchSlots', 'blocksRendered',
-            'initialPending', 'allReady', 'translatedTextContains', 'noFailed'
+            'allReady', 'translatedTextContains', 'noFailed'
+            // 注：'initialPending' 不强求——mock 流式推 30ms 起步 + 50ms/段，
+            // 探针到达时可能已全部 ready（用 allReady 验证完整性）
           ].every((k) => report.inlineTrans.checks[k] === true);
         } catch (e) {
           report.inlineTrans.error = String(e);

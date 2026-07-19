@@ -5,6 +5,7 @@ import {
   type IpcResponse
 } from '../../../../shared/ipc';
 import { errorMessage } from './errors';
+import { splitCleanedHtmlIntoBlocks } from './content-cleaner';
 import type { ArticleContentService } from './article-content-service';
 import type { OpmlApplicationService } from './opml-service';
 import type { SyncService } from './sync-service';
@@ -56,6 +57,14 @@ export function registerContentPipelineIpc(
     return success(result.content.cleanedMarkdown);
   });
 
+  // Phase 3.5.2（张宇凡 b53e7a2）：UI 段落内翻译插槽需要把 cleaned HTML
+  // 切分为顶层块（每个块挂一个 TranslationSlot）。这是纯函数，JSDOM 在主进程跑。
+  // 不依赖 ArticleContentService —— 任意 HTML 字符串都可切（不限于已清洗的）。
+  secureHandle(IPC_CHANNELS.HTML_BLOCK_SPLIT, async (_event, args) => {
+    const html = requiredString(args, 'html');
+    return success(splitCleanedHtmlIntoBlocks(html));
+  });
+
   secureHandle(IPC_CHANNELS.OPML_IMPORT, async (event) => {
     const filePath = await security.selectOpmlImportPath(event);
     if (!filePath) return success(null);
@@ -75,6 +84,7 @@ export function registerContentPipelineIpc(
     IPC_CHANNELS.SYNC_PROGRESS,
     IPC_CHANNELS.CONTENT_GET_CLEANED_HTML,
     IPC_CHANNELS.CONTENT_GET_CLEANED_MARKDOWN,
+    IPC_CHANNELS.HTML_BLOCK_SPLIT,
     IPC_CHANNELS.OPML_IMPORT,
     IPC_CHANNELS.OPML_EXPORT
   ];

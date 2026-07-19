@@ -172,6 +172,23 @@ export interface TranslatedParagraph {
   translated: string;
 }
 
+/**
+ * Phase 3.5.2（张宇凡 b53e7a2）：Cleaned HTML 顶层语义块，用于段落内翻译插槽。
+ * - 顶层块级元素（<p> / <h1-6> / <pre> / <ul> / <ol> / <blockquote> / <table> / <figure>）独立成块
+ * - 行内节点（文本 / <a> / <strong> / <em> / <code> 等）合并为一个合成 <p>
+ * - 代码块、表格等容器**不切内部**
+ *
+ * index 与 IPC paragraphs[i].index 一一对应，UI 端按 index 匹配挂 TranslationSlot。
+ */
+export interface HtmlBlock {
+  /** 块索引（与 IPC paragraphs[i].index 对应） */
+  index: number;
+  /** 块的 outerHTML（含开闭 tag） */
+  html: string;
+  /** 块类型（tag name 大写，如 P / H2 / PRE） */
+  tag: string;
+}
+
 export interface ArticleFilter {
   feedId?: string;
   isRead?: boolean;

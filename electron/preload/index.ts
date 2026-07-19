@@ -98,7 +98,11 @@ const api = {
       invoke(IPC_CHANNELS.CONTENT_GET_CLEANED_HTML, { articleId }),
 
     getCleanedMarkdown: (articleId: string): Promise<IpcResponse<typeof IPC_CHANNELS.CONTENT_GET_CLEANED_MARKDOWN>> =>
-      invoke(IPC_CHANNELS.CONTENT_GET_CLEANED_MARKDOWN, { articleId })
+      invoke(IPC_CHANNELS.CONTENT_GET_CLEANED_MARKDOWN, { articleId }),
+
+    // Phase 3.5.2：cleaned HTML 切分为顶层块（段落内翻译插槽用）
+    splitHtmlBlocks: (html: string): Promise<IpcResponse<typeof IPC_CHANNELS.HTML_BLOCK_SPLIT>> =>
+      invoke(IPC_CHANNELS.HTML_BLOCK_SPLIT, { html })
   },
 
   // —— OPML ——

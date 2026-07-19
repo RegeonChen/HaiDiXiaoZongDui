@@ -26,6 +26,7 @@ import type {
   LogEntry,
   OpmlImportResult,
   Language,
+  HtmlBlock,
 } from './types';
 
 // ============================================================
@@ -98,6 +99,8 @@ export const IPC_CHANNELS = {
   // -- Content（内容清洗） --
   CONTENT_GET_CLEANED_HTML:      'content:getCleanedHtml',
   CONTENT_GET_CLEANED_MARKDOWN:  'content:getCleanedMarkdown',
+  // Phase 3.5.2（张宇凡 b53e7a2）：切分 cleaned HTML 为独立块，给段落内翻译插槽用
+  HTML_BLOCK_SPLIT:              'content:splitHtmlBlocks',
 
   // -- Tag（标签） --
   TAG_LIST:        'tag:list',
@@ -211,6 +214,8 @@ export interface IpcRequestMap {
   // -- Content --
   [IPC_CHANNELS.CONTENT_GET_CLEANED_HTML]:     { args: { articleId: string }; result: string };
   [IPC_CHANNELS.CONTENT_GET_CLEANED_MARKDOWN]: { args: { articleId: string }; result: string };
+  // Phase 3.5.2: 段落内翻译切块 — UI 端按块挂 TranslationSlot，主进程用 JSDOM 切顶层块级元素
+  [IPC_CHANNELS.HTML_BLOCK_SPLIT]:             { args: { html: string };    result: HtmlBlock[] };
 
   // -- Tag --
   [IPC_CHANNELS.TAG_LIST]:               { args: void;                                           result: Tag[] };

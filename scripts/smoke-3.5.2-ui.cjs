@@ -34,6 +34,7 @@ const child = spawn(electron, [mainEntry, '--no-sandbox', '--disable-gpu'], {
     JUHE_SHIVI_SMOKE: '1',
     JUHE_SHIVI_SMOKE_UI: '1',          // mock 模式（demo 文章有数据）
     JUHE_SHIVI_SMOKE_UI_REAL: '0',
+    JUHE_SHIVI_SMOKE_FEED_URL: 'http://127.0.0.1:0/seed.xml',  // 占位；mock 模式不读
     JUHE_SHIVI_SMOKE_INLINE_TRANS: '1',
     JUHE_SHIVI_USER_DATA: temporaryDirectory
   },
