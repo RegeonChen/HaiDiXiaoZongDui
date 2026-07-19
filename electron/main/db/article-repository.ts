@@ -259,6 +259,27 @@ export const ArticleRepository = {
   },
 
   /**
+   * Phase 3.5.3：回写摘要到 articles 表，使缓存持久化。
+   */
+  updateSummary(id: string, content: string): void {
+    const db = getDatabase();
+    const ts = now();
+    db.run('UPDATE articles SET summary = ?, updated_at = ? WHERE id = ?', [content, ts, id]);
+    saveDatabase();
+  },
+
+  /**
+   * Phase 3.5.3：回写翻译到 articles 表，使缓存持久化。
+   */
+  updateTranslation(id: string, paragraphs: TranslatedParagraph[]): void {
+    const db = getDatabase();
+    const ts = now();
+    db.run('UPDATE articles SET translated_paragraphs = ?, updated_at = ? WHERE id = ?',
+      [JSON.stringify(paragraphs), ts, id]);
+    saveDatabase();
+  },
+
+  /**
    * 获取指定 feed 下最近文章的 guid 集合（用于同步后判断哪些是新文章）。
    * 返回 Set 供 Feed 同步服务使用。
    */

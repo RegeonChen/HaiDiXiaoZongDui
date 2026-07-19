@@ -64,9 +64,6 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   const [noteMarkdown, setNoteMarkdown] = useState('');
 
   useEffect(() => {
-    // Phase 3.4.1.3：切换文章时无条件清空 AI 结果区 + 折叠面板
-    // —— 不论 cleanedHtml 是否已存在，都要先 reset 4 个 AI 字段，
-    // 否则切换后旧文章的 summary / translation / tagSuggestions 仍残留。
     if (!article) {
       setContent({ html: null, loading: false, error: null });
       setActivePanel(null);
@@ -76,12 +73,26 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       setNoteMarkdown('');
       return;
     }
-    // 切换文章：清空 AI 字段（不依赖 content 状态）
+    // Phase 3.5.3：检查文章是否已有缓存的 AI 结果，有则自动加载
     setActivePanel(null);
-    setSummary('');
-    setTranslationParagraphs([]);
     setTagSuggestions([]);
     setNoteMarkdown('');
+
+    if (article.summary) {
+      setSummary(article.summary);
+      setActivePanel('summary');
+    } else {
+      setSummary('');
+    }
+
+    if (article.translatedParagraphs && article.translatedParagraphs.length > 0) {
+      setTranslationParagraphs(
+        article.translatedParagraphs.map((p) => ({ ...p, status: 'ready' as const }))
+      );
+      setActivePanel((prev) => prev ?? 'translation');
+    } else {
+      setTranslationParagraphs([]);
+    }
 
     if (article.cleanedHtml) {
       setContent({ html: article.cleanedHtml, loading: false, error: null });

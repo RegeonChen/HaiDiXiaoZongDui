@@ -1395,6 +1395,8 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       });
       const result: AISummary = { id: crypto.randomUUID(), articleId: article.id, providerId: provider.id, modelName: provider.modelName, content, language: args.language ?? settings.defaultSummaryLanguage, detailLevel: args.detailLevel ?? settings.defaultSummaryDetail, generatedAt: new Date().toISOString() };
       AiResultCache.set(article.id, 'summary', result);
+      // Phase 3.5.3：同步回写 articles 表，使文章重新打开时自动加载缓存
+      ArticleRepository.updateSummary(article.id, content);
       return ok(result);
     } catch (e) { return fail('AI_SUMMARY_FAILED', e instanceof Error ? e.message : String(e)); }
   });
@@ -1435,6 +1437,8 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       });
       const result: AITranslation = { id: crypto.randomUUID(), articleId: article.id, providerId: provider.id, modelName: provider.modelName, targetLanguage: args.targetLanguage ?? settings.defaultTranslationTarget, paragraphs, generatedAt: new Date().toISOString() };
       AiResultCache.set(article.id, 'translation', result);
+      // Phase 3.5.3：同步回写 articles 表，使文章重新打开时自动加载缓存
+      ArticleRepository.updateTranslation(article.id, paragraphs);
       return ok(result);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
