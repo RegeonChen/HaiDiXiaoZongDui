@@ -16,6 +16,7 @@ import type { Article, Feed } from '@shared/types';
 import { useDataSource } from './context/DataSourceContext';
 import { useSelection } from './hooks/useSelection';
 import { usePaneWidths } from './hooks/usePaneWidths';
+import { ThemeProvider } from './hooks/useTheme';
 import { Layout, type AppPage } from './components/Layout/Layout';
 import { FeedList } from './components/FeedList/FeedList';
 import { ArticleList } from './components/ArticleList/ArticleList';
@@ -541,5 +542,9 @@ export function App() {
 }
 
 export default function AppWithProvider() {
-  return <App />;
+  return (
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
+  );
 }
