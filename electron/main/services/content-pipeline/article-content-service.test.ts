@@ -67,6 +67,25 @@ describe('ArticleContentService', () => {
     expect(pipeline.build).not.toHaveBeenCalled();
   });
 
+  it('rebuilds a cached Feed excerpt so opening the article retries the full page', async () => {
+    const store = storeFor(target({
+      sourceHtml: '<p>Feed excerpt <a href="https://example.com/article-1">查看全文</a></p>',
+      sourceKind: 'feed_html',
+      contentTitle: 'Excerpt',
+      cleanedHtml: '<p>Feed excerpt 查看全文</p>',
+      cleanedMarkdown: 'Feed excerpt 查看全文',
+      cleaningStatus: 'done'
+    }));
+    const pipeline = { build: vi.fn(async () => output()) } as unknown as ArticleContentPipeline;
+
+    const result = await new ArticleContentService(store, pipeline).getOrBuild('article-1');
+
+    expect(result.fromCache).toBe(false);
+    expect(pipeline.build).toHaveBeenCalledOnce();
+    expect(store.markArticleContentInProgress).toHaveBeenCalledWith('article-1');
+    expect(store.saveArticleContent).toHaveBeenCalledOnce();
+  });
+
   it('builds once, persists the result and shares concurrent requests', async () => {
     const store = storeFor(target());
     const pipeline = { build: vi.fn(async () => output()) } as unknown as ArticleContentPipeline;

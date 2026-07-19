@@ -41,7 +41,10 @@ export class ArticleContentService {
       target.cleaningStatus === 'done' &&
       target.cleanedHtml !== null &&
       target.cleanedMarkdown !== null &&
-      target.sourceHtml !== null
+      target.sourceHtml !== null &&
+      // RSS/Atom 的 content 常常只是摘要。它们只能作为本次请求抓原文失败时的
+      // 临时兜底；下次打开文章必须再次尝试原文页，不能把预览误当全文永久展示。
+      target.sourceKind === 'article_page'
     ) {
       return {
         content: cachedContent(target),

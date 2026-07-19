@@ -56,6 +56,23 @@ describe('ArticleContentPipeline', () => {
     expect(result.sourceHtml).toContain('Persisted source');
   });
 
+  it('retries the article page instead of reusing a persisted Feed excerpt', async () => {
+    const fetcher = vi.fn(async () => '<article><p>Full page</p></article>');
+    const cleaner = vi.fn((html: string) => cleaned(html));
+
+    const result = await new ArticleContentPipeline(fetcher, cleaner).build(target({
+      sourceHtml: '<p>Feed excerpt <a href="https://example.com/article-1">查看全文</a></p>',
+      sourceKind: 'feed_html',
+      cleanedHtml: '<p>Feed excerpt 查看全文</p>',
+      cleanedMarkdown: 'Feed excerpt 查看全文',
+      cleaningStatus: 'done'
+    }));
+
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(result.sourceKind).toBe('article_page');
+    expect(result.sourceHtml).toContain('Full page');
+  });
+
   it('falls back to Feed HTML when the page request fails', async () => {
     const fetcher = vi.fn(async () => { throw new Error('offline'); });
     const cleaner = vi.fn((html: string) => cleaned(html));

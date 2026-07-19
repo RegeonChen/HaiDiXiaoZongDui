@@ -23,8 +23,11 @@ export class ArticleContentPipeline {
     target: ArticleContentTarget,
     options: ArticleContentPipelineOptions = {}
   ): Promise<ArticleContentOutput> {
-    const hasPersistedSource = target.sourceHtml?.trim() !== '' && target.sourceHtml !== null;
-    const fetched = hasPersistedSource
+    // Feed 内容只是降级预览，绝不能当成正文缓存永久复用。否则一次网络失败就会
+    // 把「查看全文」之类的 RSS 摘要固化为阅读器正文，之后再也没有机会抓取原文。
+    const hasPersistedArticlePage =
+      target.sourceKind === 'article_page' && target.sourceHtml?.trim() !== '';
+    const fetched = hasPersistedArticlePage
       ? null
       : await this.fetchArticlePage(target.articleUrl, options.articleTimeoutMs ?? 20_000);
     const source = selectSource(fetched, target);
@@ -57,7 +60,10 @@ function selectSource(
   fetchedHtml: string | null,
   target: ArticleContentTarget
 ): { html: string; kind: ArticleContentSourceKind } {
-  if (target.sourceHtml?.trim()) {
+  // Only a successfully fetched article page is authoritative persisted source.
+  // `feed_html` / `feed_text` may contain a shortened description plus a
+  // "read more" link, so a newly fetched page must take precedence over them.
+  if (target.sourceKind === 'article_page' && target.sourceHtml?.trim()) {
     return { html: target.sourceHtml, kind: target.sourceKind ?? 'article_page' };
   }
   if (fetchedHtml) return { html: fetchedHtml, kind: 'article_page' };
