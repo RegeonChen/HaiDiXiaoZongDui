@@ -125,6 +125,10 @@ export function cleanArticleContent(sourceHtml: string, articleUrl: string): Cle
   removeKnownNoise(document);
   absolutizeContentUrls(document, articleUrl);
 
+  // Phase 3.6 fix：Readability 在复杂 DOM 中容易丢弃图片。
+  // 在提取前将 <img> / <figure> 平铺为 <p><img></p>，显著提高图片保留率。
+  promoteImagesToParagraphs(document);
+
   const readable = new Readability(document.cloneNode(true) as Document, {
     keepClasses: true
   }).parse();
@@ -170,6 +174,59 @@ function removeKnownNoise(document: Document): void {
   for (const selector of NOISE_SELECTORS) {
     for (const element of document.querySelectorAll(selector)) {
       element.remove();
+    }
+  }
+}
+
+/**
+ * Phase 3.6 fix：将文档中的 <img> 提升到 <p> 层级，防止被 Readability 丢弃。
+ *
+ * 处理策略：
+ *   - <figure> → 替换为 <p><img src="..."></p>（保留 img，丢弃 figcaption）
+ *   - <img> 不在 <p>/<li>/<blockquote> 等块级内容标签内 → 用 <p> 包裹
+ *   - <picture> → 提取第一个 <img> 子元素并用 <p> 包裹
+ */
+function promoteImagesToParagraphs(document: Document): void {
+  // 1. <figure> → <p><img ...></p>
+  for (const figure of Array.from(document.querySelectorAll('figure'))) {
+    const img = figure.querySelector('img[src]');
+    if (img) {
+      const p = document.createElement('p');
+      p.appendChild(img.cloneNode(true));
+      figure.replaceWith(p);
+    } else {
+      figure.remove();
+    }
+  }
+
+  // 2. <picture> → 提取 <img> 并用 <p> 包裹
+  for (const picture of Array.from(document.querySelectorAll('picture'))) {
+    const img = picture.querySelector('img[src]');
+    if (img) {
+      const p = document.createElement('p');
+      p.appendChild(img.cloneNode(true));
+      picture.replaceWith(p);
+    } else {
+      picture.remove();
+    }
+  }
+
+  // 3. 裸 <img>（不在块级内容标签内）→ 用 <p> 包裹
+  const BLOCK_CONTENT = new Set(['P', 'LI', 'BLOCKQUOTE', 'TD', 'TH', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+  for (const img of Array.from(document.querySelectorAll('img[src]'))) {
+    let parent = img.parentElement;
+    let needsWrap = true;
+    while (parent && parent !== document.body) {
+      if (BLOCK_CONTENT.has(parent.tagName)) {
+        needsWrap = false;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+    if (needsWrap && img.parentElement) {
+      const p = document.createElement('p');
+      img.replaceWith(p);
+      p.appendChild(img);
     }
   }
 }
