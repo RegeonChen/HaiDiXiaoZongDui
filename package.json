@@ -28,7 +28,9 @@
     "smoke:summary": "npm run build && node scripts/smoke-3.5.1.cjs",
     "smoke:translation": "npm run build && node scripts/smoke-3.5.2-ui.cjs",
     "smoke:inline-trans": "npm run build && node scripts/smoke-3.5.2-ui.cjs",
-    "dist:mac": "npm run typecheck && npm run build && electron-builder --mac dmg"
+    "dist:mac": "npm run typecheck && npm run build && electron-builder --mac dmg",
+    "dist:win": "npm run typecheck && npm run build && electron-builder --win nsis",
+    "dist": "npm run typecheck && npm run build && electron-builder --mac dmg --win nsis"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
@@ -89,6 +91,21 @@
     "dmg": {
       "artifactName": "聚合拾遗-${version}-${arch}.${ext}",
       "title": "聚合拾遗 ${version}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "artifactName": "聚合拾遗-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }
