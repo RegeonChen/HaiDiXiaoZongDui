@@ -1178,7 +1178,80 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           }
           report.integration = integrationReport;
 
-          report.uiIpc.ok = allChecks.every((k) => report.uiIpc.checks[k] === true);
+          // ---- Phase 3.6.2: 同步进度条三态切换 ----
+          // 验证 progress → done(成功/失败) → 3 秒后自动消失
+          const progressReport = { ok: false, error: null, checks: {} };
+          try {
+            // 进度条初始不存在
+            progressReport.checks.progressBarInitiallyHidden =
+              document.querySelector('.sync-progress-bar') === null;
+
+            // 点击顶栏「同步全部」按钮（App.handleSyncAll）
+            const syncBtn = document.querySelector('.app-header__sync-btn');
+            if (syncBtn) {
+              syncBtn.click();
+              // 等待 progress 态出现（mock sync 极快，可能直接跳到 done；
+              // 通过等待 data-sync-state="progress" 或 "done" 来确认至少进入过显示态）
+              const progressState = await waitFor(() => {
+                const bar = document.querySelector('.sync-progress-bar');
+                if (!bar) return null;
+                return bar.getAttribute('data-sync-state');
+              }, { timeout: 3000 });
+              progressReport.checks.progressStateSeen = progressState === 'progress' || progressState === 'done';
+
+              // 如果瞬间跳过 progress，等到 done 态
+              if (progressState === 'progress') {
+                // 等待同步完成进入 done 态
+                const doneState = await waitFor(() => {
+                  const bar = document.querySelector('.sync-progress-bar');
+                  if (!bar) return null;
+                  return bar.getAttribute('data-sync-state');
+                }, { timeout: 8000 });
+                progressReport.checks.doneStateReached = doneState === 'done';
+              } else {
+                progressReport.checks.doneStateReached = progressState === 'done';
+              }
+
+              // done 态下文本必须包含"同步完成"或"同步部分完成"
+              const doneBar = document.querySelector('.sync-progress-bar--success, .sync-progress-bar--partial');
+              const doneText = doneBar ? doneBar.textContent : null;
+              progressReport.checks.doneTextValid = !!doneText && (
+                doneText.includes('同步完成') || doneText.includes('同步部分完成')
+              );
+
+              // 验证 3 秒延迟：done 态保留至少 1500ms 后才清空
+              await sleep(1500);
+              const stillVisible = document.querySelector('.sync-progress-bar') !== null;
+              progressReport.checks.doneStatePersists = stillVisible;
+
+              // 等到消失（最多再等 4 秒）
+              const cleared = await waitFor(() => {
+                return document.querySelector('.sync-progress-bar') === null;
+              }, { timeout: 4000 });
+              progressReport.checks.progressBarClearedAfterDelay = !!cleared;
+            } else {
+              progressReport.checks.syncBtnNotFound = true;
+            }
+
+            const progressChecks = [
+              'progressBarInitiallyHidden', 'progressStateSeen', 'doneStateReached',
+              'doneTextValid', 'doneStatePersists', 'progressBarClearedAfterDelay'
+            ];
+            progressReport.ok = progressChecks.every((k) => progressReport.checks[k] === true);
+          } catch (e) {
+            progressReport.error = String(e);
+          }
+          report.progress = progressReport;
+
+          // Phase 3.6.2：progress 失败也算 smokeUiReal 失败（核心验收点）
+          if (!progressReport.ok) {
+            report.uiIpc.checks.progressBarOk = false;
+            report.uiIpc.checks.progressBarError = progressReport.error ?? JSON.stringify(progressReport.checks);
+          } else {
+            report.uiIpc.checks.progressBarOk = true;
+          }
+
+          report.uiIpc.ok = allChecks.every((k) => report.uiIpc.checks[k] === true) && progressReport.ok;
         } catch (e) {
           report.uiIpc.error = String(e);
         }

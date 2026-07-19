@@ -44,7 +44,10 @@ export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, on
   const [feedUrl, setFeedUrl] = useState('');
   const [adding, setAdding] = useState(false);
 
-  // Phase 3.6.3：优先使用数据库精确计数，未提供时 fallback 到本地计算
+  // Phase 3.6.3：优先使用数据库精确计数（顶层三个虚拟分组），未提供时 fallback 到本地计算
+  // PLAN 3.6.3 仅要求"所有订阅源/未读/星标文章"三个虚拟分类使用数据库精确计数；
+  // 单个订阅源行的未读数仍走本地 allArticles 聚合（PLAN 未要求每行精确，且本地计算对
+  // 当前已加载的 allArticles 来说已经覆盖全集，行为正确且无额外 IPC 开销）。
   const resolvedUnread = unreadCount ?? articles.filter((a) => !a.isRead).length;
   const resolvedStarred = starredCount ?? articles.filter((a) => a.isStarred).length;
   const resolvedAll = allCount ?? articles.length;
@@ -55,6 +58,7 @@ export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, on
     { id: 'starred', label: '星标文章', icon: '★', count: resolvedStarred }
   ];
 
+  // 单订阅源行未读数（本地聚合，详见上方注释）
   const unreadByFeed = useMemo(() => {
     const m = new Map<string, number>();
     for (const a of articles) {

@@ -66,9 +66,14 @@ export function App() {
 
   // Phase 3.6.3：数据库精确计数
   const [counts, setCounts] = useState<{ all: number; unread: number; starred: number }>({ all: 0, unread: 0, starred: 0 });
-  // Phase 3.6.2：同步进度
-  const [syncingProgress, setSyncingProgress] = useState<{ feedName: string; completed: number; total: number; okCount: number; failCount: number } | null>(null);
+  // Phase 3.6.2：同步进度（两态：进行中 / 完成；完成后 3 秒自动消失）
+  type SyncProgress =
+    | { kind: 'progress'; feedName: string; completed: number; total: number; okCount: number; failCount: number }
+    | { kind: 'done'; total: number; okCount: number; failCount: number };
+  const [syncingProgress, setSyncingProgress] = useState<SyncProgress | null>(null);
   const [failedFeedIds, setFailedFeedIds] = useState<string[]>([]);
+  // Phase 3.6.2：3 秒延迟清理计时器 ref
+  const syncDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pushToast = useCallback((message: string, kind: ToastItem['kind'] = 'info') => {
     toastIdRef.current += 1;
@@ -157,6 +162,16 @@ export function App() {
     window.addEventListener('juhe:refresh', handler);
     return () => window.removeEventListener('juhe:refresh', handler);
   }, [refreshFeeds, refreshCounts, ds]);
+
+  // Phase 3.6.2：组件卸载时清理进度条延迟计时器
+  useEffect(() => {
+    return () => {
+      if (syncDoneTimerRef.current !== null) {
+        clearTimeout(syncDoneTimerRef.current);
+        syncDoneTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const feeds = feedsState.kind === 'ready' ? feedsState.data : [];
   const articles = articlesState.kind === 'ready' ? articlesState.data : [];
@@ -256,10 +271,15 @@ export function App() {
     [ds, pushToast, refreshFeeds, selectFeed]
   );
 
-  // 同步全部（Phase 3.6.2：加入进度反馈）
+  // 同步全部（Phase 3.6.2：进度反馈 + 完成后 3 秒延迟消失）
   const handleSyncAll = useCallback(async () => {
     if (syncing) return;
     setSyncing(true);
+    // 清理上一次完成态的延迟计时器（避免快速重复同步时计时器泄漏）
+    if (syncDoneTimerRef.current !== null) {
+      clearTimeout(syncDoneTimerRef.current);
+      syncDoneTimerRef.current = null;
+    }
     setSyncingProgress(null);
     const failedIds: string[] = [];
     let okCount = 0;
@@ -276,6 +296,7 @@ export function App() {
       for (let i = 0; i < feeds.length; i++) {
         const f = feeds[i];
         setSyncingProgress({
+          kind: 'progress',
           feedName: f.siteTitle || f.title || f.url,
           completed: i + 1,
           total,
@@ -286,7 +307,8 @@ export function App() {
         if (r.ok) okCount += 1;
         else { failCount += 1; failedIds.push(f.id); }
       }
-      setSyncingProgress(null);
+      // Phase 3.6.2：完成态保留 3 秒让用户看到结果，PLAN 明确要求
+      setSyncingProgress({ kind: 'done', total, okCount, failCount });
       setFailedFeedIds(failedIds);
       await refreshFeeds();
       const result = await ds.articles({});
@@ -300,6 +322,12 @@ export function App() {
       } else {
         pushToast(`同步部分完成：成功 ${okCount}，失败 ${failCount}。未成功同步的订阅源已用红点标出`, 'error');
       }
+
+      // 3 秒后清空进度条
+      syncDoneTimerRef.current = setTimeout(() => {
+        setSyncingProgress(null);
+        syncDoneTimerRef.current = null;
+      }, 3000);
     } catch (e) {
       setSyncingProgress(null);
       pushToast(`同步出错：${String(e)}`, 'error');
@@ -577,12 +605,31 @@ export function App() {
       <ConfirmDialog ref={confirmRef} />
       <ContextMenuHost />
       <Toast items={toasts} onDismiss={dismissToast} />
-      {/* Phase 3.6.2：同步进度条 */}
+      {/* Phase 3.6.2：同步进度条（进行中/完成两态；完成后 3 秒自动消失） */}
       {syncingProgress && (
-        <div className="sync-progress-bar" role="status" aria-live="polite">
-          <span className="sync-progress-bar__text">
-            正在同步：{syncingProgress.feedName} 进度：{syncingProgress.completed}/{syncingProgress.total}
-          </span>
+        <div
+          className={`sync-progress-bar sync-progress-bar--${syncingProgress.kind} ${
+            syncingProgress.kind === 'done'
+              ? syncingProgress.failCount === 0
+                ? 'sync-progress-bar--success'
+                : 'sync-progress-bar--partial'
+              : ''
+          }`}
+          role="status"
+          aria-live="polite"
+          data-sync-state={syncingProgress.kind}
+        >
+          {syncingProgress.kind === 'progress' ? (
+            <span className="sync-progress-bar__text">
+              正在同步：{syncingProgress.feedName} 进度：{syncingProgress.completed}/{syncingProgress.total}
+            </span>
+          ) : syncingProgress.failCount === 0 ? (
+            <span className="sync-progress-bar__text">同步完成：{syncingProgress.okCount}/{syncingProgress.total} 成功</span>
+          ) : (
+            <span className="sync-progress-bar__text">
+              同步部分完成：成功 {syncingProgress.okCount}，失败 {syncingProgress.failCount}。未成功同步的订阅源已用红点标出
+            </span>
+          )}
         </div>
       )}
       <GeneralSettingsModal
