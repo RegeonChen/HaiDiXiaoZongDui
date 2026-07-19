@@ -51,6 +51,11 @@ export function TranslatedArticleView({ cleanedHtml, paragraphs }: TranslatedArt
   // Phase 3.5.2：每篇文章用 DataSource.htmlBlockSplit 切块（走 IPC 调到张宇凡的
   // splitCleanedHtmlIntoBlocks）。
   // 关键：只在 cleanedHtml 实际内容变化时重跑（用 useRef 比较避免引用比较的循环）。
+  //
+  // 重要：异步块必须 try/catch 兜底——
+  //   如果 ds.htmlBlockSplit 抛异常（IPC preload 错、主进程 handler 异常、JSDOM 解析异常），
+  //   setSplit({ready}) 永远不会触发，UI 会永远卡在"正在切分段落…"，即使后端翻译已经
+  //   完成。catch 时 fallback 到单块 ready，译文能正常显示。
   useEffect(() => {
     if (cleanedHtml === lastSplitHtmlRef.current) {
       // 引用虽然变了（每次 render 新字符串），但内容相同——不重跑
@@ -65,12 +70,31 @@ export function TranslatedArticleView({ cleanedHtml, paragraphs }: TranslatedArt
     setSplit({ kind: 'loading' });
     let cancelled = false;
     void (async () => {
-      const r = await ds.htmlBlockSplit(cleanedHtml);
-      if (cancelled) return;
-      if (r.kind === 'ready') {
-        setSplit({ kind: 'ready', blocks: r.data });
-      } else if (r.kind === 'error') {
-        setSplit({ kind: 'error', error: r.error });
+      try {
+        const r = await ds.htmlBlockSplit(cleanedHtml);
+        if (cancelled) return;
+        if (r.kind === 'ready' && Array.isArray(r.data)) {
+          setSplit({ kind: 'ready', blocks: r.data });
+        } else if (r.kind === 'error') {
+          setSplit({ kind: 'error', error: r.error });
+        } else {
+          // 未识别的 kind（ready 但 data 不是数组等）—— fallback 到单块 ready，
+          // 让译文至少能渲染
+          // eslint-disable-next-line no-console
+          console.warn('[TranslatedArticleView] htmlBlockSplit 返回非预期 kind，fallback 单块:', r.kind);
+          setSplit({
+            kind: 'ready',
+            blocks: [{ index: 0, html: cleanedHtml, tag: 'DIV' }]
+          });
+        }
+      } catch (e) {
+        if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.error('[TranslatedArticleView] htmlBlockSplit 异常，fallback 单块:', e);
+        setSplit({
+          kind: 'ready',
+          blocks: [{ index: 0, html: cleanedHtml, tag: 'DIV' }]
+        });
       }
     })();
     return () => {

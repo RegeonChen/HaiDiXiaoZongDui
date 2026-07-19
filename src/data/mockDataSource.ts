@@ -170,6 +170,11 @@ export class MockDataSource implements DataSource {
   // （与主进程 splitCleanedHtmlIntoBlocks 行为对齐）
   // 注意：返回时手动扁平化为 HtmlBlock[]（utils 版本返回 {blocks, fallback}）
   async htmlBlockSplit(html: string): Promise<DataSourceState<HtmlBlock[]>> {
+    // Phase 3.5.2 fallback 验证：探针可设 window.__JUHE_MOCK_SPLIT_ERROR__ = true
+    // 模拟 IPC split 抛错，验证 UI 不卡在"正在切分段落…"、能 fallback 到单块 ready
+    if (typeof window !== 'undefined' && (window as unknown as { __JUHE_MOCK_SPLIT_ERROR__?: boolean }).__JUHE_MOCK_SPLIT_ERROR__) {
+      throw new Error('mock split 异常（探针注入）');
+    }
     const result = splitCleanedHtmlIntoBlocks(html);
     return { kind: 'ready', data: result.blocks };
   }

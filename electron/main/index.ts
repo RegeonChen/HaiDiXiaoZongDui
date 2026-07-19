@@ -99,6 +99,8 @@ const SMOKE_FLAGS = {
   smokeSummary: process.env['JUHE_SHIVI_SMOKE_SUMMARY'] === '1',
   // smokeInlineTrans: Phase 3.5.2 UI 段落内翻译插槽（沿用 4.1 commit 时的命名）
   smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
+  // Phase 3.5.2 split error fallback 探针：注入 mock split 抛错，验证 useEffect try/catch
+  smokeInlineTransSplitError: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS_SPLIT_ERROR'] === '1',
   seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
   seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
@@ -190,13 +192,111 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeTopic = SMOKE_FLAGS.smokeTopic;
   const smokeSummary = SMOKE_FLAGS.smokeSummary;
   const smokeInlineTrans = SMOKE_FLAGS.smokeInlineTrans;
+  const smokeInlineTransSplitError = SMOKE_FLAGS.smokeInlineTransSplitError;
   const feedUrl = SMOKE_FLAGS.feedUrl;
   const aiBaseUrl = SMOKE_FLAGS.aiBaseUrl;
   const aiKey = SMOKE_FLAGS.aiKey;
   let probe: string;
 
-  // Phase 4.1 smoke: 优先级最高，避免被 smokeUiReal 拦截
-  if (smokeInlineTrans) {
+  // Phase 3.5.2 split error fallback smoke: 注入 mock split 抛错，
+  // 验证 useEffect try/catch 触发 fallback 到单块 ready，UI 不卡在"正在切分段落…"
+  if (smokeInlineTransSplitError) {
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 5000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { splitError: { ok: false, error: null, checks: {} } };
+        const consoleErrors = [];
+        const origError = console.error;
+        console.error = (...args) => {
+          consoleErrors.push(args.map(a => String(a)).join(' ').slice(0, 500));
+          origError.apply(console, args);
+        };
+        try {
+          // 1) 等 reader 视图
+          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          // 2) 注入 mock split 异常标志
+          window.__JUHE_MOCK_SPLIT_ERROR__ = true;
+          // 3) 找第一篇文章并点击
+          const articles = document.querySelectorAll('.article-list__item');
+          if (articles.length === 0) {
+            report.splitError.error = 'mock 模式没有文章';
+            return JSON.stringify(report);
+          }
+          articles[0].click();
+          await waitFor(() => !!document.querySelector('.article-reader'), { timeout: 3000 });
+          // 4) 等正文加载
+          await waitFor(() => !!document.querySelector('.article-reader__content'), { timeout: 5000 });
+          await sleep(200);
+          // 5) 点翻译按钮
+          const transBtn = Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'))
+            .find((b) => (b.textContent || '').includes('翻译'));
+          if (!transBtn) {
+            report.splitError.error = '找不到翻译按钮';
+            return JSON.stringify(report);
+          }
+          transBtn.click();
+          // 6) 等 TranslatedArticleView 渲染
+          await waitFor(() => !!document.querySelector('.translated-article-view'), { timeout: 3000 });
+          // 7) 关键检查：split 不能永远卡 loading，必须切到 ready（fallback 路径）
+          const splitReady = await waitFor(
+            () => document.querySelector('.translated-article-view')?.getAttribute('data-split-state') === 'ready',
+            { timeout: 5000 }
+          );
+          const finalState = document.querySelector('.translated-article-view')?.getAttribute('data-split-state') || 'gone';
+          report.splitError.checks.splitNotStuckOnLoading = !!splitReady;
+          report.splitError.checks.splitFinalState = finalState;
+          if (!splitReady) {
+            report.splitError.error = 'split 卡在 loading（useEffect try/catch 未生效）';
+            report.splitError.consoleErrors = consoleErrors;
+            return JSON.stringify(report);
+          }
+          // 8) fallback 路径：应该有 1 个 block（fallback 单块） + 1 个 slot
+          const blocks = document.querySelectorAll('.translated-article-view__block');
+          const slots = document.querySelectorAll('.translation-slot');
+          report.splitError.checks.fallbackBlockRendered = blocks.length === 1;
+          report.splitError.checks.fallbackBlockCount = blocks.length;
+          report.splitError.checks.slotsCount = slots.length;
+          // 9) 等翻译完成（slot 全部 ready）
+          await waitFor(
+            () => Array.from(document.querySelectorAll('.translation-slot'))
+              .every((s) => s.getAttribute('data-translation-status') === 'ready'),
+            { timeout: 3000 }
+          );
+          const allReady = Array.from(document.querySelectorAll('.translation-slot'))
+            .every((s) => s.getAttribute('data-translation-status') === 'ready');
+          report.splitError.checks.slotsAllReady = allReady;
+          // 10) 关键：fallback block 内能渲染原文 + 译文
+          const firstBlock = document.querySelector('.translated-article-view__block');
+          const firstSlot = document.querySelector('.translation-slot[data-translation-status="ready"]');
+          report.splitError.checks.fallbackBlockHasContent = firstBlock && (firstBlock.textContent || '').trim().length > 0;
+          report.splitError.checks.fallbackSlotHasTranslation = firstSlot && (firstSlot.textContent || '').includes('译文');
+          // 11) 验证 console.error 至少捕获了 1 条 split 异常警告（useEffect catch 内打的）
+          report.splitError.consoleErrors = consoleErrors;
+          report.splitError.checks.consoleCaughtSplitError = consoleErrors.some((m) => m.includes('htmlBlockSplit') || m.includes('split'));
+        } catch (e) {
+          report.splitError.error = String(e);
+        } finally {
+          console.error = origError;
+        }
+        const splitErrorChecks = [
+          'splitNotStuckOnLoading', 'fallbackBlockRendered', 'slotsAllReady',
+          'fallbackBlockHasContent', 'fallbackSlotHasTranslation', 'consoleCaughtSplitError'
+        ];
+        report.splitError.ok = splitErrorChecks.every((k) => report.splitError.checks[k] === true);
+        return JSON.stringify(report);
+      })()
+    `;
+  } else if (smokeInlineTrans) {
     // Phase 3.5.2 UI smoke: 段落内翻译插槽（前期准备）
     probe = `
       (async () => {
@@ -1443,6 +1543,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"summary":{"ok":true');
     } else if (smokeInlineTrans) {
       pass = raw.includes('"inlineTrans":{"ok":true');
+    } else if (smokeInlineTransSplitError) {
+      pass = raw.includes('"splitError":{"ok":true');
     } else if (smokeV2) {
       pass = raw.includes('"db":{"ok":true');
     } else if (smokeUiReal) {
