@@ -70,6 +70,8 @@ export interface FullDataSource extends DataSource {
   tagDelete(id: string): Promise<void>;
   tagAddToArticle(articleId: string, tagId: string): Promise<void>;
   tagRemoveFromArticle(articleId: string, tagId: string): Promise<void>;
+  /** 获取某篇文章已应用的全部标签（ArticleReader 显示当前 tag 列表用） */
+  tagGetByArticle(articleId: string): Promise<DataSourceState<Tag[]>>;
 
   // --- Note ---
   noteListByArticle(articleId: string): Promise<DataSourceState<Note[]>>;
@@ -227,6 +229,10 @@ export class IpcDataSource implements FullDataSource {
       await window.api.tag.removeFromArticle(articleId, tagId),
       'tagRemoveFromArticle'
     );
+  }
+
+  async tagGetByArticle(articleId: string): Promise<DataSourceState<Tag[]>> {
+    return unwrap(await window.api.tag.getByArticle(articleId));
   }
 
   // ============== Note ==============

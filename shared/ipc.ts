@@ -110,6 +110,8 @@ export const IPC_CHANNELS = {
   TAG_ADD_TO_ARTICLE:      'tag:addToArticle',
   TAG_REMOVE_FROM_ARTICLE: 'tag:removeFromArticle',
   TAG_BATCH_ADD:           'tag:batchAdd',
+  /** 获取某篇文章已应用的全部标签（用于 ArticleReader 显示当前 tag 列表） */
+  TAG_GET_BY_ARTICLE:      'tag:getByArticle',
 
   // -- Note（笔记） --
   NOTE_LIST_BY_ARTICLE: 'note:listByArticle',
@@ -225,6 +227,7 @@ export interface IpcRequestMap {
   [IPC_CHANNELS.TAG_ADD_TO_ARTICLE]:     { args: { articleId: string; tagId: string };           result: void };
   [IPC_CHANNELS.TAG_REMOVE_FROM_ARTICLE]:{ args: { articleId: string; tagId: string };           result: void };
   [IPC_CHANNELS.TAG_BATCH_ADD]:          { args: { articleIds: string[]; tagIds: string[] };     result: void };
+  [IPC_CHANNELS.TAG_GET_BY_ARTICLE]:     { args: { articleId: string };                          result: Tag[] };
 
   // -- Note --
   [IPC_CHANNELS.NOTE_LIST_BY_ARTICLE]: { args: { articleId: string };                  result: Note[] };

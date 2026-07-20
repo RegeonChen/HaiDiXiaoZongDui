@@ -221,6 +221,11 @@ export class MockDataSource implements DataSource {
     /* mock: 不持久化 */
   }
 
+  async tagGetByArticle(_articleId: string): Promise<DataSourceState<Tag[]>> {
+    // mock 模式默认空：让 ArticleReader 自己区分"未应用任何 tag"
+    return { kind: 'ready', data: [] };
+  }
+
   // ============== Note ==============
 
   async noteListByArticle(articleId: string): Promise<DataSourceState<Note[]>> {
@@ -514,11 +519,22 @@ export class MockDataSource implements DataSource {
   }
 
   async aiSuggestTags(_articleId: string): Promise<{ ok: boolean; message: string }> {
-    return { ok: false, message: 'mock 模式无 AI 服务' };
+    // mock 模式模拟成功路径 + 50ms 延迟，让 smoke 探针能捕获 loading → ready 转换
+    await delay(50);
+    return { ok: true, message: '已触发（mock）' };
   }
 
   async aiGetTagSuggestions(_articleId: string): Promise<DataSourceState<Array<{ name: string; confidence: number; reason: string }>>> {
-    return { kind: 'ready', data: [] };
+    await delay(50);
+    return {
+      kind: 'ready',
+      data: [
+        { name: '技术', confidence: 0.92, reason: '正文含多个技术术语' },
+        { name: '开源', confidence: 0.85, reason: '提到开源项目 RSS 阅读器' },
+        { name: 'Rust', confidence: 0.78, reason: '明确提到 Rust 编程语言' },
+        { name: '桌面应用', confidence: 0.71, reason: '讨论本地应用架构' }
+      ]
+    };
   }
 
   // ============== Settings / Log ==============

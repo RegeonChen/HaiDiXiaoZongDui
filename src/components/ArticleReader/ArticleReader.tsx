@@ -2,19 +2,21 @@
  * 文章阅读区(Mercury 风格 + AI 工具栏)
  *  - 顶部:URL 链接(带 link 图标)
  *  - 标题:serif 大字
- *  - 工具栏:星标 / 打开原文 / AI(摘要 / 翻译 / 标签建议 / 笔记 / 专题)
+ *  - 工具栏:星标 / 打开原文 / AI(摘要 / 翻译 / 标签 / 标签建议 / 笔记 / 专题)
  *  - 正文:默认显示 Cleaned HTML;翻译后切换为逐段原文 + 译文流
- *  - 底部:摘要 / 标签 / 笔记结果区
+ *  - 粘性底部面板:标签管理 / 标签建议 / 笔记(可拉伸 + 收起)
+ *  - 摘要:可拖拽悬浮窗(独立于底部面板)
  *
  * Phase 3 Integration:
  *  - 摘要:先 aiGenerateSummary 触发 AI 写入缓存,再 aiGetSummary 读取(带缓存)
  *  - 翻译:同上
- *  - 标签建议:aiSuggestTags + aiGetTagSuggestions(按 articleId 缓存)
+ *  - 标签管理:tagList + tagAddToArticle / tagRemoveFromArticle 手动分类
+ *  - 标签建议:aiSuggestTags + aiGetTagSuggestions,可一键应用
  *  - 笔记:noteCreate 写入 notes 表
  *  - 专题:topicCreate 占位(Phase 4 接入后真正生效)
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Article, Feed, NoteCreateInput } from '@shared/types';
+import type { Article, Feed, NoteCreateInput, Tag } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { EmptyView } from '../StatusView/EmptyView';
 import { LoadingView } from '../StatusView/LoadingView';
@@ -22,6 +24,7 @@ import { ErrorView } from '../StatusView/ErrorView';
 import { renderMarkdown } from '../../utils/markdown';
 import { SummaryFloatingPanel } from '../SummaryFloatingPanel/SummaryFloatingPanel';
 import { TranslatedArticleView } from '../TranslatedArticleView/TranslatedArticleView';
+import { StickyBottomPanel, type StickyTab } from '../StickyBottomPanel/StickyBottomPanel';
 import './ArticleReader.css';
 
 export interface ArticleReaderProps {
@@ -47,6 +50,9 @@ interface ContentState {
 type AiPanel = 'summary' | 'translation' | 'tags' | 'note';
 type ActivePanels = Set<AiPanel>;
 
+/** StickyBottomPanel 的 tab id(标签管理 / 标签建议 / 笔记) */
+type StickyTabId = 'tag-manage' | 'tag-suggest' | 'note';
+
 type TranslationParagraphStatus = 'pending' | 'ready' | 'failed';
 
 interface TranslationDisplayParagraph {
@@ -67,10 +73,24 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   const [translationParagraphs, setTranslationParagraphs] = useState<TranslationDisplayParagraph[]>([]);
   const [tagSuggestions, setTagSuggestions] = useState<Array<{ name: string; confidence: number; reason: string }>>([]);
   const [noteMarkdown, setNoteMarkdown] = useState('');
+  // Phase 3.5.x 落地标签管理:当前文章已应用 tag + 全局 tag 列表
+  const [articleTags, setArticleTags] = useState<Tag[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  // StickyBottomPanel 当前 tab(null = 完全收起)
+  const [stickyTab, setStickyTab] = useState<StickyTabId | null>(null);
   const currentArticleIdRef = useRef<string | null>(article?.id ?? null);
   currentArticleIdRef.current = article?.id ?? null;
 
-  // 工具:添加 / 移除 / 切换 panel
+  // 工具：添加 / 移除 / 切换 panel
+  // Debug: 暴露 articleTags / allTags / tagSuggestions 到 window 供 smoke 探针读取
+  useEffect(() => {
+    (window as unknown as { __JUHE_ARTICLE_DEBUG__?: Record<string, unknown> }).__JUHE_ARTICLE_DEBUG__ = {
+      articleTags: articleTags.map((t) => t.id),
+      allTags: allTags.map((t) => t.id),
+      tagSuggestions: tagSuggestions.map((s) => s.name),
+      stickyTab
+    };
+  }, [articleTags, allTags, tagSuggestions, stickyTab]);
   const addPanel = useCallback((p: AiPanel) => {
     setActivePanels((prev) => {
       if (prev.has(p)) return prev;
@@ -105,6 +125,8 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       setTranslationParagraphs([]);
       setTagSuggestions([]);
       setNoteMarkdown('');
+      setArticleTags([]);
+      setStickyTab(null);
       return;
     }
     // Phase 3.5.3:检查文章是否已有缓存的 AI 结果,有则自动加载
@@ -127,12 +149,29 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       setTranslationParagraphs([]);
     }
 
+    // 拉当前文章已应用的 tag(落地标签管理的关键数据)
+    let cancelled = false;
+    void (async () => {
+      const r = await ds.tagGetByArticle(article.id);
+      if (cancelled) return;
+      if (r.kind === 'ready') setArticleTags(r.data);
+      else setArticleTags([]);
+    })();
+
+    // 拉全局 tag 列表(如果还没拉过)
+    if (allTags.length === 0) {
+      void (async () => {
+        const r = await ds.tagList();
+        if (cancelled) return;
+        if (r.kind === 'ready') setAllTags(r.data);
+      })();
+    }
+
     if (article.cleanedHtml) {
       setContent({ html: article.cleanedHtml, loading: false, error: null });
       return;
     }
     setContent({ html: null, loading: true, error: null });
-    let cancelled = false;
     void (async () => {
       const r = await ds.getCleanedHtml(article.id);
       if (cancelled) return;
@@ -277,19 +316,14 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
 
   const handleSuggestTags = useCallback(async () => {
     if (!article) return;
-    const tagsOpen = isActive('tags');
-    if (tagsOpen) {
-      removePanel('tags');
-      return;
-    }
+    // 切到 sticky panel 的 'tag-suggest' tab
+    setStickyTab('tag-suggest');
     setBusy(true);
-    addPanel('tags');
     setTagSuggestions([]);
     try {
       const gen = await ds.aiSuggestTags(article.id);
       if (!gen.ok) {
         onToast(`标签建议失败:${gen.message}`, 'error');
-        removePanel('tags');
         return;
       }
       const r = await ds.aiGetTagSuggestions(article.id);
@@ -298,12 +332,122 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
         onToast(`生成 ${r.data.length} 条标签建议`, 'success');
       } else {
         onToast(`读取标签建议失败:${r.kind === 'error' ? r.error : '未知'}`, 'error');
-        removePanel('tags');
       }
     } finally {
       setBusy(false);
     }
-  }, [article, ds, onToast, isActive, addPanel, removePanel]);
+  }, [article, ds, onToast]);
+
+  /** 把 tag 加到当前文章(手动添加) */
+  const handleAddTagToArticle = useCallback(
+    async (tag: Tag) => {
+      if (!article) return;
+      if (articleTags.some((t) => t.id === tag.id)) return; // 已存在
+      try {
+        await ds.tagAddToArticle(article.id, tag.id);
+        setArticleTags((prev) => [...prev, tag]);
+        onToast(`已添加标签「${tag.name}」`, 'success');
+      } catch (err) {
+        onToast(`添加失败:${err instanceof Error ? err.message : String(err)}`, 'error');
+      }
+    },
+    [article, ds, articleTags, onToast]
+  );
+
+  /** 移除非当前文章 tag */
+  const handleRemoveTagFromArticle = useCallback(
+    async (tagId: string) => {
+      if (!article) return;
+      try {
+        await ds.tagRemoveFromArticle(article.id, tagId);
+        setArticleTags((prev) => prev.filter((t) => t.id !== tagId));
+      } catch (err) {
+        onToast(`移除失败:${err instanceof Error ? err.message : String(err)}`, 'error');
+      }
+    },
+    [article, ds, onToast]
+  );
+
+  /** 新建 tag + 加到当前文章 */
+  const handleCreateAndAddTag = useCallback(
+    async (name: string) => {
+      if (!article) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      try {
+        const r = await ds.tagCreate({ name: trimmed });
+        if (r.kind === 'ready') {
+          const newTag = r.data;
+          setAllTags((prev) => {
+            if (prev.some((t) => t.name === newTag.name)) return prev;
+            return [...prev, newTag];
+          });
+          await handleAddTagToArticle(newTag);
+        } else {
+          onToast(`创建失败:${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        }
+      } catch (err) {
+        onToast(`创建失败:${err instanceof Error ? err.message : String(err)}`, 'error');
+      }
+    },
+    [article, ds, handleAddTagToArticle, onToast]
+  );
+
+  /** 应用 AI 标签建议(建议 name → 查/建 tag → 加到文章) */
+  const handleApplyTagSuggestion = useCallback(
+    async (suggestionName: string) => {
+      if (!article) return;
+      const trimmed = suggestionName.trim();
+      if (!trimmed) return;
+      // 已应用的检查
+      if (articleTags.some((t) => t.name === trimmed)) {
+        onToast(`标签「${trimmed}」已存在`, 'info');
+        return;
+      }
+      // 先查全量 tag 是否已有同名
+      const existing = allTags.find((t) => t.name === trimmed);
+      if (existing) {
+        await handleAddTagToArticle(existing);
+      } else {
+        await handleCreateAndAddTag(trimmed);
+      }
+    },
+    [article, allTags, articleTags, handleAddTagToArticle, handleCreateAndAddTag, onToast]
+  );
+
+  /** 一次性应用所有 AI 建议 */
+  const handleApplyAllSuggestions = useCallback(async () => {
+    if (!article || tagSuggestions.length === 0) return;
+    let applied = 0;
+    let skipped = 0;
+    for (const s of tagSuggestions) {
+      const name = s.name.trim();
+      if (!name) continue;
+      if (articleTags.some((t) => t.name === name)) {
+        skipped += 1;
+        continue;
+      }
+      const existing = allTags.find((t) => t.name === name);
+      if (existing) {
+        await handleAddTagToArticle(existing);
+        applied += 1;
+      } else {
+        // 串行避免重复 toast
+        try {
+          const r = await ds.tagCreate({ name });
+          if (r.kind === 'ready') {
+            setAllTags((prev) => (prev.some((t) => t.name === r.data.name) ? prev : [...prev, r.data]));
+            await ds.tagAddToArticle(article.id, r.data.id);
+            setArticleTags((prev) => (prev.some((t) => t.id === r.data.id) ? prev : [...prev, r.data]));
+            applied += 1;
+          }
+        } catch {
+          // 忽略单条失败,继续
+        }
+      }
+    }
+    onToast(`已应用 ${applied} 个建议${skipped > 0 ? `(跳过 ${skipped} 个已存在)` : ''}`, 'success');
+  }, [article, tagSuggestions, articleTags, allTags, ds, handleAddTagToArticle, onToast]);
 
   const handleAddNote = useCallback(
     async (e: React.FormEvent) => {
@@ -327,6 +471,11 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
     },
     [article, noteMarkdown, ds, onToast]
   );
+
+  /** 打开粘性底部面板到指定 tab(如果当前是同一 tab,则收起为 null) */
+  const toggleStickyTab = useCallback((tab: StickyTabId) => {
+    setStickyTab((prev) => (prev === tab ? null : tab));
+  }, []);
 
   const handleAddToTopic = useCallback(async () => {
     if (!article) return;
@@ -448,21 +597,40 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
             </button>
             <button
               type="button"
-              className={`article-reader__btn ${isActive('tags') ? 'is-active' : ''}`}
-              onClick={() => void handleSuggestTags()}
-              disabled={needsContent || (busy && !isActive('tags'))}
-              aria-pressed={isActive('tags')}
-              title={needsContent ? '正文未清洗' : 'AI 推荐标签'}
+              className={`article-reader__btn ${stickyTab === 'tag-manage' ? 'is-active' : ''}`}
+              onClick={() => setStickyTab((p) => (p === 'tag-manage' ? null : 'tag-manage'))}
+              aria-pressed={stickyTab === 'tag-manage'}
+              title="手动管理标签:添加 / 移除当前文章的标签"
+              data-tool="tag-manage"
             >
-              {busy && isActive('tags') ? '⏳ 建议中...' : isActive('tags') ? '🙈 隐藏标签建议' : '🏷 标签建议'}
+              {stickyTab === 'tag-manage' ? '🙈 关闭标签' : '🏷 标签'}
             </button>
             <button
               type="button"
-              className={`article-reader__btn ${isActive('note') ? 'is-active' : ''}`}
-              onClick={() => togglePanel('note')}
-              aria-pressed={isActive('note')}
+              className={`article-reader__btn ${stickyTab === 'tag-suggest' ? 'is-active' : ''}`}
+              onClick={() => void handleSuggestTags()}
+              disabled={needsContent}
+              aria-pressed={stickyTab === 'tag-suggest'}
+              title={needsContent ? '正文未清洗' : 'AI 推荐标签(可一键应用)'}
+              data-tool="tag-suggest"
             >
-              {isActive('note') ? '🙈 关闭笔记' : '✎ 笔记'}
+              {busy && stickyTab === 'tag-suggest' && tagSuggestions.length === 0
+                ? '⏳ 建议中...'
+                : stickyTab === 'tag-suggest'
+                  ? '🙈 关闭标签建议'
+                  : tagSuggestions.length > 0
+                    ? '🪄 显示标签建议'
+                    : '🪄 标签建议'}
+            </button>
+            <button
+              type="button"
+              className={`article-reader__btn ${stickyTab === 'note' ? 'is-active' : ''}`}
+              onClick={() => toggleStickyTab('note')}
+              aria-pressed={stickyTab === 'note'}
+              title="添加 Markdown 笔记(GFM:标题、代码块、列表)"
+              data-tool="note"
+            >
+              {stickyTab === 'note' ? '🙈 关闭笔记' : '✎ 笔记'}
             </button>
             <button
               type="button"
@@ -477,12 +645,12 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
 
         <div className="article-reader__body">
           {content.loading ? (
-            <LoadingView message="正在清洗正文…" />
+            <LoadingView message="正在清洗正文..." />
           ) : content.error ? (
             <ErrorView message={content.error} onRetry={retry} />
           ) : isActive('translation') ? (
-            // Phase 3.5.2：段落内翻译（原文 + 翻译插槽交替）。
-            // 点完翻译按钮立即切到段渲染，每段挂一个 pending 插槽（不依赖 IPC 返回）。
+            // Phase 3.5.2:段落内翻译(原文 + 翻译插槽交替)。
+            // 点完翻译按钮立即切到段渲染,每段挂一个 pending 插槽(不依赖 IPC 返回)。
             <TranslatedArticleView
               cleanedHtml={content.html ?? ''}
               paragraphs={translationParagraphs}
@@ -494,13 +662,11 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
               dangerouslySetInnerHTML={{ __html: content.html }}
             />
           ) : (
-            <EmptyView title="此文章暂无正文" hint="可能还没有内容，或者源站返回为空。" />
+            <EmptyView title="此文章暂无正文" hint="可能还没有内容,或者源站返回为空。" />
           )}
         </div>
 
-        {/* AI 结果区 */}
-        {/* Phase 3.5.1：摘要从文末折叠区 → 可拖拽悬浮窗（SummaryFloatingPanel）。
-            打开条件：activePanels.has('summary')。与翻译等 panel 互不冲突（Set 状态）。 */}
+        {/* 摘要:可拖拽悬浮窗,独立于粘性底部面板 */}
         <SummaryFloatingPanel
           open={isActive('summary')}
           onClose={() => removePanel('summary')}
@@ -508,56 +674,261 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
           loading={busy && isActive('summary') && !summary}
         />
 
-        {isActive('tags') && (
-          <div className="article-reader__ai-panel">
-            <h3>🏷 标签建议</h3>
-            {tagSuggestions.length > 0 ? (
-              <ul className="article-reader__tag-suggestions">
-                {tagSuggestions.map((s, i) => (
-                  <li key={`${s.name}-${i}`} className="article-reader__tag-suggestion">
-                    <span className="article-reader__tag-name">{s.name}</span>
-                    <span className="article-reader__tag-confidence">
-                      置信度 {Math.round(s.confidence * 100)}%
-                    </span>
-                    <span className="article-reader__tag-reason">{s.reason}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="article-reader__ai-empty">暂无标签建议。</p>
-            )}
-          </div>
-        )}
+        {/* 粘性底部面板:标签管理 / 标签建议 / 笔记(可拉伸 + 收起) */}
+        <StickyBottomPanel
+          activeTab={stickyTab}
+          tabs={[
+            { id: 'tag-manage', label: '标签', icon: '🏷', badge: articleTags.length },
+            {
+              id: 'tag-suggest',
+              label: 'AI 建议',
+              icon: '🪄',
+              badge: tagSuggestions.length
+            },
+            { id: 'note', label: '笔记', icon: '✎' }
+          ]}
+          onTabChange={(id) => {
+            // tab 切换不收起面板;点同一 tab 也不会自动收起(由 onClose 控制)
+            setStickyTab(id as StickyTabId);
+            // 如果切到 tag-suggest 且还没有建议,主动调一次 AI
+            if (id === 'tag-suggest' && tagSuggestions.length === 0 && !busy) {
+              void handleSuggestTags();
+            }
+          }}
+          onClose={() => setStickyTab(null)}
+          renderContent={(tabId) => {
+            if (tabId === 'tag-manage') {
+              return (
+                <TagManagePanel
+                  articleTags={articleTags}
+                  allTags={allTags}
+                  onAdd={handleAddTagToArticle}
+                  onRemove={handleRemoveTagFromArticle}
+                  onCreate={handleCreateAndAddTag}
+                />
+              );
+            }
+            if (tabId === 'tag-suggest') {
+              return (
+                <TagSuggestPanel
+                  busy={busy}
+                  suggestions={tagSuggestions}
+                  articleTagNames={new Set(articleTags.map((t) => t.name))}
+                  onApply={handleApplyTagSuggestion}
+                  onApplyAll={handleApplyAllSuggestions}
+                />
+              );
+            }
+            if (tabId === 'note') {
+              return (
+                <form className="sticky-note" onSubmit={handleAddNote}>
+                  <textarea
+                    className="sticky-note__input"
+                    value={noteMarkdown}
+                    onChange={(e) => setNoteMarkdown(e.target.value)}
+                    placeholder="Markdown 笔记(GFM:标题、代码块、列表)"
+                    rows={4}
+                  />
+                  <div className="sticky-note__actions">
+                    <button
+                      type="submit"
+                      className="article-reader__btn article-reader__btn--primary"
+                      disabled={!noteMarkdown.trim()}
+                    >
+                      添加笔记
+                    </button>
+                    <button
+                      type="button"
+                      className="article-reader__btn"
+                      onClick={() => setNoteMarkdown('')}
+                    >
+                      清空
+                    </button>
+                  </div>
+                </form>
+              );
+            }
+            return null;
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
-        {isActive('note') && (
-          <form className="article-reader__ai-panel" onSubmit={handleAddNote}>
-            <h3>✎ 笔记</h3>
-            <textarea
-              className="article-reader__note-input"
-              value={noteMarkdown}
-              onChange={(e) => setNoteMarkdown(e.target.value)}
-              placeholder="Markdown 笔记（GFM：标题、代码块、列表）"
-              rows={5}
-            />
-            <div className="article-reader__note-actions">
-              <button
-                type="submit"
-                className="article-reader__btn article-reader__btn--primary"
-                disabled={!noteMarkdown.trim()}
+/* ============================================================
+ * StickyBottomPanel 的子组件(标签管理 / 标签建议)
+ * ============================================================ */
+
+interface TagManagePanelProps {
+  articleTags: Tag[];
+  allTags: Tag[];
+  onAdd: (tag: Tag) => void;
+  onRemove: (tagId: string) => void;
+  onCreate: (name: string) => void;
+}
+
+function TagManagePanel({ articleTags, allTags, onAdd, onRemove, onCreate }: TagManagePanelProps) {
+  const [newName, setNewName] = useState('');
+  const appliedIds = new Set(articleTags.map((t) => t.id));
+  const available = allTags.filter((t) => !appliedIds.has(t.id));
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+    onCreate(name);
+    setNewName('');
+  };
+
+  return (
+    <div className="sticky-tag-manage">
+      <div className="sticky-tag-manage__section">
+        <h4 className="sticky-tag-manage__heading">已应用({articleTags.length})</h4>
+        {articleTags.length === 0 ? (
+          <p className="sticky-tag-manage__empty">尚未给此文章添加标签。</p>
+        ) : (
+          <ul className="sticky-tag-manage__chips" data-sticky-section="applied">
+            {articleTags.map((t) => (
+              <li
+                key={t.id}
+                className="sticky-tag-manage__chip"
+                style={{ borderColor: t.color ?? 'var(--accent)' }}
+                data-sticky-chip-id={t.id}
               >
-                添加笔记
-              </button>
-              <button
-                type="button"
-                className="article-reader__btn"
-                onClick={() => setNoteMarkdown('')}
-              >
-                清空
-              </button>
-            </div>
-          </form>
+                <span
+                  className="sticky-tag-manage__chip-dot"
+                  style={{ background: t.color ?? 'var(--accent)' }}
+                  aria-hidden="true"
+                />
+                <span className="sticky-tag-manage__chip-name">{t.name}</span>
+                <button
+                  type="button"
+                  className="sticky-tag-manage__chip-remove"
+                  onClick={() => onRemove(t.id)}
+                  aria-label={`移除标签 ${t.name}`}
+                  title="移除"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
+
+      <div className="sticky-tag-manage__section">
+        <h4 className="sticky-tag-manage__heading">已有标签({available.length})</h4>
+        {available.length === 0 ? (
+          <p className="sticky-tag-manage__empty">所有标签都已应用到此文章。</p>
+        ) : (
+          <ul className="sticky-tag-manage__chips" data-sticky-section="available">
+            {available.map((t) => (
+              <li
+                key={t.id}
+                className="sticky-tag-manage__chip sticky-tag-manage__chip--add"
+                style={{ borderColor: t.color ?? 'var(--border)' }}
+                data-sticky-chip-id={t.id}
+              >
+                <span
+                  className="sticky-tag-manage__chip-dot"
+                  style={{ background: t.color ?? 'var(--border)' }}
+                  aria-hidden="true"
+                />
+                <span className="sticky-tag-manage__chip-name">{t.name}</span>
+                <button
+                  type="button"
+                  className="sticky-tag-manage__chip-add-btn"
+                  onClick={() => onAdd(t)}
+                  title="应用到当前文章"
+                >
+                  +
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <form className="sticky-tag-manage__create" onSubmit={submit}>
+        <input
+          type="text"
+          className="sticky-tag-manage__create-input"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="新建标签并应用..."
+          maxLength={32}
+        />
+        <button
+          type="submit"
+          className="article-reader__btn article-reader__btn--primary"
+          disabled={!newName.trim()}
+        >
+          + 新建
+        </button>
+      </form>
+    </div>
+  );
+}
+
+interface TagSuggestPanelProps {
+  busy: boolean;
+  suggestions: Array<{ name: string; confidence: number; reason: string }>;
+  articleTagNames: Set<string>;
+  onApply: (name: string) => void;
+  onApplyAll: () => void;
+}
+
+function TagSuggestPanel({ busy, suggestions, articleTagNames, onApply, onApplyAll }: TagSuggestPanelProps) {
+  return (
+    <div className="sticky-tag-suggest">
+      {busy && suggestions.length === 0 ? (
+        <div className="sticky-tag-suggest__loading">
+          <div className="sticky-tag-suggest__spinner" aria-hidden="true" />
+          <span>AI 正在分析文章...</span>
+        </div>
+      ) : suggestions.length === 0 ? (
+        <p className="sticky-tag-suggest__empty">点 🪄 标签建议 按钮触发 AI 推荐。</p>
+      ) : (
+        <>
+          <div className="sticky-tag-suggest__header">
+            <span className="sticky-tag-suggest__count">共 {suggestions.length} 条建议</span>
+            <button
+              type="button"
+              className="article-reader__btn article-reader__btn--primary"
+              onClick={onApplyAll}
+              data-sticky-action="apply-all"
+            >
+              一键全部应用
+            </button>
+          </div>
+          <ul className="sticky-tag-suggest__list" data-sticky-section="suggestions">
+            {suggestions.map((s, i) => {
+              const applied = articleTagNames.has(s.name.trim());
+              return (
+                <li key={`${s.name}-${i}`} className="sticky-tag-suggest__item">
+                  <div className="sticky-tag-suggest__main">
+                    <span className="sticky-tag-suggest__name">{s.name}</span>
+                    <span className="sticky-tag-suggest__confidence">
+                      置信度 {Math.round(s.confidence * 100)}%
+                    </span>
+                    <span className="sticky-tag-suggest__reason">{s.reason}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`article-reader__btn ${applied ? 'is-applied' : ''}`}
+                    onClick={() => onApply(s.name)}
+                    disabled={applied}
+                    data-sticky-suggestion={s.name}
+                  >
+                    {applied ? '✓ 已应用' : '应用'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

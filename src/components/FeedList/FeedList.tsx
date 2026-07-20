@@ -2,7 +2,7 @@
  * 订阅源侧栏（Mercury 风格）
  *
  *  - tab 切换：订阅源 / 标签（标签是 Phase 3 占位）
- *  - + 添加 + ... 批量操作
+ *  - 添加订阅源入口：顶栏 + 按钮（打开 AddFeedDialog），不在侧栏重复
  *  - 底部状态栏：订阅源数 / 文章数 / 未读数
  *  - 右键订阅源 → 弹菜单（删除 / 复制 URL）
  *  - 选中态：mercury 风格的圆点 + 灰底
@@ -20,7 +20,6 @@ export interface FeedListProps {
   onDeleteFeed: (feed: Feed) => void;
   onSyncFeed?: (feed: Feed) => void;
   onExportOpml?: () => void;
-  onAddFeed?: (url: string) => Promise<{ ok: boolean; message: string }>;
   /** Phase 3.6.3：数据库精确计数（由 App.tsx 传下），未提供时 fallback 到 articles 本地计算 */
   allCount?: number;
   unreadCount?: number;
@@ -38,11 +37,9 @@ interface VirtualEntry {
   count: number;
 }
 
-export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, onSyncFeed, onExportOpml, onAddFeed, allCount, unreadCount, starredCount, failedFeedIds }: FeedListProps) {
+export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, onSyncFeed, onExportOpml, allCount, unreadCount, starredCount, failedFeedIds }: FeedListProps) {
   const [tab, setTab] = useState<Tab>('sources');
   const [showAll, setShowAll] = useState(true);
-  const [feedUrl, setFeedUrl] = useState('');
-  const [adding, setAdding] = useState(false);
 
   // Phase 3.6.3：优先使用数据库精确计数（顶层三个虚拟分组），未提供时 fallback 到本地计算
   // PLAN 3.6.3 仅要求"所有订阅源/未读/星标文章"三个虚拟分类使用数据库精确计数；
@@ -119,46 +116,8 @@ export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, on
     ]);
   };
 
-  const handleAddSubmit = async () => {
-    if (!onAddFeed || !feedUrl.trim() || adding) return;
-    setAdding(true);
-    try {
-      const result = await onAddFeed(feedUrl.trim());
-      if (result.ok) setFeedUrl('');
-    } finally {
-      setAdding(false);
-    }
-  };
-
   return (
     <div className="feed-list">
-      {/* 内联添加订阅源表单 */}
-      {onAddFeed && (
-        <form
-          className="feed-list__add-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void handleAddSubmit();
-          }}
-        >
-          <input
-            type="url"
-            className="feed-list__add-input"
-            placeholder="输入 RSS/Atom 订阅地址…"
-            value={feedUrl}
-            onChange={(e) => setFeedUrl(e.target.value)}
-            disabled={adding}
-          />
-          <button
-            type="submit"
-            className="feed-list__add-btn"
-            disabled={adding || !feedUrl.trim()}
-          >
-            {adding ? '…' : '＋'}
-          </button>
-        </form>
-      )}
-
       {/* 顶部 tab + 操作行 */}
       <div className="feed-list__topbar">
         <div className="feed-list__tabs" role="tablist">

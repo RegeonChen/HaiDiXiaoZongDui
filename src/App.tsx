@@ -485,7 +485,6 @@ export function App() {
           }
         }}
         onExportOpml={handleOpmlExport}
-        onAddFeed={handleAddFeed}
       />
     );
 

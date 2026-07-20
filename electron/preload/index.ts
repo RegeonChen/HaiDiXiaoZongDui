@@ -188,7 +188,10 @@ const api = {
       invoke(IPC_CHANNELS.TAG_REMOVE_FROM_ARTICLE, { articleId, tagId }),
 
     batchAdd: (articleIds: string[], tagIds: string[]): Promise<IpcResponse<typeof IPC_CHANNELS.TAG_BATCH_ADD>> =>
-      invoke(IPC_CHANNELS.TAG_BATCH_ADD, { articleIds, tagIds })
+      invoke(IPC_CHANNELS.TAG_BATCH_ADD, { articleIds, tagIds }),
+    // 获取某篇文章已应用的全部标签（ArticleReader 显示当前标签用）
+    getByArticle: (articleId: string): Promise<IpcResponse<typeof IPC_CHANNELS.TAG_GET_BY_ARTICLE>> =>
+      invoke(IPC_CHANNELS.TAG_GET_BY_ARTICLE, { articleId })
   },
 
   // —— Note (Task 3.3) ——

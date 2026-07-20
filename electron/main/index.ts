@@ -99,6 +99,8 @@ const SMOKE_FLAGS = {
   smokeSummary: process.env['JUHE_SHIVI_SMOKE_SUMMARY'] === '1',
   // Phase 3.5.x 修复：activePanel Set 化（摘要 toggle + 摘要/翻译并存）
   smokeCoexist: process.env['JUHE_SHIVI_SMOKE_COEXIST'] === '1',
+  // Phase 3.5.4 落地：粘性底部面板 + 标签管理 + AI 建议应用
+  smokeTagManage: process.env['JUHE_SHIVI_SMOKE_TAGMANAGE'] === '1',
   // smokeInlineTrans: Phase 3.5.2 UI 段落内翻译插槽（沿用 4.1 commit 时的命名）
   smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
   // Phase 3.5.2 split error fallback 探针：注入 mock split 抛错，验证 useEffect try/catch
@@ -194,6 +196,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeTopic = SMOKE_FLAGS.smokeTopic;
   const smokeSummary = SMOKE_FLAGS.smokeSummary;
   const smokeCoexist = SMOKE_FLAGS.smokeCoexist;
+  const smokeTagManage = SMOKE_FLAGS.smokeTagManage;
   const smokeInlineTrans = SMOKE_FLAGS.smokeInlineTrans;
   const smokeInlineTransSplitError = SMOKE_FLAGS.smokeInlineTransSplitError;
   const feedUrl = SMOKE_FLAGS.feedUrl;
@@ -470,6 +473,174 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.inlineTrans.error = String(e);
           report.inlineTrans.stack = (e instanceof Error) ? e.stack : null;
         }
+        return JSON.stringify(report);
+      })()
+    `;
+  } else if (smokeTagManage) {
+    // Phase 3.5.4 smoke: 粘性底部面板 + 标签管理 + AI 建议应用
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { tagManage: { ok: false, error: null, checks: {} } };
+        try {
+          // 等 reader 视图
+          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          // 选第一篇文章
+          const articles = document.querySelectorAll('.article-list__item');
+          if (articles.length === 0) {
+            report.tagManage.error = 'mock 模式没有文章';
+            return JSON.stringify(report);
+          }
+          articles[0].click();
+          await waitFor(() => !!document.querySelector('.article-reader'), { timeout: 3000 });
+          await sleep(150);
+
+          // 1) FeedList 内联添加订阅源表单已删除
+          report.tagManage.checks.feedListNoInlineAddForm =
+            !document.querySelector('.feed-list__add-form');
+
+          // 2) 工具栏出现 3 个新按钮（标签 / 标签建议 / 笔记）
+          await waitFor(() => {
+            const btn = document.querySelector('.article-reader__toolbar [data-tool="tag-manage"]');
+            const btn2 = document.querySelector('.article-reader__toolbar [data-tool="tag-suggest"]');
+            const btn3 = document.querySelector('.article-reader__toolbar [data-tool="note"]');
+            return !!(btn && btn2 && btn3);
+          }, { timeout: 5000 });
+          report.tagManage.checks.toolbarHasTagButtons = !!(
+            document.querySelector('.article-reader__toolbar [data-tool="tag-manage"]') &&
+            document.querySelector('.article-reader__toolbar [data-tool="tag-suggest"]') &&
+            document.querySelector('.article-reader__toolbar [data-tool="note"]')
+          );
+
+          // 3) StickyBottomPanel 初始不显示（stickyTab=null → 折叠态也可能不显示 handle）
+          const panelInitially = document.querySelector('.sticky-bottom-panel');
+          report.tagManage.checks.stickyPanelInitiallyRendered = !!panelInitially;
+
+          // 4) 点 🏷 标签 → 面板展开
+          const tagManageBtn = document.querySelector('[data-tool="tag-manage"]');
+          tagManageBtn.click();
+          await waitFor(() => document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-state') === 'open', { timeout: 2000 });
+          await sleep(100);
+          const panel = document.querySelector('.sticky-bottom-panel');
+          report.tagManage.checks.stickyPanelOpened = panel?.getAttribute('data-sticky-state') === 'open';
+          report.tagManage.checks.stickyPanelOnTagManageTab = panel?.getAttribute('data-sticky-tab') === 'tag-manage';
+          // 显示"已应用"空态或 list
+          const tagManageSection = document.querySelector('.sticky-tag-manage');
+          report.tagManage.checks.tagManageSectionVisible = !!tagManageSection;
+
+          // 5) 点 ▾ 收起 → 折叠（data-sticky-state=collapsed 或 tab bar）
+          const closeBtn = document.querySelector('[data-testid="sticky-bottom-panel__close"]');
+          if (closeBtn) closeBtn.click();
+          await sleep(150);
+          const collapsed = document.querySelector('.sticky-bottom-panel');
+          report.tagManage.checks.stickyPanelCollapsed = collapsed?.getAttribute('data-sticky-state') === 'collapsed';
+
+          // 6) 重新点 🏷 标签 → 重新展开
+          const tagManageBtn2 = document.querySelector('[data-tool="tag-manage"]');
+          if (tagManageBtn2) tagManageBtn2.click();
+          await waitFor(() => document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-state') === 'open', { timeout: 2000 });
+          await sleep(50);
+          const heightBefore = parseInt(
+            document.querySelector('.sticky-bottom-panel')?.style?.height || '0', 10
+          );
+          report.tagManage.checks.stickyPanelReopened = heightBefore >= 120;
+
+          // 7) 拖拽手柄 → 高度变化
+          const handle = document.querySelector('.sticky-bottom-panel__handle');
+          const hRect = handle?.getBoundingClientRect();
+          if (hRect) {
+            const startX = hRect.left + hRect.width / 2;
+            const startY = hRect.top + hRect.height / 2;
+            handle.dispatchEvent(new MouseEvent('mousedown', {
+              bubbles: true, cancelable: true, view: window, button: 0, buttons: 1, clientX: startX, clientY: startY
+            }));
+            await sleep(20);
+            document.dispatchEvent(new MouseEvent('mousemove', {
+              bubbles: true, cancelable: true, view: window, clientX: startX, clientY: startY - 80
+            }));
+            await sleep(20);
+            document.dispatchEvent(new MouseEvent('mouseup', {
+              bubbles: true, cancelable: true, view: window, clientX: startX, clientY: startY - 80
+            }));
+            await sleep(50);
+          }
+          const heightAfter = parseInt(
+            document.querySelector('.sticky-bottom-panel')?.style?.height || '0', 10
+          );
+          report.tagManage.checks.dragChangedHeight = heightAfter !== heightBefore && heightAfter >= 120;
+          report.tagManage.checks.heightBefore = heightBefore;
+          report.tagManage.checks.heightAfter = heightAfter;
+
+          // 8) 切到 🪄 标签建议 → 调 mock AI → 出现建议
+          const tagSuggestBtn = document.querySelector('[data-tool="tag-suggest"]');
+          tagSuggestBtn.click();
+          await waitFor(() => document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'tag-suggest', { timeout: 2000 });
+          // mock 模式 aiSuggestTags 50ms 延迟 + aiGetTagSuggestions 50ms 延迟
+          await waitFor(() => document.querySelectorAll('[data-sticky-suggestion]').length > 0, { timeout: 3000 });
+          await sleep(100);
+          const suggestions = document.querySelectorAll('[data-sticky-suggestion]');
+          report.tagManage.checks.tagSuggestionsRendered = suggestions.length > 0;
+          report.tagManage.checks.tagSuggestionsCount = suggestions.length;
+
+          // 9) 点第一个建议的"应用"按钮 → setArticleTags 异步更新
+          // 注意：chip 元素在 tag-manage tab 内，所以本步只触发 click，不读 DOM，
+          // DOM 读取放在切到 tag-manage tab 之后（step 10 合并为 appliedTagInTagManageTab）。
+          let suggestedName = '';
+          if (suggestions.length > 0) {
+            // suggestions 是 [data-sticky-suggestion] 元素列表，suggestions[0] 本身就是 button
+            const firstSuggestionBtn = /** @type {HTMLElement} */ (suggestions[0]);
+            suggestedName = firstSuggestionBtn.getAttribute('data-sticky-suggestion') || '';
+            firstSuggestionBtn.click();
+            await sleep(500); // 等 mock tagCreate + setArticleTags
+            report.tagManage.checks.appliedSuggestionName = suggestedName;
+            // 验证 suggestion 按钮变 "已应用"
+            const suggestionBtnAfter = document.querySelector(\`[data-sticky-suggestion="\${suggestedName}"]\`);
+            report.tagManage.checks.appliedButtonShowsApplied = !!suggestionBtnAfter &&
+              (suggestionBtnAfter.textContent || '').includes('已应用');
+          }
+
+          // 10) 切回 🏷 标签 → 看到刚刚应用的 tag
+          const tagManageBtn3 = document.querySelector('[data-tool="tag-manage"]');
+          tagManageBtn3.click();
+          await waitFor(() => document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'tag-manage', { timeout: 2000 });
+          await sleep(300);
+          const appliedSection = document.querySelector('[data-sticky-section="applied"]');
+          const appliedChips = appliedSection?.querySelectorAll('[data-sticky-chip-id]') ?? [];
+          report.tagManage.checks.appliedTagInTagManageTab = appliedChips.length >= 1;
+
+          // 11) 切到 ✎ 笔记 → textarea 出现
+          const noteBtn = document.querySelector('[data-tool="note"]');
+          noteBtn.click();
+          await waitFor(() => document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'note', { timeout: 2000 });
+          await sleep(100);
+          const textarea = document.querySelector('.sticky-note__input');
+          report.tagManage.checks.noteTextareaVisible = !!textarea;
+          if (textarea) {
+            textarea.value = 'smoke 笔记测试';
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        } catch (e) {
+          report.tagManage.error = String(e);
+        }
+
+        const tmChecks = [
+          'feedListNoInlineAddForm', 'toolbarHasTagButtons',
+          'stickyPanelInitiallyRendered', 'stickyPanelOpened', 'stickyPanelOnTagManageTab',
+          'tagManageSectionVisible', 'stickyPanelCollapsed', 'stickyPanelReopened',
+          'dragChangedHeight', 'tagSuggestionsRendered', 'appliedButtonShowsApplied',
+          'appliedTagInTagManageTab', 'noteTextareaVisible'
+        ];
+        report.tagManage.ok = tmChecks.every((k) => report.tagManage.checks[k] === true);
         return JSON.stringify(report);
       })()
     `;
@@ -1701,6 +1872,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"summary":{"ok":true');
     } else if (smokeCoexist) {
       pass = raw.includes('"coexist":{"ok":true');
+    } else if (smokeTagManage) {
+      pass = raw.includes('"tagManage":{"ok":true');
     } else if (smokeInlineTrans) {
       pass = raw.includes('"inlineTrans":{"ok":true');
     } else if (smokeInlineTransSplitError) {
@@ -2175,6 +2348,12 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
   trustedIpcMain.handle(IPC_CHANNELS.TAG_REMOVE_FROM_ARTICLE, async (_, args): Promise<IpcResult<void>> => {
     try { TagRepository.removeFromArticle(args.articleId, args.tagId); return ok(undefined); }
     catch (e) { return fail('TAG_REMOVE_FAILED', String(e)); }
+  });
+
+  // 获取某篇文章已应用的全部标签（用于 ArticleReader 显示当前 tag 列表）
+  trustedIpcMain.handle(IPC_CHANNELS.TAG_GET_BY_ARTICLE, async (_, args): Promise<IpcResult<Tag[]>> => {
+    try { return ok(TagRepository.getByArticle(args.articleId)); }
+    catch (e) { return fail('TAG_GET_BY_ARTICLE_FAILED', String(e)); }
   });
 
   trustedIpcMain.handle(IPC_CHANNELS.TAG_BATCH_ADD, async (_, args): Promise<IpcResult<void>> => {

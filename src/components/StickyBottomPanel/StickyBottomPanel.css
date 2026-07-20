@@ -1,0 +1,180 @@
+/**
+ * StickyBottomPanel — 粘性底部面板样式
+ *
+ * 设计：
+ *  - 默认位置：article-reader__body 下方，position: sticky; bottom: 0
+ *  - 收起态：仅显示一个 tab bar（约 40px）
+ *  - 展开态：显示顶栏 + 拖拽手柄 + 内容
+ */
+
+.sticky-bottom-panel {
+  position: sticky;
+  bottom: 0;
+  z-index: 50;
+  background: var(--bg);
+  border-top: 1px solid var(--border, #e5e7eb);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  margin-top: auto; /* 推到底部 */
+  transition: none;
+}
+
+.sticky-bottom-panel--collapsed {
+  height: auto !important;
+  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* 拖拽手柄 */
+.sticky-bottom-panel__handle {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 2;
+  user-select: none;
+}
+
+.sticky-bottom-panel__handle:hover {
+  background: var(--accent);
+  opacity: 0.1;
+}
+
+.sticky-bottom-panel__handle-grip {
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--muted, #9ca3af);
+  opacity: 0.5;
+}
+
+.sticky-bottom-panel__handle:hover .sticky-bottom-panel__handle-grip {
+  opacity: 1;
+  background: var(--accent);
+}
+
+/* 顶栏 */
+.sticky-bottom-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 4px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.sticky-bottom-panel__tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.sticky-bottom-panel__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted, #6b7280);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.sticky-bottom-panel__tab:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+  color: var(--fg);
+}
+
+.sticky-bottom-panel__tab.is-active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 500;
+}
+
+.sticky-bottom-panel__tab-badge {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 4px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 10px;
+  text-align: center;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  margin-left: 2px;
+}
+
+.sticky-bottom-panel__tab.is-active .sticky-bottom-panel__tab-badge {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.sticky-bottom-panel__tab-icon {
+  font-size: 13px;
+}
+
+/* 顶栏右侧 actions */
+.sticky-bottom-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sticky-bottom-panel__height-hint {
+  font-size: 11px;
+  color: var(--muted, #9ca3af);
+}
+
+.sticky-bottom-panel__btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.sticky-bottom-panel__btn:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+/* 内容区 */
+.sticky-bottom-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+}
+
+/* 收起态 tab bar */
+.sticky-bottom-panel--collapsed .sticky-bottom-panel__collapsed-bar {
+  display: flex;
+  gap: 2px;
+  padding: 4px 12px;
+  overflow-x: auto;
+}
+
+.sticky-bottom-panel__collapsed-bar {
+  width: 100%;
+}
+
+/* 主题 */
+html[data-theme='dark'] .sticky-bottom-panel {
+  background: var(--bg);
+  border-top-color: var(--border, #374151);
+}
+html[data-visual-theme='paper'] .sticky-bottom-panel {
+  background: #fdf6e3;
+}
