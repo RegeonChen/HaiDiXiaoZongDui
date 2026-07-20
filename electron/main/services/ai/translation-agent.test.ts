@@ -21,7 +21,9 @@ describe('generateTranslation', () => {
 
   it('requests and parses every heading and body paragraph', async () => {
     const fixture = await readFile(fileURLToPath(new URL('./__fixtures__/translation-output.txt', import.meta.url)), 'utf8');
-    const translations = fixture.trim().split(/\n---\n/);
+    // 兼容 CRLF/LF：Windows git autocrlf 会把 fixture 由 LF 转为 CRLF，
+    // 用 \r?\n 切分避免 fixture 在 Windows 上变成单段、mock 不足导致后续 chatCompletion 返回 undefined
+    const translations = fixture.trim().split(/\r?\n---\r?\n/);
     translations.forEach((translation) => {
       vi.mocked(chatCompletion).mockResolvedValueOnce(translation);
     });
