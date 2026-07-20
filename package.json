@@ -29,6 +29,7 @@
     "smoke:translation": "npm run build && node scripts/smoke-3.5.2-ui.cjs",
     "smoke:inline-trans": "npm run build && node scripts/smoke-3.5.2-ui.cjs",
     "smoke:inline-trans:split-error": "npm run build && node scripts/smoke-3.5.2-split-error.cjs",
+    "smoke:coexist": "npm run build && node scripts/smoke-3.5.3-coexist.cjs",
     "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "dist": "npm run build && electron-builder --mac dmg --win nsis --publish never"

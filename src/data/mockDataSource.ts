@@ -413,11 +413,18 @@ export class MockDataSource implements DataSource {
     _language?: Language,
     _detailLevel?: SummaryDetailLevel
   ): Promise<{ ok: boolean; message: string }> {
-    return { ok: false, message: 'mock 模式无 AI 服务' };
+    // mock 模式模拟成功路径 + ~50ms 延迟，让 smoke 探针和 dev 演示可以走通完整流程。
+    // 真实 AI 行为由 IPC 模式下 IpcDataSource 转发到主进程。
+    await delay(50);
+    return { ok: true, message: '已生成（mock）' };
   }
 
   async aiGetSummary(_articleId: string): Promise<DataSourceState<string>> {
-    return { kind: 'ready', data: '' };
+    await delay(50);
+    return {
+      kind: 'ready',
+      data: '**这是一段 mock 摘要。**\n\n实际使用时会调用配置的 AI Provider 生成摘要。当前为 mock 模式演示。'
+    };
   }
 
   async aiGenerateTranslation(

@@ -97,6 +97,8 @@ const SMOKE_FLAGS = {
   smokeTask33: process.env['JUHE_SHIVI_SMOKE_TASK33'] === '1',
   smokeTopic: process.env['JUHE_SHIVI_SMOKE_TOPIC'] === '1',
   smokeSummary: process.env['JUHE_SHIVI_SMOKE_SUMMARY'] === '1',
+  // Phase 3.5.x 修复：activePanel Set 化（摘要 toggle + 摘要/翻译并存）
+  smokeCoexist: process.env['JUHE_SHIVI_SMOKE_COEXIST'] === '1',
   // smokeInlineTrans: Phase 3.5.2 UI 段落内翻译插槽（沿用 4.1 commit 时的命名）
   smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
   // Phase 3.5.2 split error fallback 探针：注入 mock split 抛错，验证 useEffect try/catch
@@ -191,6 +193,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeTask33 = SMOKE_FLAGS.smokeTask33;
   const smokeTopic = SMOKE_FLAGS.smokeTopic;
   const smokeSummary = SMOKE_FLAGS.smokeSummary;
+  const smokeCoexist = SMOKE_FLAGS.smokeCoexist;
   const smokeInlineTrans = SMOKE_FLAGS.smokeInlineTrans;
   const smokeInlineTransSplitError = SMOKE_FLAGS.smokeInlineTransSplitError;
   const feedUrl = SMOKE_FLAGS.feedUrl;
@@ -467,6 +470,124 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.inlineTrans.error = String(e);
           report.inlineTrans.stack = (e instanceof Error) ? e.stack : null;
         }
+        return JSON.stringify(report);
+      })()
+    `;
+  } else if (smokeCoexist) {
+    // Phase 3.5.x 修复 smoke: 摘要 toggle + 摘要/翻译并存
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { coexist: { ok: false, error: null, checks: {} } };
+        const aiGenCalls = [];
+        try {
+          // 等 reader 视图
+          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          // 选第一篇文章
+          const articles = document.querySelectorAll('.article-list__item');
+          if (articles.length === 0) {
+            report.coexist.error = 'mock 模式没有文章';
+            return JSON.stringify(report);
+          }
+          articles[0].click();
+          await waitFor(() => !!document.querySelector('.article-reader'), { timeout: 3000 });
+          // 等 toolbar 出现
+          await waitFor(() => document.querySelectorAll('.article-reader__toolbar .article-reader__btn').length >= 5, { timeout: 5000 });
+          const toolbarBtns = () => Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'));
+          const findBtn = (text) => toolbarBtns().find((b) => (b.textContent || '').includes(text));
+
+          const summaryBtn = findBtn('摘要');
+          const translationBtn = findBtn('翻译');
+          if (!summaryBtn || !translationBtn) {
+            report.coexist.error = '找不到工具栏按钮（summary=' + !!summaryBtn + ', translation=' + !!translationBtn + '）';
+            return JSON.stringify(report);
+          }
+
+          // === 第 1 步：初始状态 ===
+          report.coexist.checks.summaryPanelInitiallyHidden =
+            !document.querySelector('.summary-floating-panel');
+          report.coexist.checks.summaryButtonInitially = summaryBtn.textContent?.includes('摘要') && !summaryBtn.textContent.includes('隐藏');
+          report.coexist.checks.summaryButtonNotActiveYet = !summaryBtn.classList.contains('is-active');
+
+          // === 第 2 步：点 ✨ 摘要 → 打开悬浮窗 ===
+          summaryBtn.click();
+          await waitFor(() => !!document.querySelector('.summary-floating-panel'), { timeout: 2000 });
+          report.coexist.checks.summaryPanelRenderedAfterFirstClick = !!document.querySelector('.summary-floating-panel');
+          // 等 mock AI 完成（~50ms 延迟）
+          await sleep(150);
+          // 按钮文本应变为 🙈 隐藏摘要
+          const summaryBtnAfter1 = findBtn('隐藏摘要');
+          report.coexist.checks.summaryButtonChangedToHide = !!summaryBtnAfter1;
+          report.coexist.checks.summaryButtonActive = summaryBtn.classList.contains('is-active');
+
+          // === 第 3 步：再点 🙈 隐藏摘要 → 关闭 ===
+          if (summaryBtnAfter1) summaryBtnAfter1.click();
+          await waitFor(() => !document.querySelector('.summary-floating-panel'), { timeout: 2000 });
+          report.coexist.checks.summaryPanelClosedAfterSecondClick = !document.querySelector('.summary-floating-panel');
+          // 按钮回到 ✨ 摘要
+          const summaryBtnAfter2 = findBtn('显示摘要') || findBtn('摘要');
+          report.coexist.checks.summaryButtonReverted = !!summaryBtnAfter2;
+
+          // === 第 4 步：第三次点 ✨ 摘要 → 重新显示，复用缓存 ===
+          // 关键：之前修复前总是 setSummary('') + 调 AI，新代码应当检测 summary 已存在只切显示
+          if (summaryBtnAfter2) summaryBtnAfter2.click();
+          await waitFor(() => !!document.querySelector('.summary-floating-panel'), { timeout: 2000 });
+          await sleep(50);
+          report.coexist.checks.summaryPanelReopenedOnThirdClick = !!document.querySelector('.summary-floating-panel');
+          // 验证摘要内容已经渲染（不是空 loading）
+          const content = document.querySelector('.summary-floating-panel__content');
+          report.coexist.checks.summaryContentVisible = !!content && (content.textContent || '').length > 0;
+
+          // === 第 5 步：开翻译 + 摘要同时存在（关键修复）===
+          // 找当前 translation 按钮（带"显示翻译"或"翻译"）
+          const translationBtnNow = findBtn('显示翻译') || findBtn('翻译');
+          if (translationBtnNow) translationBtnNow.click();
+          // 翻译走 mock 流式：started 30ms + segmentCompleted 80ms/段
+          await waitFor(() => !!document.querySelector('.translated-article-view'), { timeout: 3000 });
+          await sleep(300);
+          // 关键断言：摘要 panel 仍然存在，翻译视图也同时存在
+          const panelStillOpen = !!document.querySelector('.summary-floating-panel');
+          const transViewRendered = !!document.querySelector('.translated-article-view');
+          report.coexist.checks.summaryAndTranslationCoexist = panelStillOpen && transViewRendered;
+          report.coexist.checks.summaryPanelStillOpenAfterTranslation = panelStillOpen;
+          report.coexist.checks.translationViewRendered = transViewRendered;
+          // body 区域是翻译视图（不是原文 content）
+          const articleContent = document.querySelector('.article-reader__content');
+          report.coexist.checks.bodyIsTranslationNotRawHtml = !articleContent;
+
+          // === 第 6 步：关翻译 → 摘要 panel 应保留 ===
+          const translationBtnToHide = findBtn('隐藏翻译');
+          if (translationBtnToHide) translationBtnToHide.click();
+          await waitFor(() => !document.querySelector('.translated-article-view'), { timeout: 2000 });
+          report.coexist.checks.summaryPanelPersistsAfterTranslationClosed =
+            !!document.querySelector('.summary-floating-panel');
+          // 摘要按钮仍 is-active
+          const summaryBtnFinal = findBtn('隐藏摘要');
+          report.coexist.checks.summaryButtonStillActive = !!summaryBtnFinal && summaryBtnFinal.classList.contains('is-active');
+        } catch (e) {
+          report.coexist.error = String(e);
+        }
+
+        const coexistChecks = [
+          'summaryPanelInitiallyHidden', 'summaryButtonInitially', 'summaryButtonNotActiveYet',
+          'summaryPanelRenderedAfterFirstClick', 'summaryButtonChangedToHide', 'summaryButtonActive',
+          'summaryPanelClosedAfterSecondClick', 'summaryButtonReverted',
+          'summaryPanelReopenedOnThirdClick', 'summaryContentVisible',
+          'summaryAndTranslationCoexist', 'summaryPanelStillOpenAfterTranslation',
+          'translationViewRendered', 'bodyIsTranslationNotRawHtml',
+          'summaryPanelPersistsAfterTranslationClosed', 'summaryButtonStillActive'
+        ];
+        report.coexist.ok = coexistChecks.every((k) => report.coexist.checks[k] === true);
         return JSON.stringify(report);
       })()
     `;
@@ -1578,6 +1699,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"topic":{"ok":true');
     } else if (smokeSummary) {
       pass = raw.includes('"summary":{"ok":true');
+    } else if (smokeCoexist) {
+      pass = raw.includes('"coexist":{"ok":true');
     } else if (smokeInlineTrans) {
       pass = raw.includes('"inlineTrans":{"ok":true');
     } else if (smokeInlineTransSplitError) {
