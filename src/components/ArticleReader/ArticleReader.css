@@ -11,6 +11,8 @@
 .article-reader__topbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 8px 24px;
   border-bottom: 1px solid var(--border-soft);
   flex-shrink: 0;
@@ -25,7 +27,9 @@
   text-decoration: none;
   font-size: 11px;
   font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  min-width: 0;
   max-width: 100%;
+  flex: 1 1 auto;
   transition: color 120ms ease;
 }
 
@@ -43,10 +47,108 @@
   white-space: nowrap;
 }
 
+.article-reader__mode-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  overflow: hidden;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+}
+
+.article-reader__mode-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 25px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.article-reader__mode-btn:hover {
+  color: var(--fg);
+}
+
+.article-reader__mode-btn.is-active {
+  background: var(--bg-elev);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.article-reader__mode-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.article-reader__workspace {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.article-reader__pane {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.article-reader__pane-divider {
+  width: 1px;
+  min-width: 1px;
+  height: 100%;
+  background: var(--border);
+  box-shadow: 0 0 8px rgb(0 0 0 / 8%);
+}
+
 .article-reader__scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+
+.article-reader__pane--dual .article-reader__header {
+  padding-right: 24px;
+  padding-left: 24px;
+}
+
+.article-reader__pane--dual .article-reader__body {
+  padding-right: 24px;
+  padding-left: 24px;
+}
+
+.article-reader__pane--dual .article-reader__title {
+  font-size: 21px;
+}
+
+@media (max-width: 1120px) {
+  .article-reader__topbar {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .article-reader__mode-btn {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
 }
 
 .article-reader__header {

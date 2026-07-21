@@ -24,7 +24,9 @@ import { ErrorView } from '../StatusView/ErrorView';
 import { renderMarkdown } from '../../utils/markdown';
 import { SummaryFloatingPanel } from '../SummaryFloatingPanel/SummaryFloatingPanel';
 import { TranslatedArticleView } from '../TranslatedArticleView/TranslatedArticleView';
-import { StickyBottomPanel, type StickyTab } from '../StickyBottomPanel/StickyBottomPanel';
+import { StickyBottomPanel } from '../StickyBottomPanel/StickyBottomPanel';
+import { WebArticleView } from '../WebArticleView/WebArticleView';
+import { useReaderMode, type ReaderMode } from '../../hooks/useReaderMode';
 import './ArticleReader.css';
 
 export interface ArticleReaderProps {
@@ -62,8 +64,20 @@ interface TranslationDisplayParagraph {
   status: TranslationParagraphStatus;
 }
 
+const READER_MODE_OPTIONS: ReadonlyArray<{
+  mode: ReaderMode;
+  label: string;
+  icon: string;
+  title: string;
+}> = [
+  { mode: 'reader', label: 'MD', icon: '▤', title: '只显示清洗后的 Markdown 阅读版' },
+  { mode: 'web', label: '网页', icon: '◎', title: '只显示原站网页' },
+  { mode: 'dual', label: '分栏', icon: '◫', title: '左侧 Markdown，右侧原站网页' }
+];
+
 export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleReaderProps) {
   const ds = useDataSource();
+  const [readerMode, setReaderMode] = useReaderMode();
   const [content, setContent] = useState<ContentState>({ html: null, loading: false, error: null });
   // Phase 3.6.x 修复:activePanel 改为 Set,支持摘要和翻译等 panel 同时显示
   // (之前是单值 string|null,body 渲染 if-else 互斥,摘要占用 panel 时切不到翻译视图)
@@ -104,14 +118,6 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       if (!prev.has(p)) return prev;
       const next = new Set(prev);
       next.delete(p);
-      return next;
-    });
-  }, []);
-  const togglePanel = useCallback((p: AiPanel) => {
-    setActivePanels((prev) => {
-      const next = new Set(prev);
-      if (next.has(p)) next.delete(p);
-      else next.add(p);
       return next;
     });
   }, []);
@@ -522,9 +528,37 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
           <span className="article-reader__link-icon" aria-hidden="true">🔗</span>
           <span className="article-reader__sourcelink-text">{articleUrl}</span>
         </a>
+        <div
+          className="article-reader__mode-switch"
+          role="group"
+          aria-label="阅读显示模式"
+          data-reader-mode={readerMode}
+        >
+          {READER_MODE_OPTIONS.map((option) => (
+            <button
+              key={option.mode}
+              type="button"
+              className={`article-reader__mode-btn ${readerMode === option.mode ? 'is-active' : ''}`}
+              onClick={() => setReaderMode(option.mode)}
+              aria-pressed={readerMode === option.mode}
+              data-reader-mode-option={option.mode}
+              title={option.title}
+            >
+              <span aria-hidden="true">{option.icon}</span>
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="article-reader__scroll">
+      <div className="article-reader__workspace" data-reader-workspace={readerMode}>
+        {readerMode !== 'web' && (
+          <section
+            className={`article-reader__pane ${readerMode === 'dual' ? 'article-reader__pane--dual' : ''}`}
+            data-reader-pane="markdown"
+            aria-label="Markdown 阅读版"
+          >
+            <div className="article-reader__scroll">
         <header className="article-reader__header">
           <h1 className="article-reader__title">{article.title}</h1>
           <div className="article-reader__meta">
@@ -751,6 +785,17 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
             return null;
           }}
         />
+            </div>
+          </section>
+        )}
+
+        {readerMode === 'dual' && (
+          <div className="article-reader__pane-divider" role="separator" aria-orientation="vertical" />
+        )}
+
+        {readerMode !== 'reader' && (
+          <WebArticleView articleId={article.id} sourceUrl={articleUrl} />
+        )}
       </div>
     </div>
   );

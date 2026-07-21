@@ -13,6 +13,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  session,
   shell,
   type IpcMainInvokeEvent,
   type OpenDialogOptions,
@@ -38,9 +39,11 @@ import {
   isTrustedRendererUrl,
   registerContentPipelineIpc
 } from './services/content-pipeline/ipc-handlers.js';
+import { installArticleWebviewSecurity } from './services/content-pipeline/article-webview-security.js';
 import { OpmlApplicationService } from './services/content-pipeline/opml-service.js';
 import { SyncService } from './services/content-pipeline/sync-service.js';
 import { IPC_CHANNELS, IPC_EVENTS, type IpcResult } from '../../shared/ipc.js';
+import { ARTICLE_WEBVIEW_PARTITION } from '../../shared/article-webview.js';
 import {
   DEFAULT_SETTINGS,
   type AIProvider,
@@ -101,6 +104,8 @@ const SMOKE_FLAGS = {
   smokeCoexist: process.env['JUHE_SHIVI_SMOKE_COEXIST'] === '1',
   // Phase 3.5.4 落地：粘性底部面板 + 标签管理 + AI 建议应用
   smokeTagManage: process.env['JUHE_SHIVI_SMOKE_TAGMANAGE'] === '1',
+  // 阅读区 Markdown / 原站网页 / 左右分栏三模式切换
+  smokeReaderModes: process.env['JUHE_SHIVI_SMOKE_READER_MODES'] === '1',
   // smokeInlineTrans: Phase 3.5.2 UI 段落内翻译插槽（沿用 4.1 commit 时的命名）
   smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
   // Phase 3.5.2 split error fallback 探针：注入 mock split 抛错，验证 useEffect try/catch
@@ -144,7 +149,9 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
       nodeIntegration: false,
       sandbox: true,
       preload: path.join(__dirname, '../preload/index.cjs'),
-      webviewTag: false
+      // 原文阅读模式使用 <webview>。所有 guest 参数会在
+      // will-attach-webview 中被主进程重新校验和收紧。
+      webviewTag: true
     }
   });
 
@@ -154,6 +161,13 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
 
   installNavigationGuards(win.webContents, trustedRendererUrl, (url) => {
     void shell.openExternal(url).catch(() => undefined);
+  });
+  installArticleWebviewSecurity({
+    host: win.webContents,
+    articleSession: session.fromPartition(ARTICLE_WEBVIEW_PARTITION),
+    openExternal: (url) => {
+      void shell.openExternal(url).catch(() => undefined);
+    }
   });
 
   const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
@@ -197,6 +211,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeSummary = SMOKE_FLAGS.smokeSummary;
   const smokeCoexist = SMOKE_FLAGS.smokeCoexist;
   const smokeTagManage = SMOKE_FLAGS.smokeTagManage;
+  const smokeReaderModes = SMOKE_FLAGS.smokeReaderModes;
   const smokeInlineTrans = SMOKE_FLAGS.smokeInlineTrans;
   const smokeInlineTransSplitError = SMOKE_FLAGS.smokeInlineTransSplitError;
   const feedUrl = SMOKE_FLAGS.feedUrl;
@@ -204,9 +219,90 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const aiKey = SMOKE_FLAGS.aiKey;
   let probe: string;
 
-  // Phase 3.5.2 split error fallback smoke: 注入 mock split 抛错，
-  // 验证 useEffect try/catch 触发 fallback 到单块 ready，UI 不卡在"正在切分段落…"
-  if (smokeInlineTransSplitError) {
+  // 阅读模式 smoke：验证 Markdown / 网页 / 分栏切换、分栏宽度和持久化。
+  if (smokeReaderModes) {
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        async function waitFor(checkFn, timeout) {
+          const start = Date.now();
+          while (Date.now() - start < (timeout || 5000)) {
+            try {
+              const value = checkFn();
+              if (value) return value;
+            } catch {}
+            await sleep(50);
+          }
+          return null;
+        }
+
+        const report = { readerModes: { ok: false, error: null, checks: {} } };
+        try {
+          const firstArticle = await waitFor(
+            () => document.querySelector('.article-list__item'),
+            4000
+          );
+          if (firstArticle) firstArticle.click();
+          await waitFor(() => document.querySelector('.article-reader__title'), 3000);
+
+          const modeSwitch = document.querySelector('.article-reader__mode-switch');
+          report.readerModes.checks.threeOptions =
+            document.querySelectorAll('[data-reader-mode-option]').length === 3;
+          report.readerModes.checks.defaultReader =
+            modeSwitch?.getAttribute('data-reader-mode') === 'reader' &&
+            !!document.querySelector('[data-reader-pane="markdown"]') &&
+            !document.querySelector('[data-web-article-view]');
+
+          const webButton = document.querySelector('[data-reader-mode-option="web"]');
+          if (webButton) webButton.click();
+          await sleep(250);
+          const webview = document.querySelector('webview');
+          report.readerModes.checks.webOnly =
+            modeSwitch?.getAttribute('data-reader-mode') === 'web' &&
+            !document.querySelector('[data-reader-pane="markdown"]') &&
+            !!document.querySelector('[data-web-article-view]') &&
+            !!webview && /^https?:/.test(webview.getAttribute('src') || '') &&
+            webview.getAttribute('partition') === 'article-web';
+
+          const dualButton = document.querySelector('[data-reader-mode-option="dual"]');
+          if (dualButton) dualButton.click();
+          await sleep(150);
+          const readerPane = document.querySelector('[data-reader-pane="markdown"]');
+          const webPane = document.querySelector('[data-web-article-view]');
+          const readerWidth = readerPane?.getBoundingClientRect().width || 0;
+          const webWidth = webPane?.getBoundingClientRect().width || 0;
+          report.readerModes.checks.dualRendered =
+            modeSwitch?.getAttribute('data-reader-mode') === 'dual' &&
+            !!readerPane && !!webPane && !!document.querySelector('.article-reader__pane-divider');
+          report.readerModes.checks.dualHalfWidth =
+            readerWidth > 100 && webWidth > 100 && Math.abs(readerWidth - webWidth) <= 2;
+          report.readerModes.checks.persisted =
+            localStorage.getItem('juhe-shivi.reader.mode') === 'dual';
+
+          const readerButton = document.querySelector('[data-reader-mode-option="reader"]');
+          if (readerButton) readerButton.click();
+          await sleep(100);
+          report.readerModes.checks.returnedToReader =
+            modeSwitch?.getAttribute('data-reader-mode') === 'reader' &&
+            !!document.querySelector('[data-reader-pane="markdown"]') &&
+            !document.querySelector('[data-web-article-view]');
+
+          const required = [
+            'threeOptions', 'defaultReader', 'webOnly', 'dualRendered',
+            'dualHalfWidth', 'persisted', 'returnedToReader'
+          ];
+          report.readerModes.ok = required.every(
+            (key) => report.readerModes.checks[key] === true
+          );
+        } catch (error) {
+          report.readerModes.error = String(error);
+        }
+        return JSON.stringify(report);
+      })()
+    `;
+    // Phase 3.5.2 split error fallback smoke: 注入 mock split 抛错，
+    // 验证 useEffect try/catch 触发 fallback 到单块 ready，UI 不卡在"正在切分段落…"
+  } else if (smokeInlineTransSplitError) {
     probe = `
       (async () => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1862,7 +1958,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     console.log(`SMOKE_REPORT_JSON ${raw}`);
 
     let pass: boolean;
-    if (smokePhase2) {
+    if (smokeReaderModes) {
+      pass = raw.includes('"readerModes":{"ok":true');
+    } else if (smokePhase2) {
       pass = raw.includes('"phase2":{"ok":true');
     } else if (smokeRealFeed) {
       pass = raw.includes('"realFeed":{"ok":true');
