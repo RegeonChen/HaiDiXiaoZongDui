@@ -248,6 +248,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const modeSwitch = document.querySelector('.article-reader__mode-switch');
           report.readerModes.checks.threeOptions =
             document.querySelectorAll('[data-reader-mode-option]').length === 3;
+          const optionLabels = Array.from(
+            document.querySelectorAll('[data-reader-mode-option]')
+          ).map((element) => element.textContent?.trim() || '');
+          report.readerModes.checks.labelsCorrect =
+            optionLabels.some((label) => label.includes('阅读')) &&
+            optionLabels.some((label) => label.includes('网页')) &&
+            optionLabels.some((label) => label.includes('分栏')) &&
+            optionLabels.every((label) => !label.includes('MD'));
           report.readerModes.checks.defaultReader =
             modeSwitch?.getAttribute('data-reader-mode') === 'reader' &&
             !!document.querySelector('[data-reader-pane="markdown"]') &&
@@ -263,6 +271,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             !!document.querySelector('[data-web-article-view]') &&
             !!webview && /^https?:/.test(webview.getAttribute('src') || '') &&
             webview.getAttribute('partition') === 'article-web';
+          report.readerModes.checks.noDuplicateWebUrlBar =
+            !document.querySelector('.web-article-view__bar');
 
           const dualButton = document.querySelector('[data-reader-mode-option="dual"]');
           if (dualButton) dualButton.click();
@@ -288,8 +298,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             !document.querySelector('[data-web-article-view]');
 
           const required = [
-            'threeOptions', 'defaultReader', 'webOnly', 'dualRendered',
-            'dualHalfWidth', 'persisted', 'returnedToReader'
+            'threeOptions', 'labelsCorrect', 'defaultReader', 'webOnly',
+            'noDuplicateWebUrlBar', 'dualRendered', 'dualHalfWidth',
+            'persisted', 'returnedToReader'
           ];
           report.readerModes.ok = required.every(
             (key) => report.readerModes.checks[key] === true

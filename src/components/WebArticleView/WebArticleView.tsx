@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   DidFailLoadEvent,
-  DidNavigateEvent,
-  DidNavigateInPageEvent,
   WebviewTag
 } from 'electron';
 import {
@@ -18,7 +16,6 @@ export interface WebArticleViewProps {
 
 export function WebArticleView({ articleId, sourceUrl }: WebArticleViewProps) {
   const [webview, setWebview] = useState<WebviewTag | null>(null);
-  const [currentUrl, setCurrentUrl] = useState(sourceUrl);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const validSource = isAllowedArticleWebUrl(sourceUrl);
@@ -27,7 +24,6 @@ export function WebArticleView({ articleId, sourceUrl }: WebArticleViewProps) {
   }, []);
 
   useEffect(() => {
-    setCurrentUrl(sourceUrl);
     setLoading(validSource);
     setError(validSource ? null : '原文地址无效，无法在网页模式中打开。');
   }, [sourceUrl, validSource]);
@@ -42,12 +38,6 @@ export function WebArticleView({ articleId, sourceUrl }: WebArticleViewProps) {
     const handleStop = (): void => {
       setLoading(false);
     };
-    const handleNavigate = (event: DidNavigateEvent): void => {
-      if (isAllowedArticleWebUrl(event.url)) setCurrentUrl(event.url);
-    };
-    const handleNavigateInPage = (event: DidNavigateInPageEvent): void => {
-      if (event.isMainFrame && isAllowedArticleWebUrl(event.url)) setCurrentUrl(event.url);
-    };
     const handleFail = (event: DidFailLoadEvent): void => {
       // -3 是新导航取消旧请求，不应该对用户报错。
       if (!event.isMainFrame || event.errorCode === -3) return;
@@ -57,14 +47,10 @@ export function WebArticleView({ articleId, sourceUrl }: WebArticleViewProps) {
 
     webview.addEventListener('did-start-loading', handleStart);
     webview.addEventListener('did-stop-loading', handleStop);
-    webview.addEventListener('did-navigate', handleNavigate);
-    webview.addEventListener('did-navigate-in-page', handleNavigateInPage);
     webview.addEventListener('did-fail-load', handleFail);
     return () => {
       webview.removeEventListener('did-start-loading', handleStart);
       webview.removeEventListener('did-stop-loading', handleStop);
-      webview.removeEventListener('did-navigate', handleNavigate);
-      webview.removeEventListener('did-navigate-in-page', handleNavigateInPage);
       webview.removeEventListener('did-fail-load', handleFail);
     };
   }, [validSource, webview]);
@@ -82,27 +68,6 @@ export function WebArticleView({ articleId, sourceUrl }: WebArticleViewProps) {
       data-web-article-view
       data-web-state={error ? 'error' : loading ? 'loading' : 'ready'}
     >
-      <div className="web-article-view__bar">
-        <span className="web-article-view__link-icon" aria-hidden="true">🔗</span>
-        <a
-          className="web-article-view__url"
-          href={currentUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={currentUrl}
-        >
-          {currentUrl}
-        </a>
-        {loading && !error && (
-          <span className="web-article-view__loading" role="status">加载中…</span>
-        )}
-        {error && validSource && (
-          <button type="button" className="web-article-view__retry" onClick={retry}>
-            重试
-          </button>
-        )}
-      </div>
-
       {validSource && (
         <webview
           key={articleId}
@@ -119,9 +84,16 @@ export function WebArticleView({ articleId, sourceUrl }: WebArticleViewProps) {
         <div className="web-article-view__error" role="alert">
           <strong>原文网页加载失败</strong>
           <span>{error}</span>
-          <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
-            在浏览器中打开 ↗
-          </a>
+          <div className="web-article-view__error-actions">
+            {validSource && (
+              <button type="button" className="web-article-view__retry" onClick={retry}>
+                重试
+              </button>
+            )}
+            <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
+              在浏览器中打开 ↗
+            </a>
+          </div>
         </div>
       )}
     </section>

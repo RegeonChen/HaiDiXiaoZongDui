@@ -70,7 +70,7 @@ const READER_MODE_OPTIONS: ReadonlyArray<{
   icon: string;
   title: string;
 }> = [
-  { mode: 'reader', label: 'MD', icon: '▤', title: '只显示清洗后的 Markdown 阅读版' },
+  { mode: 'reader', label: '阅读', icon: '▤', title: '只显示清洗后的阅读版' },
   { mode: 'web', label: '网页', icon: '◎', title: '只显示原站网页' },
   { mode: 'dual', label: '分栏', icon: '◫', title: '左侧 Markdown，右侧原站网页' }
 ];
