@@ -1,6 +1,6 @@
 {
   "name": "juhe-shivi",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "聚合拾遗 — 跨平台、本地优先的桌面 RSS 阅读器",
   "private": true,
   "author": "聚合拾遗团队",
@@ -93,7 +93,7 @@
       ]
     },
     "dmg": {
-      "artifactName": "聚合拾遗-${version}-${arch}.${ext}",
+      "artifactName": "Juhe-Shiyi-${version}-${arch}.${ext}",
       "title": "聚合拾遗 ${version}"
     },
     "win": {
@@ -107,7 +107,7 @@
       ]
     },
     "nsis": {
-      "artifactName": "聚合拾遗-Setup-${version}-${arch}.${ext}",
+      "artifactName": "Juhe-Shiyi-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     }
