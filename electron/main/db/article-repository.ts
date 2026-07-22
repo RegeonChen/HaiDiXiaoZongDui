@@ -87,6 +87,21 @@ export const ArticleRepository = {
       const q = `%${filter.search}%`;
       params.push(q, q);
     }
+    // Phase 3.5.x:按 tag 过滤文章(侧栏 tab=tags 接入)。
+    // 用 EXISTS 子查询命中 article_tags, 多 tagId 走 AND(文章必须同时具备所有 tag)。
+    if (filter.tagIds && filter.tagIds.length > 0) {
+      const placeholders = filter.tagIds.map(() => '?').join(',');
+      // 每个 tagId 都要求至少存在一条 article_tags 记录
+      // 为 AND 语义, 多个 tagId 时用 EXISTS 累加(每条必须命中)
+      for (const tagId of filter.tagIds) {
+        conditions.push(
+          `EXISTS (SELECT 1 FROM article_tags WHERE article_tags.article_id = articles.id AND article_tags.tag_id = ?)`
+        );
+        params.push(tagId);
+      }
+      // 占位 use placeholders 避免 unused var lint
+      void placeholders;
+    }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -323,6 +338,27 @@ export const ArticleRepository = {
       }
     }
     return guids;
+  },
+
+  /**
+   * Phase 3.5.x：侧栏 tab=tags 用。统计每个 tag 关联的文章数。
+   * 返回 Record<tagId, count>。tags 表里没有出现在 article_tags 的 tag 不会出现在结果里,
+   * 调用方需要在聚合后填 0 以保持 tag 列表完整。
+   */
+  countByTag(): Record<string, number> {
+    const db = getDatabase();
+    const rows = db.exec(`
+      SELECT at.tag_id AS tagId, COUNT(DISTINCT at.article_id) AS cnt
+      FROM article_tags at
+      GROUP BY at.tag_id
+    `);
+    const result: Record<string, number> = {};
+    if (rows.length) {
+      for (const row of rows[0].values) {
+        result[row[0] as string] = row[1] as number;
+      }
+    }
+    return result;
   }
 };
 

@@ -92,6 +92,11 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   const [allTags, setAllTags] = useState<Tag[]>([]);
   // StickyBottomPanel 当前 tab(null = 完全收起)
   const [stickyTab, setStickyTab] = useState<StickyTabId | null>(null);
+  // Phase 3.5.x toggle 修复:用 ref 跟踪最新 stickyTab 值,
+  // 避免 handleSuggestTags 的 useCallback 闭包陈旧(连点或快速切换时
+  // 闭包内的 stickyTab 还没更新,导致 toggle 失灵并误触 AI)。
+  const stickyTabRef = useRef<StickyTabId | null>(stickyTab);
+  stickyTabRef.current = stickyTab;
   const currentArticleIdRef = useRef<string | null>(article?.id ?? null);
   currentArticleIdRef.current = article?.id ?? null;
 
@@ -322,14 +327,28 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
 
   const handleSuggestTags = useCallback(async () => {
     if (!article) return;
-    // 切到 sticky panel 的 'tag-suggest' tab
+    // Phase 3.5.x toggle 修复:用 ref 读最新 stickyTab,避免 useCallback
+    // 闭包陈旧导致"点关闭却再次建议"或"点显示却再次调 AI"。
+    const suggestOpen = stickyTabRef.current === 'tag-suggest';
+    // 1) 已打开 → 关闭（toggle, 不调 AI）
+    if (suggestOpen) {
+      setStickyTab(null);
+      return;
+    }
+    // 2) 已有建议 → 只切显示, 不重新调 AI
+    if (tagSuggestions.length > 0) {
+      setStickyTab('tag-suggest');
+      return;
+    }
+    // 3) 首次生成
     setStickyTab('tag-suggest');
     setBusy(true);
-    setTagSuggestions([]);
     try {
       const gen = await ds.aiSuggestTags(article.id);
       if (!gen.ok) {
         onToast(`标签建议失败:${gen.message}`, 'error');
+        // 失败时关闭面板，避免一直显示空 loading
+        setStickyTab(null);
         return;
       }
       const r = await ds.aiGetTagSuggestions(article.id);
@@ -338,11 +357,14 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
         onToast(`生成 ${r.data.length} 条标签建议`, 'success');
       } else {
         onToast(`读取标签建议失败:${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        setStickyTab(null);
       }
     } finally {
       setBusy(false);
     }
-  }, [article, ds, onToast]);
+    // tagSuggestions.length 仍在 deps(用于分支 2 判断);
+    // stickyTab 不再需要(use ref 替代, 避免 deps 频繁变化)。
+  }, [article, ds, onToast, tagSuggestions.length]);
 
   /** 把 tag 加到当前文章(手动添加) */
   const handleAddTagToArticle = useCallback(
@@ -723,11 +745,10 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
           ]}
           onTabChange={(id) => {
             // tab 切换不收起面板;点同一 tab 也不会自动收起(由 onClose 控制)
+            // Phase 3.5.x toggle 修复: 不在此处自动调 handleSuggestTags —
+            // AI 触发入口是工具栏 🪄 标签建议 按钮的 onClick(onClick → handleSuggestTags 走完整 toggle 逻辑),
+            // 这里若再触发,会和按钮 onClick 形成双调,导致"点显示却调 AI"或"点关闭却再次建议"。
             setStickyTab(id as StickyTabId);
-            // 如果切到 tag-suggest 且还没有建议,主动调一次 AI
-            if (id === 'tag-suggest' && tagSuggestions.length === 0 && !busy) {
-              void handleSuggestTags();
-            }
           }}
           onClose={() => setStickyTab(null)}
           renderContent={(tabId) => {

@@ -12,7 +12,7 @@
  *  - ArticleReader 接入 AI 工具栏（摘要/翻译/标签建议/笔记/专题）
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Article, Feed } from '@shared/types';
+import type { Article, Feed, Tag } from '@shared/types';
 import { useDataSource } from './context/DataSourceContext';
 import { useSelection } from './hooks/useSelection';
 import { usePaneWidths } from './hooks/usePaneWidths';
@@ -58,6 +58,10 @@ export function App() {
   const [feedsState, setFeedsState] = useState<FeedsState>({ kind: 'loading' });
   const [articlesState, setArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   const [allArticlesState, setAllArticlesState] = useState<ArticlesState>({ kind: 'loading' });
+  // Phase 3.5.x：标签管理（侧栏 tag 列表 + 各 tag 下文章数）
+  const [tags, setTags] = useState<Tag[]>([]);
+  // Phase 3.5.x：每个 tag 名下的真实文章数（来自 article_tags SQL 聚合）
+  const [tagCounts, setTagCounts] = useState<Record<string, number>>({});
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -100,7 +104,7 @@ export function App() {
 
   // 拉 articles
   const refreshArticles = useCallback(
-    async (filter: { feedId?: string; isRead?: boolean; isStarred?: boolean }) => {
+    async (filter: { feedId?: string; isRead?: boolean; isStarred?: boolean; tagIds?: string[] }) => {
       setArticlesState({ kind: 'loading' });
       const result = await ds.articles(filter);
       if (result.kind === 'ready') {
@@ -122,10 +126,24 @@ export function App() {
     }
   }, [ds]);
 
+  // Phase 3.5.x：拉全局 tag 列表（侧栏 tab=tags 展示 + 各 tag 下文章数）
+  const refreshTags = useCallback(async () => {
+    const r = await ds.tagList();
+    if (r.kind === 'ready') setTags(r.data);
+  }, [ds]);
+
+  // Phase 3.5.x：拉每个 tag 的真实文章数（侧栏 tab=tags 展示精确计数）
+  const refreshTagCounts = useCallback(async () => {
+    const r = await ds.articleCountsByTag();
+    if (r.kind === 'ready') setTagCounts(r.data);
+  }, [ds]);
+
   // 初次拉取 feeds + 全部文章（侧栏计数）
   useEffect(() => {
     void refreshFeeds();
     void refreshCounts();
+    void refreshTags();
+    void refreshTagCounts();
     void (async () => {
       const result = await ds.articles({});
       if (result.kind === 'ready') {
@@ -134,7 +152,7 @@ export function App() {
         setAllArticlesState({ kind: 'ready', data: [] });
       }
     })();
-  }, [refreshFeeds, ds]);
+  }, [refreshFeeds, refreshTags, refreshTagCounts, ds]);
 
   // 当 feed 选择变化时拉取对应文章
   useEffect(() => {
@@ -144,6 +162,10 @@ export function App() {
       void refreshArticles({ isRead: false });
     } else if (selection.feedId === 'starred') {
       void refreshArticles({ isStarred: true });
+    } else if (selection.feedId.startsWith('tag:')) {
+      // Phase 3.5.x：按标签过滤文章
+      const tagId = selection.feedId.slice(4);
+      void refreshArticles({ tagIds: [tagId] });
     } else {
       void refreshArticles({ feedId: selection.feedId });
     }
@@ -154,6 +176,8 @@ export function App() {
     const handler = () => {
       void refreshFeeds();
       void refreshCounts();
+      void refreshTags();
+      void refreshTagCounts();
       void (async () => {
         const r = await ds.articles({});
         if (r.kind === 'ready') setAllArticlesState({ kind: 'ready', data: r.data });
@@ -161,7 +185,7 @@ export function App() {
     };
     window.addEventListener('juhe:refresh', handler);
     return () => window.removeEventListener('juhe:refresh', handler);
-  }, [refreshFeeds, refreshCounts, ds]);
+  }, [refreshFeeds, refreshCounts, refreshTags, refreshTagCounts, ds]);
 
   // Phase 3.6.2：组件卸载时清理进度条延迟计时器
   useEffect(() => {
@@ -177,6 +201,9 @@ export function App() {
   const articles = articlesState.kind === 'ready' ? articlesState.data : [];
   const allArticles = allArticlesState.kind === 'ready' ? allArticlesState.data : [];
 
+  // Phase 3.5.x：tagCounts 已从 articleCountsByTag 真实拉取（ArticleRepository.countByTag），
+  // 直接用 state 即可，不用 useMemo 推导（推导会覆盖真实数据）。
+
   const selectedArticle = useMemo<Article | null>(() => {
     if (!selection.articleId) return null;
     return articles.find((a) => a.id === selection.articleId) ?? null;
@@ -191,9 +218,14 @@ export function App() {
     if (selection.feedId === 'all') return '所有订阅源';
     if (selection.feedId === 'unread') return '未读';
     if (selection.feedId === 'starred') return '星标文章';
+    if (selection.feedId.startsWith('tag:')) {
+      const tagId = selection.feedId.slice(4);
+      const t = tags.find((x) => x.id === tagId);
+      return t ? `# ${t.name}` : '标签';
+    }
     const f = feeds.find((x) => x.id === selection.feedId);
     return f?.siteTitle || f?.title || '未知';
-  }, [feeds, selection.feedId]);
+  }, [feeds, tags, selection.feedId]);
 
   const handleSelectArticle = useCallback(
     (id: string) => {
@@ -471,6 +503,8 @@ export function App() {
         unreadCount={counts.unread}
         starredCount={counts.starred}
         failedFeedIds={syncing ? undefined : failedFeedIds}
+        tags={tags}
+        tagCounts={tagCounts}
         onSyncFeed={async (feed: Feed) => {
           pushToast(`正在同步「${feed.siteTitle || feed.title}」…`, 'info');
           const r = await ds.syncFeed(feed.id);

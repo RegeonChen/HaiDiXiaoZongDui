@@ -28,6 +28,12 @@ export interface DataSource {
    * 返回 { all, unread, starred }，分别对应所有文章、未读文章、星标文章的总数。
    */
   articleCounts(): Promise<DataSourceState<{ all: number; unread: number; starred: number }>>;
+  /**
+   * Phase 3.5.x：按 tag 统计文章数（侧栏 tab=tags 展示每个 tag 名下的文章数）。
+   * 返回 Record<tagId, count>。tags 表里没有任何文章的 tag 不会出现在结果里，调用方在
+   * 聚合后用 0 补全以保持 tag 列表完整。
+   */
+  articleCountsByTag(): Promise<DataSourceState<Record<string, number>>>;
   /** 同步一个 feed */
   syncFeed(feedId: string): Promise<{ ok: boolean; message: string }>;
   /**

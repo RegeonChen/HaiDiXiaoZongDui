@@ -106,6 +106,8 @@ const SMOKE_FLAGS = {
   smokeTagManage: process.env['JUHE_SHIVI_SMOKE_TAGMANAGE'] === '1',
   // 阅读区 Markdown / 原站网页 / 左右分栏三模式切换
   smokeReaderModes: process.env['JUHE_SHIVI_SMOKE_READER_MODES'] === '1',
+  // Phase 3.5.x 修复:侧栏 tab=tags 真按 tag 分类 + AI 标签建议 toggle 修复
+  smokeTagList: process.env['JUHE_SHIVI_SMOKE_TAGLIST'] === '1',
   // smokeInlineTrans: Phase 3.5.2 UI 段落内翻译插槽（沿用 4.1 commit 时的命名）
   smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
   // Phase 3.5.2 split error fallback 探针：注入 mock split 抛错，验证 useEffect try/catch
@@ -212,6 +214,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeCoexist = SMOKE_FLAGS.smokeCoexist;
   const smokeTagManage = SMOKE_FLAGS.smokeTagManage;
   const smokeReaderModes = SMOKE_FLAGS.smokeReaderModes;
+  const smokeTagList = SMOKE_FLAGS.smokeTagList;
   const smokeInlineTrans = SMOKE_FLAGS.smokeInlineTrans;
   const smokeInlineTransSplitError = SMOKE_FLAGS.smokeInlineTransSplitError;
   const feedUrl = SMOKE_FLAGS.feedUrl;
@@ -1843,6 +1846,157 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         return JSON.stringify(report);
       })()
     `;
+  } else if (smokeTagList) {
+    // Phase 3.5.x 修复 smoke:侧栏 tab=tags 真按 tag 分类 + AI 标签建议 toggle 修复
+    // 验证:
+    //  A) 切到 tab=tags → 渲染占位("还没有任何标签")或已有 tag 列表
+    //  B) handleSuggestTags toggle 修复:
+    //     1) 初始 stickyTab=null + tagSuggestions=[]
+    //     2) 点 🪄 标签建议 → stickyTab='tag-suggest' + tagSuggestions.length>0
+    //     3) 第二次点(显示"🙈 关闭标签建议")→ stickyTab=null, tagSuggestions 长度不变(不重调 AI)
+    //     4) 第三次点(显示"🪄 显示标签建议")→ stickyTab='tag-suggest', tagSuggestions 长度仍不变(不重调 AI)
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        function getDbg() {
+          return (/** @type {any} */ (window)).__JUHE_ARTICLE_DEBUG__ || null;
+        }
+        const report = { tagList: { ok: false, error: null, checks: {} } };
+        try {
+          // 等 reader 视图
+          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          // 选第一篇文章
+          const articles = document.querySelectorAll('.article-list__item');
+          if (articles.length === 0) {
+            report.tagList.error = 'mock 模式没有文章';
+            return JSON.stringify(report);
+          }
+          articles[0].click();
+          await waitFor(() => !!document.querySelector('.article-reader'), { timeout: 3000 });
+          await sleep(150);
+
+          // A) 切到 tab=tags → 渲染占位或真 tag 列表
+          const tagTabBtn = document.querySelector('.feed-list__tab[role="tab"]:nth-of-type(2)');
+          if (tagTabBtn) tagTabBtn.click();
+          await sleep(150);
+          const tagsPanel = document.querySelector('.feed-list__empty');
+          const hasTagItems = document.querySelectorAll('.feed-list [data-tag-id]').length > 0;
+          report.tagList.checks.tabTagsRendered = !!tagsPanel || hasTagItems;
+          report.tagList.checks.tabTagsHasContent = hasTagItems;
+
+          // B) AI 标签建议 toggle 修复
+          // 1) 初始:stickyTab=null + tagSuggestions=[]
+          const dbg0 = getDbg();
+          report.tagList.checks.initialStickyTab = dbg0?.stickyTab ?? null;
+          report.tagList.checks.initialTagSuggestionsLength = (dbg0?.tagSuggestions ?? []).length;
+
+          // 2) 点 🪄 标签建议 → 调 mock AI
+          const suggestBtn = document.querySelector('[data-tool="tag-suggest"]');
+          if (!suggestBtn) {
+            report.tagList.error = '未找到 🪄 标签建议 按钮';
+            return JSON.stringify(report);
+          }
+          suggestBtn.click();
+          // 等 mock 模式 aiSuggestTags + aiGetTagSuggestions 完成(各 50ms)
+          const dbg1 = await waitFor(() => {
+            const d = getDbg();
+            return d && d.stickyTab === 'tag-suggest' && d.tagSuggestions && d.tagSuggestions.length > 0;
+          }, { timeout: 3000 }) ? getDbg() : null;
+          report.tagList.checks.afterFirstClickStickyTab = dbg1?.stickyTab ?? null;
+          report.tagList.checks.afterFirstClickTagSuggestionsLength = (dbg1?.tagSuggestions ?? []).length;
+          const initialLength = (dbg1?.tagSuggestions ?? []).length;
+          await sleep(120);
+
+          // 3) 第二次点(此时按钮文本应为"🙈 关闭标签建议")→ 关闭,stickyTab=null
+          //    tagSuggestions 长度应保持不变(不重调 AI)
+          const suggestBtnAgain1 = document.querySelector('[data-tool="tag-suggest"]');
+          suggestBtnAgain1.click();
+          await sleep(200);
+          const dbg2 = getDbg();
+          report.tagList.checks.afterSecondClickStickyTab = dbg2?.stickyTab ?? null;
+          report.tagList.checks.afterSecondClickTagSuggestionsLength = (dbg2?.tagSuggestions ?? []).length;
+          report.tagList.checks.suggestionsNotRegeneratedOnClose =
+            (dbg2?.tagSuggestions ?? []).length === initialLength;
+
+          // 4) 第三次点(此时按钮文本应为"🪄 显示标签建议")→ 切显示,stickyTab='tag-suggest'
+          //    tagSuggestions 长度应仍保持不变(不重调 AI)
+          const suggestBtnAgain2 = document.querySelector('[data-tool="tag-suggest"]');
+          suggestBtnAgain2.click();
+          await sleep(200);
+          const dbg3 = getDbg();
+          report.tagList.checks.afterThirdClickStickyTab = dbg3?.stickyTab ?? null;
+          report.tagList.checks.afterThirdClickTagSuggestionsLength = (dbg3?.tagSuggestions ?? []).length;
+          report.tagList.checks.suggestionsNotRegeneratedOnReopen =
+            (dbg3?.tagSuggestions ?? []).length === initialLength;
+
+          // 关键 toggle 修复检查必须为 true
+          const mustPass = [
+            'tabTagsRendered',
+            'initialStickyTab',     // null
+            'initialTagSuggestionsLength', // 0
+            'afterFirstClickStickyTab',    // 'tag-suggest'
+            'afterFirstClickTagSuggestionsLength', // > 0
+            'afterSecondClickStickyTab',   // null
+            'suggestionsNotRegeneratedOnClose', // true
+            'afterThirdClickStickyTab',    // 'tag-suggest'
+            'suggestionsNotRegeneratedOnReopen'  // true
+          ];
+          for (const k of mustPass) {
+            if (k === 'initialStickyTab' && report.tagList.checks[k] !== null) {
+              report.tagList.ok = false;
+              return JSON.stringify(report);
+            }
+            if (k === 'initialTagSuggestionsLength' && report.tagList.checks[k] !== 0) {
+              report.tagList.ok = false;
+              return JSON.stringify(report);
+            }
+            if (k === 'afterFirstClickStickyTab' && report.tagList.checks[k] !== 'tag-suggest') {
+              report.tagList.ok = false;
+              return JSON.stringify(report);
+            }
+            if (k === 'afterFirstClickTagSuggestionsLength' && report.tagList.checks[k] === 0) {
+              report.tagList.ok = false;
+              return JSON.stringify(report);
+            }
+            if (k === 'afterSecondClickStickyTab' && report.tagList.checks[k] !== null) {
+              report.tagList.ok = false;
+              return JSON.stringify(report);
+            }
+            if (k === 'suggestionsNotRegeneratedOnClose' && report.tagList.checks[k] !== true) {
+              report.tagList.ok = false;
+              return JSON.stringify(report);
+            }
+            if (k === 'afterThirdClickStickyTab' && report.tagList.checks[k] !== 'tag-suggest') {
+              report.tagList.ok = false;
+              return JSON.stringify(report);
+            }
+            if (k === 'suggestionsNotRegeneratedOnReopen' && report.tagList.checks[k] !== true) {
+              report.tagList.ok = false;
+              return JSON.stringify(report);
+            }
+            if (k === 'tabTagsRendered' && report.tagList.checks[k] !== true) {
+              report.tagList.ok = false;
+              return JSON.stringify(report);
+            }
+          }
+          report.tagList.ok = true;
+        } catch (e) {
+          report.tagList.error = String(e);
+          report.tagList.stack = (e instanceof Error) ? e.stack : null;
+        }
+        return JSON.stringify(report);
+      })()
+    `;
   } else if (smokeUI) {
     // Phase 2.1 smoke: verify three-pane layout + click interaction + theme switch
     probe = `
@@ -1971,6 +2125,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     let pass: boolean;
     if (smokeReaderModes) {
       pass = raw.includes('"readerModes":{"ok":true');
+    } else if (smokeTagList) {
+      pass = raw.includes('"tagList":{"ok":true');
     } else if (smokePhase2) {
       pass = raw.includes('"phase2":{"ok":true');
     } else if (smokeRealFeed) {
@@ -1999,6 +2155,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       }
     } else if (smokeUI) {
       pass = raw.includes('"ui":{"ok":true');
+    } else if (smokeTagList) {
+      pass = raw.includes('"tagList":{"ok":true');
     } else if (smokeTask33) {
       const report33 = JSON.parse(raw);
       // 核心 section（base/sp/prov/tag/note/dig）不得跳过，必须全部通过。
@@ -2205,6 +2363,15 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       return ok(ArticleRepository.list(filter));
     } catch (e) {
       return fail('ARTICLE_LIST_FAILED', String(e));
+    }
+  });
+
+  // Phase 3.5.x：按 tag 统计文章数（侧栏 tab=tags 用）
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_COUNTS_BY_TAG, async (): Promise<IpcResult<Record<string, number>>> => {
+    try {
+      return ok(ArticleRepository.countByTag());
+    } catch (e) {
+      return fail('ARTICLE_COUNTS_BY_TAG_FAILED', String(e));
     }
   });
 

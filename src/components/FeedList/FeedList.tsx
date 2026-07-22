@@ -1,14 +1,19 @@
 /**
  * 订阅源侧栏（Mercury 风格）
  *
- *  - tab 切换：订阅源 / 标签（标签是 Phase 3 占位）
+ *  - tab 切换：订阅源 / 标签（按 tag 分类文章，Phase 3.5.x 落地）
  *  - 添加订阅源入口：顶栏 + 按钮（打开 AddFeedDialog），不在侧栏重复
  *  - 底部状态栏：订阅源数 / 文章数 / 未读数
  *  - 右键订阅源 → 弹菜单（删除 / 复制 URL）
  *  - 选中态：mercury 风格的圆点 + 灰底
+ *
+ * Phase 3.5.x 标签分类：
+ *  - tab=tags 展示所有用户标签 + 每个 tag 名下的文章数
+ *  - 点击标签 → onSelect('tag:<id>')，由 useSelection 切到 tag 过滤态
+ *  - tags 列表为空时显示"还没有任何标签"引导
  */
 import { useMemo, useState } from 'react';
-import type { Article, Feed } from '@shared/types';
+import type { Article, Feed, Tag } from '@shared/types';
 import { showContextMenu } from '../ContextMenu/ContextMenu';
 import './FeedList.css';
 
@@ -26,6 +31,10 @@ export interface FeedListProps {
   starredCount?: number;
   /** Phase 3.6.2：同步失败的订阅源 ID 列表（红点标记） */
   failedFeedIds?: string[];
+  /** Phase 3.5.x：用户的所有 tag 列表（tab=tags 展示） */
+  tags?: Tag[];
+  /** Phase 3.5.x：每个 tag 名下的文章数（来自 article_tags SQL 聚合） */
+  tagCounts?: Record<string, number>;
 }
 
 type Tab = 'sources' | 'tags';
@@ -37,7 +46,7 @@ interface VirtualEntry {
   count: number;
 }
 
-export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, onSyncFeed, onExportOpml, allCount, unreadCount, starredCount, failedFeedIds }: FeedListProps) {
+export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, onSyncFeed, onExportOpml, allCount, unreadCount, starredCount, failedFeedIds, tags, tagCounts }: FeedListProps) {
   const [tab, setTab] = useState<Tab>('sources');
   const [showAll, setShowAll] = useState(true);
 
@@ -222,9 +231,43 @@ export function FeedList({ feeds, articles, selected, onSelect, onDeleteFeed, on
         )
       )}
 
-      {/* tab=tags 占位 */}
+      {/* tab=tags:按 tag 分类文章(Phase 3.5.x 落地) */}
       {tab === 'tags' && (
-        <div className="feed-list__empty">标签管理（Phase 3 落地）</div>
+        <>
+          {(!tags || tags.length === 0) ? (
+            <div className="feed-list__empty">
+              还没有任何标签。<br />
+              在文章阅读区用 🏷 标签 / 🪄 标签建议 添加。
+            </div>
+          ) : (
+            <div className="feed-list__virtuals" data-section="tags">
+              {tags.map((t) => {
+                const count = tagCounts?.[t.id] ?? 0;
+                const isSelected = selected === `tag:${t.id}`;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`feed-list__item ${isSelected ? 'is-active' : ''}`}
+                    onClick={() => onSelect(`tag:${t.id}`)}
+                    data-tag-id={t.id}
+                    title={`${t.name} · ${count} 篇文章`}
+                  >
+                    <span
+                      className="feed-list__icon"
+                      style={{ color: t.color ?? 'var(--accent)' }}
+                      aria-hidden="true"
+                    >
+                      #
+                    </span>
+                    <span className="feed-list__label">{t.name}</span>
+                    <span className="feed-list__count">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* 底部状态栏 */}

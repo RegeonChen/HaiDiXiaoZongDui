@@ -77,7 +77,11 @@ const api = {
 
     // Phase 3.6.3：侧栏计数
     counts: (): Promise<IpcResponse<typeof IPC_CHANNELS.ARTICLE_COUNTS>> =>
-      invokeVoid(IPC_CHANNELS.ARTICLE_COUNTS)
+      invokeVoid(IPC_CHANNELS.ARTICLE_COUNTS),
+
+    // Phase 3.5.x:按 tag 统计文章数(侧栏 tab=tags 用)
+    countsByTag: (): Promise<IpcResponse<typeof IPC_CHANNELS.ARTICLE_COUNTS_BY_TAG>> =>
+      invokeVoid(IPC_CHANNELS.ARTICLE_COUNTS_BY_TAG)
   },
 
   // —— Sync ——

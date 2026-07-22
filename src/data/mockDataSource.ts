@@ -51,6 +51,9 @@ export class MockDataSource implements DataSource {
   private feedsState: Feed[] = cloneFeeds();
   private articlesState: Article[] = cloneArticles();
   private tagsState: Tag[] = [];
+  // Phase 3.5.x:mock 模式维护 articleId -> Set<tagId> 映射,
+  // 让 tagAddToArticle / tagRemoveFromArticle / tagGetByArticle / articles(tagIds) 真正可用
+  private articleTagMap: Map<string, Set<string>> = new Map();
   private notesState: Note[] = [];
   private digestsState: Digest[] = [];
   private topicsState: Topic[] = [];
@@ -74,6 +77,7 @@ export class MockDataSource implements DataSource {
     feedId?: string;
     isRead?: boolean;
     isStarred?: boolean;
+    tagIds?: string[];
     search?: string;
   }): Promise<DataSourceState<Article[]>> {
     await delay(150);
@@ -81,6 +85,14 @@ export class MockDataSource implements DataSource {
     if (filter.feedId) items = items.filter((a) => a.feedId === filter.feedId);
     if (filter.isRead !== undefined) items = items.filter((a) => a.isRead === filter.isRead);
     if (filter.isStarred !== undefined) items = items.filter((a) => a.isStarred === filter.isRead);
+    // Phase 3.5.x:按 tag 过滤(AND 语义,文章必须同时具备所有 tag)
+    if (filter.tagIds && filter.tagIds.length > 0) {
+      items = items.filter((a) => {
+        const applied = this.articleTagMap.get(a.id);
+        if (!applied) return false;
+        return filter.tagIds!.every((tagId) => applied.has(tagId));
+      });
+    }
     // Phase 3.4.3.3：mock 模式简易搜索
     if (filter.search && filter.search.trim()) {
       const q = filter.search.toLowerCase();
@@ -119,6 +131,17 @@ export class MockDataSource implements DataSource {
     const unread = this.articlesState.filter(a => !a.isRead).length;
     const starred = this.articlesState.filter(a => a.isStarred).length;
     return { kind: 'ready', data: { all, unread, starred } };
+  }
+
+  // Phase 3.5.x:按 tag 统计文章数
+  async articleCountsByTag(): Promise<DataSourceState<Record<string, number>>> {
+    const result: Record<string, number> = {};
+    for (const tagSet of this.articleTagMap.values()) {
+      for (const tagId of tagSet) {
+        result[tagId] = (result[tagId] ?? 0) + 1;
+      }
+    }
+    return { kind: 'ready', data: result };
   }
 
   async syncFeed(feedId: string): Promise<{ ok: boolean; message: string }> {
@@ -213,17 +236,29 @@ export class MockDataSource implements DataSource {
     this.tagsState = this.tagsState.filter((t) => t.id !== id);
   }
 
-  async tagAddToArticle(_articleId: string, _tagId: string): Promise<void> {
-    /* mock: 不持久化 */
+  async tagAddToArticle(articleId: string, tagId: string): Promise<void> {
+    // Phase 3.5.x:维护 articleTagMap(让 mock 模式也能跨组件共享 tag 状态)
+    let set = this.articleTagMap.get(articleId);
+    if (!set) {
+      set = new Set();
+      this.articleTagMap.set(articleId, set);
+    }
+    set.add(tagId);
   }
 
-  async tagRemoveFromArticle(_articleId: string, _tagId: string): Promise<void> {
-    /* mock: 不持久化 */
+  async tagRemoveFromArticle(articleId: string, tagId: string): Promise<void> {
+    const set = this.articleTagMap.get(articleId);
+    if (set) set.delete(tagId);
   }
 
-  async tagGetByArticle(_articleId: string): Promise<DataSourceState<Tag[]>> {
-    // mock 模式默认空：让 ArticleReader 自己区分"未应用任何 tag"
-    return { kind: 'ready', data: [] };
+  async tagGetByArticle(articleId: string): Promise<DataSourceState<Tag[]>> {
+    // Phase 3.5.x:从 articleTagMap + tagsState 查实际数据
+    const tagIds = this.articleTagMap.get(articleId);
+    if (!tagIds || tagIds.size === 0) {
+      return { kind: 'ready', data: [] };
+    }
+    const tags = this.tagsState.filter((t) => tagIds.has(t.id));
+    return { kind: 'ready', data: tags };
   }
 
   // ============== Note ==============

@@ -151,6 +151,7 @@ export class IpcDataSource implements FullDataSource {
     feedId?: string;
     isRead?: boolean;
     isStarred?: boolean;
+    tagIds?: string[];
     search?: string;
   }): Promise<DataSourceState<Article[]>> {
     const r = await window.api.article.list(filter);
@@ -171,6 +172,11 @@ export class IpcDataSource implements FullDataSource {
   // Phase 3.6.3：侧栏计数
   async articleCounts(): Promise<DataSourceState<{ all: number; unread: number; starred: number }>> {
     return unwrap(await window.api.article.counts());
+  }
+
+  // Phase 3.5.x:按 tag 统计文章数(侧栏 tab=tags 展示用)
+  async articleCountsByTag(): Promise<DataSourceState<Record<string, number>>> {
+    return unwrap(await window.api.article.countsByTag());
   }
 
   async syncFeed(feedId: string): Promise<{ ok: boolean; message: string }> {

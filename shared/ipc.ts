@@ -90,6 +90,8 @@ export const IPC_CHANNELS = {
 
   // -- Article Counts（Phase 3.6.3：侧栏计数） --
   ARTICLE_COUNTS:  'article:counts',
+  // Phase 3.5.x:按 tag 统计文章数(侧栏 tab=tags 展示用)
+  ARTICLE_COUNTS_BY_TAG: 'article:countsByTag',
 
   // -- Sync（同步） --
   SYNC_ALL:        'sync:all',
@@ -207,6 +209,8 @@ export interface IpcRequestMap {
 
   // -- Article Counts（Phase 3.6.3） --
   [IPC_CHANNELS.ARTICLE_COUNTS]: { args: void; result: { all: number; unread: number; starred: number } };
+  // Phase 3.5.x:按 tag 统计文章数
+  [IPC_CHANNELS.ARTICLE_COUNTS_BY_TAG]: { args: void; result: Record<string, number> };
 
   // -- Sync --
   [IPC_CHANNELS.SYNC_ALL]:      { args: void;                                  result: SyncResult[] };
