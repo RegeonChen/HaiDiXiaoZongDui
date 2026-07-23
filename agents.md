@@ -24,30 +24,31 @@
 
 - 运行时：Node.js LTS
 - 包管理器：npm
-- 桌面框架：Electron
-- Renderer：React + TypeScript
+- 桌面框架：Electron 31
+- 构建工具：electron-vite
+- Renderer：React 18 + TypeScript strict
 - 自动化测试：Vitest
-- 本地数据库：SQLite
+- 本地数据库：SQLite（sql.js WASM，内存态 + 磁盘持久化）
 - AI 接入：用户可配置的 OpenAI-compatible Provider
-- 团队协作：Git 和 GitHub
+- 打包发布：electron-builder（macOS DMG + Windows NSIS）+ GitHub Actions
 - 目标平台：Windows、macOS、Linux
-
-UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；已确定的依赖和版本记录在 `package.json` 与锁文件中。
-
-- SQLite 驱动：**sql.js**（1.14.1，WASM 版本），无需 node-gyp / Visual Studio C++ 编译，跨平台兼容性好。数据库为内存态 + 磁盘持久化模式。
 
 ## 核心功能
 
 - RSS、Atom、JSON Feed 和 OPML 解析
-- 手动和定时 Feed 同步
-- 文章列表、阅读视图、已读/未读、星标、搜索和筛选
-- 正文提取、HTML 安全清洗、Cleaned HTML 和 Cleaned Markdown
-- 可配置的 Summary Agent 和 Translation Agent
+- 手动和批量 Feed 同步（逐源进度反馈 + 失败红点标记）
+- 三栏阅读界面（订阅源 / 文章列表 / 阅读区）+ 拖拽调整宽度
+- 文章列表、已读/未读、星标、模糊搜索和筛选
+- 正文提取（Readability + JSDOM）、HTML 安全清洗（sanitize-html）、Cleaned HTML + Markdown
+- 图片保留优化（懒加载 unwrap + 段落提升 + Referer 补全）
+- 可配置的 Summary Agent 和 Translation Agent（逐段流式翻译）
 - 手动标签、标签筛选、Tag Agent 和标签管理
-- 文章摘录、Markdown 笔记、单篇导出和多篇文摘导出
-- 中文和英文界面
+- 文章摘录、Markdown 笔记、多篇文摘导出（Markdown / HTML）
+- 3 套字体主题（默认衬线 / 黑体无衬线 / 楷体）+ 2 套视觉主题（经典 / 纸质暖黄）
+- 浅色 / 深色 / 跟随系统三档，纸质深色与经典深色一致
+- 中文和英文界面即时切换
 - 本地日志、日志导出和调试工具
-- 专题创建、文章匹配、报道分组、时间线、来源比较和带来源引用的专题简报
+- 专题创建、文章匹配、报道分组、时间线、来源比较和带来源引用的专题简报（Phase 4）
 
 ## 编码约定
 
@@ -86,178 +87,31 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 - 如果实现选择只影响已确认任务的内部细节，且不会改变共享行为，Agent 可以作出合理决定并继续执行。
 - 报告任务完成前，必须运行当前环境中最相关的检查。
 - 未证明任务的 `Verification` 验收条件之前，不得将任务或阶段标记为完成。
-- 当修改对项目产生实质影响时，更新“当前状态”“近期记录”和“已知问题”。
+- 当修改对项目产生实质影响时，更新"当前状态"和"已知问题"。
 - 将有价值的 Coding Agent 决策保存在项目文档和 Git 历史中，但不要记录普通对话和无关过程细节。
 
 ## 当前状态
 
-截至 2026-07-23：
+截至 2026-07-21：
 
-- `INIT.md` 已定义产品范围、功能要求、技术方向和约束。
-- `PLAN.md` 已定义五个开发阶段和张晨阳/张宇凡/陈冠中的职责分工。
-- `shared/types.ts` 和 `shared/ipc.ts` 已建立（Task 1.2 完成），定义了核心领域类型和 IPC 通道协议。
-- **Task 1.1（Application Scaffold）已完成**：Electron 31 + electron-vite + React 18 + TypeScript strict，main/preload/renderer 三段式构建，预加载脚本强制 CJS（sandbox 兼容），安全基线 `contextIsolation + sandbox + nodeIntegration: false` 已通过无头烟雾测试验证（`npm run smoke`）。
-- **Task 2.2（Feed, OPML and Cleaning Pipeline）已完成并接入数据库**：支持 RSS/Atom/JSON Feed、受限 HTTP 抓取、按需正文提取与安全清洗、GFM Markdown、手动同步编排、OPML 导入导出；同步、正文和 OPML IPC 已注册。
-- **Task 2.3（Local Database）已完成**：
-  - **2.3.1 完成**：SQLite 驱动选型 `sql.js`（WASM 版本，无需 node-gyp 原生编译），已安装 `sql.js` + `@types/sql.js`。
-  - **2.3.2 完成**：`electron/main/db/connection.ts` — 单例连接管理，数据库文件 `{userData}/juhe-shivi.db`，启动时自动加载/创建，每次写操作后存盘，will-quit 时优雅关闭，foreign_keys ON。
-  - **2.3.3 完成**：`electron/main/db/migration.ts` — 版本化、事务化迁移机制；v1 建立 feeds/articles，v2 增加按需正文缓存字段，并将文章唯一键调整为 `(feed_id, guid)`。
-  - **2.3.4 完成**：`electron/main/db/feed-repository.ts` — FeedRepository，实现 list/getById/create/update/delete/recordSync/findByUrl，url 去重忽略末尾 / 和 www. 前缀，幂等创建。
-  - **2.3.5 完成**：`electron/main/db/article-repository.ts` — ArticleRepository，实现 list（分页+筛选）、getById、insertBatch（按 Feed + guid 去重并准确返回新增数）、markRead/markStarred/batchMarkRead、getExistingGuidsForFeed。
-  - **2.3.6 完成**：`SqliteContentPipelineStore` 实现 Feed 同步、按需正文和 OPML 三个存储接口，并保存同步成功/失败状态。
-  - **2.3.7 完成**：feed/article/settings 及真实 sync/content/opml IPC 均已注册；preload 通过类型安全封装暴露对应 API。
-  - **2.3.8 完成**：`scripts/smoke-2.3.cjs` 验证脚本，通过 `npm run smoke:db` 运行。使用隔离的临时 userData，验证 createFeed / listFeeds / dupFeed（幂等）/ getFeed / listArticlesEmpty / settings / updateFeed / deleteFeed，并通过二次启动确认数据持久化。
-- **Task 2.1（Electron UI and Reader Shell）已完成**（张晨阳）：三栏 layout（订阅源侧栏 / 文章列表 / 阅读区）、主题切换、文章选择、已读/星标交互、同步按钮及 Loading/Empty/Error 状态已实现；`npm run smoke:ui` 7 项通过。当前仍通过 `MockDataSource` 展示演示数据。
-- **Phase 2 集成完成**：
-  - **P0**（UI 切真 IPC）完成：写 `IpcDataSource` + `createDataSource` 工厂（URL `?mock=1` 选 mock），`ArticleReader` 按需调 `getCleanedHtml`。新增 `scripts/smoke-2.4-ui-ipc.cjs`。
-  - **P1**（添加订阅源 UI）完成：header 加 `+ 添加订阅源` 按钮 + `AddFeedDialog` 组件，调 `feed.create` + `sync.feed`，成功后自动刷新侧栏 + 切到新 feed。
-  - **P2**（OPML UI）完成：header 加 `↓ 导入 OPML` / `↑ 导出 OPML` 按钮（`OpmlButtons` 组件），调 `window.api.opml.import / export`，结果用底部 `Toast` 提示。
-  - 5/5 smoke 全过：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 9/9)。
-  - FeedList 侧栏展示已改为 `f.siteTitle || f.title`，同步后自动显示站点名称。
-  - 同步完成后增加 `refreshFeeds()` 调用，确保 siteTitle 更新即时反映。
-  - `FeedRepository.create()` 在 title 为空时用 URL hostname 兜底。
-- **Phase 2.5.1 三个 UI 子任务 + Mercury 风格重塑已完成**（张晨阳）：
-  - **a) 删除订阅源**：右栏订阅源右键弹 `ContextMenu`（删除 / 复制 URL），删除走 `ConfirmDialog`（forwardRef + Promise）+ `window.api.feed.delete` + `juhe:refresh` 事件。
-  - **b) OPML 导入自动同步**：导入成功后 `handleOpmlImport` 对 `lastSyncAt === null || !lastSyncSuccess` 的 feed 调 `syncFeed`，避免重复同步已成功的源。
-  - **c) 三栏拖拽 resize**：`ResizeHandle`（4px 宽，hover 变 2px accent，mousedown 锁 body cursor），`usePaneWidths` hook 持久化到 localStorage（先本地，后续 2.5.3 切到 settings 字段）。
-  - **Mercury（antirez.com）风格重塑**：顶栏 height 44px（紧凑），左栏 tab 切换（订阅源 / 标签占位），左栏底部状态栏（X 源 / X 篇文章 / X 未读），文章列表 4 列网格（dot / title / feed / time），阅读区 serif 标题 + 顶部 URL monospace + 底部摘要折叠。`<html data-theme="light|dark">` + CSS 变量，localStorage 持久化。
-  - 新增组件：`ConfirmDialog`（forwardRef + useImperativeHandle + Promise open）、`ContextMenu`（单例 externalShow）、`ResizeHandle`（CSS 变量驱动）、`usePaneWidths`。
-  - **6/6 smoke 全过**：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 + 2.5.1) / `smoke:phase2.5` (新增，2.5.1 端到端 14 项基础 + 4 项子任务)。
-  - smoke 探针 fixed sleep → waitFor 轮询；React 端加 `juhe:refresh` 事件，smoke 探针 dispatch 触发 feeds/articles 重拉；探针匹配 `siteTitle || title` 兼容 sync 后的渲染。
-- 当前活动里程碑：**Phase 3.5.2 UI 段落内翻译插槽接 IPC 完成**（A + 张宇凡 b53e7a2）。所有 Phase 3.5 子任务 + Phase 4.1 + Phase 4.2 全部就绪；等陈冠中 4.3 Topic 后端 stub 替换。
-- **Task 3.5.2 UI 段落内翻译插槽接 IPC**（张晨阳 — 接张宇凡 b53e7a2 正式 split 工具）：
-  - **新 IPC 通道** `HTML_BLOCK_SPLIT: 'content:splitHtmlBlocks'`（shared/ipc.ts）
-    - args: `{ html: string }` → result: `HtmlBlock[]`（与主进程 splitCleanedHtmlIntoBlocks 签名对齐）
-  - **共享类型** `HtmlBlock { index, html, tag }`（shared/types.ts）— 张宇凡版本的同名接口
-  - **主进程 handler**（`electron/main/services/content-pipeline/ipc-handlers.ts`）：注册 `HTML_BLOCK_SPLIT`，调 `splitCleanedHtmlIntoBlocks(html)`
-  - **preload 暴露** `window.api.content.splitHtmlBlocks(html)`（electron/preload/index.ts）
-  - **FullDataSource 接口** + `IpcDataSource` + `MockDataSource` 同步实现 `htmlBlockSplit(html): Promise<DataSourceState<HtmlBlock[]>>`
-  - **UI 改造**（`src/components/TranslatedArticleView/TranslatedArticleView.tsx`）：
-    - 移除同步 `splitCleanedHtmlIntoBlocks` 调用，改为 useEffect + DataSource.htmlBlockSplit
-    - 始终渲染外层 div（loading/error 时也保留容器），加 `data-split-state` 属性供 smoke 探针检测
-    - useRef 缓存上次 cleanedHtml 内容，避免 React 18 父组件 re-render 时 useEffect 反复跑导致无限循环
-  - **bug 修复**（重构中暴露）：
-    - `ReferenceError: article is not defined` — useEffect 用了 article prop 但组件没接收
-    - 无限循环 — useState 初始为 loading + useEffect 反复 setSplit(loading) 覆盖 ready 状态
-  - **11/11 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / smoke:summary / **smoke:inline-trans**
-- **Task 3.5.2 内容管线分块**（张宇凡 — 已完成）：
-  - `content-cleaner.ts` 新增正式 `HtmlBlock` 类型和 `splitCleanedHtmlIntoBlocks(html): HtmlBlock[]`，按顶层标题、段落、代码块、列表、引用、表格等语义块切分。
-  - `pre` / `ul` / `ol` / `blockquote` / `table` / `figure` 保持原子结构，内部节点不会生成额外翻译插槽；顶层文本和行内标记合并为合成段落。
-  - `content-cleaner.test.ts` 新增 4 项测试，覆盖“5 段 + 2 标题 + 1 代码块 = 8 块”、复杂结构不拆分、容器展开与行内标记保留、空输入。
-  - 内容管线公共入口已导出函数与类型；主进程实现依赖 `jsdom`，渲染层不能跨进程直接 import，继续保留浏览器 `DOMParser` 实现并维持同一数据契约。
-- **Task 3.5.2 UI 段落内翻译插槽**（张晨阳 — 前期准备）：
-  - **复用现有组件**（4.1 commit 已写好）：
-    - `src/utils/html-split.ts` —— `splitCleanedHtmlIntoBlocks(html): { blocks: HtmlBlock[], fallback }` 按顶层块级元素（`<p>`/`<h1-6>`/`<pre>`/`<ul>`/`<ol>`/`<blockquote>`/`<table>`/`<figure>`）切分，浏览器内置 DOMParser 不引第三方库
-    - `src/components/TranslatedArticleView/TranslatedArticleView.tsx` —— 按段渲染（原文 + 插槽交替），fallback 单块
-    - `src/components/TranslationSlot/TranslationSlot.tsx` —— 三态：pending（"Waiting for AI response…" spinner）/ ready（Markdown 渲染译文）/ failed
-  - **关键修**：`ArticleReader` 渲染条件从 `activePanel === 'translation' && translationParagraphs.length > 0` 改为 `activePanel === 'translation'`，**点完按钮立即走段渲染**（每段挂 pending 插槽，不依赖 IPC 返回）
-  - **smoke:inline-trans 探针**（A 之前在 4.1 已写好，10 项校验）：
-    - 8 项 OK 判定：viewRendered / slotsMin1 / blockPairsMatchSlots / blocksRendered / initialPending / allReady / translatedTextContains / noFailed
-    - 验证：view 渲染、slot ≥ 1、block-pair = slot 数（1:1）、所有 slot 初始 pending、mock 流式完成后 all ready、译文含"译文"、无 failed
-  - **11/11 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / smoke:summary / **smoke:inline-trans**
-- **Task 3.5.1 摘要悬浮窗**（张晨阳）：
-  - **新组件** `src/components/SummaryFloatingPanel/SummaryFloatingPanel.tsx` + `.css`
-    - 标题栏 mousedown + document mousemove/mouseup 拖拽；位置/大小实时变化
-    - 8 个 resize handle（4 边 + 4 角）+ 完整 cursor 提示
-    - 边界检测：拖出 viewport 自动 clamp 到视口内（最小 300×200px）
-    - 持久化：`localStorage[juhe-shivi.summary-panel.position]` 存 x/y/width/height
-    - viewport resize 时重新 clamp
-    - Esc 键关闭
-    - 内容：Loading spinner + "Waiting for AI response…"（条件：`loading || !content`）→ Markdown 渲染后的摘要
-    - 状态栏显示 size 数字（调试可见）
-  - **ArticleReader 集成**：
-    - 移除旧 `article-reader__ai-panel` 摘要折叠区
-    - `<SummaryFloatingPanel open={activePanel === 'summary'} onClose={...} content={renderMarkdown(summary)} loading={busy && ...} />`
-    - 与 3.5.3 持久化协同：文章挂载时若 `article.summary` 有缓存 → 自动打开 panel
-  - **smoke-3.5.1 探针**（10 项校验）+ `npm run smoke:summary`：
-    - 初始 panel 隐藏 / 点摘要后渲染 / loading 状态可见 / 8 个 resize handle
-    - 拖拽生效（mousedown titlebar + mousemove + mouseup，验证 left/top 变化）
-    - resize 生效（se 角，验证 width/height 变化）
-    - 边界检测（拖到 9999,9999 后 clamp 到视口内）
-    - localStorage 持久化（读取 `juhe-shivi.summary-panel.position`）
-    - Esc 关闭
-  - **10/10 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / **smoke:summary**（新增）。
-- **Task 4.1 专题 UI 完整化**（张晨阳）：
-  - **FullDataSource 接口扩展**：6 个新方法 `topicGetTimeline` / `topicGetEventGroups` / `topicGenerateBriefing` / `topicGetBriefing` / `topicUpdateBriefing` / `topicExportBriefing`，IpcDataSource + MockDataSource 同步实现
-  - **TopicsPage 完整化**（替代占位 stub）：
-    - 列表视图：专题卡片 + 关键词 tag + 元数据 + 编辑/删除按钮
-    - 创建/编辑对话框 `TopicFormDialog`（name/description/keywords 三个字段，Esc/点 backdrop 关闭，关键词自动小写+去重+中英文逗号分隔）
-    - stub 状态下显示"等待 4.3 接入"占位 + 提供新建入口（创建会失败但用户能立即尝试）
-  - **TopicDetail 4 tab 容器**（`src/components/TopicDetail/TopicDetail.tsx`）：
-    - 顶栏：返回列表 + 专题名 + 编辑按钮 + 描述 + 关键词 tag
-    - 4 tab sub-nav：Articles / Timeline / EventGroups / Briefing
-    - 按需 lazy load（切到 tab 才发请求）+ loading/empty/error 三态
-  - **Articles tab**：复用 `ArticleList` 渲染关联文章
-  - **Timeline tab**：左 rail 时间线 + 右内容卡片；`newInformation` 字段高亮"新增"信息
-  - **EventGroups tab**：可折叠卡片，按 `startDate` 倒序；展开后调 `topicGetArticles` 加载该事件下的文章
-  - **Briefing tab**：生成 / 编辑 / 导出 Markdown / 导出 HTML 4 个操作；正文用 `renderMarkdown` 渲染；结论列表展示 `[N]` + 支撑文章 ID + viewpointDiff；导出走 Blob 下载
-  - **smoke-4.1 探针**（`scripts/smoke-4.1.cjs`）：7 项校验（page 渲染 / 标题 / 新建按钮 / 占位 / 5 个 IPC 可达 / 全部 stub）+ `npm run smoke:topic` script
-  - **smoke-3.4-integration 探针适配**：`topicsPlaceholder` 选择器增加 `.topics-page .status-view` 兼容新版 TopicsPage
-- 当前活动里程碑：**Phase 4.3 专题演化图 MVP 完成**（陈冠中 2026-07-23 `c428688`）。所有 Phase 1-4 任务完成，进入 **Phase 5：跨平台验收 + 课程交付**。
-- **Phase 4.3 Topic 演化图**（陈冠中）：
-  - v7 migration：`topics` / `topic_articles` / `topic_graph_cache` 三张表，按 `sourceSignature` 缓存演化图
-  - `TopicGraph` 共享类型（direction/node/edge/relation），5 个方向泳道（**发布与能力 / 产品与应用 / 安全与治理 / 成本与部署 / 观点与解读**），本地候选发现（标题/摘要/清洗正文）+ 规范 URL/指纹/标题相似度去重
-  - 候选发现阶段不消耗模型 Token，结果按 `source_signature` 缓存仅在专题或关联文章变化时重建
-  - 简报逐条引用来源文章（`briefing.content` 保留 `[N]` 索引）
-  - `TopicDetail` 4 tab → 3 tab（**graph / articles / briefing**）默认打开脉络图；`TopicsPage` 删掉"等待 4.3 接入"占位
-  - **Phase 4 Integration MVP 完成**：4.1 UI + 4.2 内容标准化 + 4.3 后端端到端接通，README 已更新专题演化图段落
-- **Topic 演化图 UI 接入**（张宇凡 2026-07-23 + 张晨阳 4.1 准备）：
-  - 新组件 `src/components/TopicGraph/TopicGraphView.tsx`（209 行） + `.css`（283 行）：点线图渲染 + 5 方向泳道 + SVG 边（`develops` / `branches`）+ 节点 hover/选中
-  - `App.tsx` 加 `handleTopicOpenArticle`：脉络图点文章 → 切到 reader + 选中文章
-  - `ArticleReader` "★ 专题" 按钮从 `window.prompt` stub 升级为完整 `TopicFormDialog`（name/description/keywords + `seedArticleId` 自动关联当前文章）
-  - `TopicArticlesTab` 加 `onOpenArticle` 回调：点关联文章 → 跳回 reader
-- **Task 4.1 专题 UI 完整化**（张晨阳）：
-  - 上面已经详细记录，再补充：4.1 的 4 tab（Articles / Timeline / EventGroups / Briefing）已简化为 3 tab（**graph / articles / briefing**），与 4.3 演化图 MVP 对齐
-- **侧栏按 tag 真分类 + AI 标签建议 toggle 修复**（张晨阳 2026-07-22 `ec0c49e`）：
-  - 完整链路 `article_tags SQL 聚合 → ARTICLE_COUNTS_BY_TAG IPC → articleCountsByTag() → App.tsx refreshTagCounts → FeedList 渲染真 tag 列表`
-  - `ArticleRepository.list` 加 `tagIds` 过滤（EXISTS 子查询 AND 语义）；`MockDataSource` 真正持久化 `articleTagMap`
-  - `useSelection` 加 `FeedSelector` 模板字面量类型 `tag:${string}` + `isTagSelector` / `parseTagSelector` 辅助
-  - `FeedList` 接收 `tags` / `tagCounts` 渲染真 tag 列表（每个 tag 显示 # 颜色 + 标签名 + 文章数 badge）
-  - **AI 标签建议 toggle 修复**：`useCallback` 闭包陈旧 + `StickyBottomPanel` onTabChange 双调 → 用 `stickyTabRef` 替代闭包 + 清理 onTabChange 自动调 AI
-  - 新 `scripts/smoke-taglist.cjs` + `npm run smoke:taglist`（11 项数据点全过：tabTagsRendered / initialStickyTab / afterFirstClick / afterSecondClick / afterThirdClick / suggestionsNotRegenerated）
-- **Readability 懒加载图片修复**（张宇凡 2026-07-23 `f1eeb48`）：`content-cleaner.ts` 新增 `unwrapLazyImages()` 把 `data-src` / `data-original` 迁移到 `src`，并处理 `<noscript>` 中的回退图片，少数派等站点插图正常显示（修后需重新同步订阅源以重新清洗）
-- **Phase 3 Integration UI 端到端探针适配**（张晨阳）：smoke-3.4-integration `topicsPlaceholder` 选择器（`.topics-page__placeholder, .topics-page .status-view`）兼容新版 TopicsPage
-- **v0.2.2 release**（陈冠中）：chore(release): v0.2.2，集成张宇凡 web/dual 阅读模式 + 阶段修复
-- **当前 13/13 smoke 全过** + **84/84 单元测试通过**（+3 个新 topic-graph 单元测试）：
-  - smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic（含 4.3 演化图 graphUiRendered/crudWorks/graphWorks/articlesWorks 4 项新检查）/ smoke:summary / smoke:inline-trans / smoke:inline-trans:split-error / smoke:coexist / smoke:tagmanage / smoke:reader-modes / **smoke:taglist**（新增）
-  - **9/9 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / **smoke:topic**（新增）。
-- **Task 4.2 Topic-ready Content（张宇凡）**：`topic-analysis-input.ts` 将 `Article + Feed` 转换为统一分析输入；正文按 cleaned Markdown → raw text → raw HTML 纯文本回退，时间按 published → fetched → created 回退，并提供规范 URL、长正文 SHA-256 指纹、传递式重复分组与可追溯的全量/去重视图。
-- **Phase 3.4 Bug Fix & UX Polish**（张晨阳）已完成：
-  - **3.4.1.1 未读列表不同步**：`App.handleSelectArticle` 标记已读时同步更新 `articlesState` + `allArticlesState`，列表实时移除该文章。
-  - **3.4.1.2 未读/星标计数不更新**：`handleToggleStar` 用同一个 `updateList` 闭包同步刷两个 state；`FeedList` 侧栏底部状态栏始终从 `allArticles` 计算 unread/starred 计数。
-  - **3.4.1.3 AI 结果区文章切换不消失**：`ArticleReader` 切换 `article.id` 时无条件 reset `summary/translationParagraphs/tagSuggestions/activePanel/noteMarkdown`，即使 `article.cleanedHtml` 已存在也要先清空（之前有 bug：`if (cleanedHtml) return;` 提前 return 跳过了 AI 字段 reset）。
-  - **3.4.1.4/.5 翻译/摘要结果不渲染 Markdown**：自写 `src/utils/markdown.ts`（不引 marked），`renderMarkdown(input)` = escape HTML → INLINE_RULES（链接/行内代码/加粗/斜体，URL scheme 仅允许 http/https/mailto/#/）→ 双换行分段 → 单换行 `<br>`；`ArticleReader` 用 `dangerouslySetInnerHTML={{ __html: renderMarkdown(s) }}` 替换纯文本 `<div>`。
-  - **3.4.1.6 删除订阅源提示数量始终为 0**：`handleDeleteFeed` 改用 `allArticles.filter(a => a.feedId === feed.id).length` 统计（之前用 `articles`，受当前筛选影响）。
-  - **3.4.4.1 6 page 返回按钮 + 当前页标题**：`Layout.tsx` 在 `.app-page` 容器顶部加 `.app-page__header`（back 按钮 + 当前 page title），通过 `navItems.find(n => n.id === currentPage)?.label` 取标题。
-  - **3.4.4.2 纸质 + 深色统一**：`useAppearance` 改为接收 `effectiveTheme: 'light' | 'dark'` 参数（从 `useTheme` 取 `effective`）；`applyToHtml` 只在 `visualTheme === 'paper' && effectiveTheme === 'light'` 时写暖黄变量；深色 + paper 时清掉所有 paper 变量 → 走 useTheme dark 调色板，与经典深色完全一致。
-  - **3.4.4.3 顶栏搜索框**：`src/components/SearchBar/SearchBar.tsx` 300ms 防抖 + 下拉浮层 + 8 条上限 + 失焦/Esc 关闭 + 点击结果跳到 reader（`selectFeed(target.feedId) → selectArticle(id) → setCurrentPage('reader')`）；`IpcDataSource.articles({ search })` 透传（陈冠中 3.4.3 已实现）。
-  - **3.4.4.4 通用设置弹窗 + AI 设置子页面**：
-    - 新组件 `src/components/GeneralSettingsModal/`（语言/字体/视觉/字号/阅读宽度 + 即时生效 + IPC 持久化）
-    - `SettingsPage` 拆为 AI only（Provider + AI 默认值）
-    - Layout nav 7 项：`general`(弹窗) / `ai`(子页) / tags / notes / digests / topics / logs；App.tsx 拦截 'general' → `setGeneralModalOpen(true) + setCurrentPage('reader')`
-  - **3.4.4.5 ArticleList 空态**：`filterHint` prop 三态（`'暂无星标文章'` / `'所有文章都已读完'` / `'暂无匹配文章'`），用 `EmptyView` 组件统一渲染。
-  - **smoke-3.4-integration 探针适配**：nav 7 项后索引全部 +1（general 走弹窗不占索引，ai=1, tags=2, ..., logs=6）；字体/视觉主题入口从 `.settings-page__font-card` 改为 `.general-modal__font-card`（点 navBtn[0] general 触发弹窗再验证），测试完后点 backdrop 关闭弹窗。
-  - **8/8 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration。integration 探针：navBtnCount=7、fontThemeCount=3、visualThemeCount=2、fontBefore→hei、visualBefore→paper、6 page 全部 rendered、tag/note CRUD、回到 reader 5 AI 按钮（实际 7：含星标/原文）。
-- **Phase 3 Integration（张晨阳）**：
-  - **6 个 pages**（`src/pages/`）：SettingsPage（Provider CRUD + 字体/视觉主题 + 多语言 + AI 默认值 + 字号/阅读宽度）、TagsPage（标签 CRUD）、NotesPage（按文章选 + markdown 笔记 CRUD）、DigestsPage（文摘 CRUD + Markdown/HTML 导出）、TopicsPage（Phase 4 占位，stub handler 返回 NOT_IMPLEMENTED）、LogsPage（同占位）。
-  - **顶栏 6 入口**（Layout 顶栏新增 nav 按钮组）：⚙ 设置 / # 标签 / ✎ 笔记 / ☷ 文摘 / ★ 专题 / 📋 日志；点击切换 `currentPage` state；非 reader 模式渲染对应 page slot，reader 模式保持三栏 layout。
-  - **IpcDataSource 扩展**（`src/data/ipcDataSource.ts`）：新增 tag/note/digest/topic/aiProvider/aiOperations/settings/log/opml/getCleanedMarkdown 全量 IPC 包装；`MockDataSource` 同步补全（mock 模式所有方法可调，AI 不可用时返回明确错误）。
-  - **useAppearance hook**（`src/hooks/useAppearance.ts`）：从 IPC 读 fontTheme/visualTheme/language，写 `<html data-font-theme data-visual-theme data-lang>` 属性和 CSS 变量（`--font-body` 字体栈 / 经典 vs 纸质的 `--bg` `--fg` 等）；切换通过 `settings:update` 持久化。
-  - **ArticleReader AI 工具栏**（`src/components/ArticleReader/ArticleReader.tsx`）：5 按钮 + 折叠结果区
-    - ✨ 摘要：`aiGenerateSummary` → `aiGetSummary`（带缓存）
-    - 🌐 翻译：`aiGenerateTranslation` → `aiGetTranslation`（双语对照）
-    - 🏷 标签建议：`aiSuggestTags` → `aiGetTagSuggestions`（含置信度 + 理由）
-    - ✎ 笔记：textarea → `noteCreate`（GFM markdown）
-    - ★ 专题：`topicCreate`（Phase 4 stub，会显示 NOT_IMPLEMENTED）
-  - **Topic/Log 主进程 handler 占位 stub**（`electron/main/index.ts`）：12 个 topic + 2 个 log handler 全部注册并返回 `NOT_IMPLEMENTED`，等 Phase 4 陈冠中接入。
-  - **smoke-3.4-integration 端到端探针**（`scripts/smoke-3.4-integration.cjs` + `electron/main/index.ts` probe）：21 项校验（6 nav / 6 page 渲染 / 3 字体 + 2 视觉主题 / 字体视觉切换 verified / 标签 CRUD verified / 笔记创建 verified / 6 占位 / 5 AI 按钮 / 回到 reader 验证）。
-  - **8/8 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration。
-  - 修过 `scripts/smoke-2.1.cjs` 的 paneWidths 容差从 2px 调到 10px（fr 单位 1px 舍入 + 两个 4px ResizeHandle 是固有行为）。
+- **Phase 1、2、2.5、3、3.4、3.5、3.6 全部完成并通过验收（28 项 PASS）。**
+- **Phase 4.1**（专题 UI）和 **Phase 4.2**（Topic-ready Content）已完成；等陈冠中 **Phase 4.3**（Topic Analysis 后端）接入。
+- `electon-vite build` + `npm run typecheck` 均通过。
+- **图片显示问题**（少数派等 JS 懒加载 + CDN 防盗链站点）已修复：
+  - `content-cleaner.ts` 新增 `unwrapLazyImages()` — data-src → src 迁移
+  - `content-cleaner.ts` 新增 `promoteImagesToParagraphs()` — 防 Readability 丢弃
+  - `electron/main/index.ts` 注册 `ses.webRequest` 拦截器 — 为无 Referer 的图片请求补上 origin
+- **侧栏精确计数**：`ArticleRepository.countAll/countUnread/countStarred` + `article:counts` IPC 全链路。
+- **翻译 UX**：`filterInlineMarkdown`（仅保留粗体/斜体/下划线）+ 翻译框纯中文展示。
+- **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ 失败红点标记。
+- **已读文章样式**：仅灰色文字，无删除线。
+- **GitHub Release 自动化**：推送 `v*` tag → GitHub Actions 自动构建 macOS DMG + Windows NSIS。
+- `shared/types.ts` + `shared/ipc.ts` 作为权威协议源；跨模块接口变更需同步更新并通知。
 
 ## 设计决策
 
 - 已确定使用 Electron + React + TypeScript 开发跨平台应用。
-- 已确定使用 SQLite 作为本地持久化层。
+- 已确定使用 SQLite（sql.js WASM）作为本地持久化层。
 - 应用采用本地优先设计，不要求自有账号或自有云服务。
 - AI Provider 由用户配置，并通过统一的 Provider 接口访问。
 - 只有在用户启用相关 AI 功能时，才可以将文章内容发送给用户配置的模型服务。
@@ -266,238 +120,21 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 - 专题追踪和带来源引用的多源简报是项目的核心差异化功能。
 - AI 结论必须保留支持该结论的原始文章引用。
 - 开发过程按照 `PLAN.md` 中的阶段和验收节点进行。
-- 共享领域类型和 IPC 协议的权威定义位于 `shared/types.ts` 和 `shared/ipc.ts`。`agents.md` 仅做引用，不重复类型细节。跨模块接口变更时，必须同步更新 `shared/` 下的对应文件并通知其他成员。
-
-## 近期记录
-
-- **2026-07-23**：Phase 4.3 专题演化图 MVP + Phase 4 Integration 完成（陈冠中 `c428688`，张宇凡 + 张晨阳协作）：
-  - 4.3 Topic 演化图后端：v7 migration (`topics` / `topic_articles` / `topic_graph_cache` 三表) + `TopicGraph` 共享类型 + 5 方向泳道（发布与能力 / 产品与应用 / 安全与治理 / 成本与部署 / 观点与解读）+ 本地候选发现 + 规范 URL/指纹/标题相似度去重 + `sourceSignature` 缓存 + 来源简报
-  - 4.1 UI 适配：TopicDetail 4 tab → 3 tab（graph / articles / briefing）默认打开脉络图；TopicsPage 删"等待 4.3 接入"占位；ArticleReader "★ 专题" 升级为 TopicFormDialog（name/description/keywords + seedArticleId 自动关联当前文章）
-  - 新 UI 组件：TopicGraphView.tsx（209 行）+ .css（283 行）点线图 + 5 方向泳道 + SVG 边
-  - smoke-4.1.cjs 升级：4 项新检查（graphUiRendered / crudWorks / graphWorks / articlesWorks）
-  - README.md 新增"专题演化图"段落
-  - **Phase 1-4 全部完成**，进入 Phase 5：跨平台验收 + 课程交付
-- **2026-07-23**：Readability 懒加载图片修复（张宇凡/RegeonChen `f1eeb48`）：`content-cleaner.ts` 新增 `unwrapLazyImages()` 把 `data-src` / `data-original` 迁移到 `src`，并处理 `<noscript>` 中的回退图片，少数派等站点插图正常显示。修后需重新同步订阅源以重新清洗。
-- **2026-07-22**：侧栏按 tag 真分类 + AI 标签建议 toggle 修复（张晨阳 `ec0c49e`）：
-  - 完整链路 `article_tags SQL 聚合 → ARTICLE_COUNTS_BY_TAG IPC → articleCountsByTag() → App.tsx refreshTagCounts → FeedList 渲染真 tag 列表`
-  - `ArticleRepository.list` 加 `tagIds` 过滤（EXISTS 子查询 AND 语义）；`MockDataSource` 真正持久化 `articleTagMap`
-  - `useSelection` 加 `FeedSelector` 模板字面量类型 `tag:${string}` + `isTagSelector` / `parseTagSelector` 辅助
-  - `FeedList` 接收 `tags` / `tagCounts` 渲染真 tag 列表（每个 tag 显示 # 颜色 + 标签名 + 文章数 badge）
-  - **AI 标签建议 toggle 修复**：`useCallback` 闭包陈旧 + `StickyBottomPanel` onTabChange 双调 → 用 `stickyTabRef` 替代闭包 + 清理 onTabChange 自动调 AI
-  - 新 `scripts/smoke-taglist.cjs` + `npm run smoke:taglist`（11 项数据点全过）
-  - 13/13 smoke + 81 单元测试全过
-- **2026-07-17**：双语翻译改为确定性逐段对照（张宇凡）：程序先按 Markdown 逻辑段落切分（保留 fenced code block），每次只让模型翻译一段；`TranslatedParagraph.original` 始终使用本地原文，不再信任模型回传的 ORIGINAL，从而保证阅读器中每段原文后紧跟对应译文。主进程会先推送完整段落快照，阅读器立即在每段后显示"翻译中"框，并在收到单段完成事件后原地替换。仍兼容旧自定义 Prompt 的 `ORIGINAL/TRANSLATED` 输出。
-
-- 团队确定了三条并行职责线：界面、内容管线、数据与 AI 分析。
-- Phase 1.1 可以在 Phase 1.2 完成前开始，但第一版共享协议通过确认前不得进入 Phase 2。
-- `PLAN.md` 中的成员姓名已替换为张晨阳、张宇凡、陈冠中。
-- **2026-07-13**：Task 1.2 完成。`shared/types.ts` 定义了 Feed、Article、Tag、Note、Digest、Topic、AIProvider、AISummary、AITranslation、AITagSuggestion、SyncResult、AppSettings、LogEntry 等核心领域类型以及默认设置常量。`shared/ipc.ts` 定义了统一的 `IpcResult<T>` 响应格式、40+ 个 IPC 通道常量（按 domain:action 命名）以及完整的请求/响应类型映射 `IpcRequestMap`。三个模块可以基于同一组类型和通道协议独立开发。
-- **2026-07-13**：为 `shared/types.ts` 关键字段补充了格式规范注释，涵盖 cleanedMarkdown（GFM 规范、代码块语言标注、表格对齐、列表缩进等）、cleanedHtml（白名单标签/属性、安全清洗要求）、rawHtml（不可信输入警告）、guid（生成与去重策略）、Briefing.content（结论序号、来源引用、表格对比格式）、Note.markdownContent（导出格式）、LogEntry.level/module/detail（日志级别定义、模块命名、脱敏要求）、AppSettings 的 Prompt 模板（占位符变量列表）、Feed.url/FeedCreateInput.url（URL 去重规则）、IsoTimestamp（UTC 格式）、Tag.color（CSS 颜色）、Topic.keywords（小写匹配）、AIProvider.baseUrl（API 拼接约定）等。
-- **2026-07-14**：Task 1.1 完成（Application Scaffold）。技术选型落地：
-  - 构建工具 **electron-vite**（main / preload / renderer 三段式，HMR 开箱即用）
-  - 包管理器 **npm**（已确认 PowerShell 执行策略限制下 `npm.cmd` 可用）
-  - 渲染层 **React 18 + TypeScript strict**（分 `tsconfig.node.json` 与 `tsconfig.web.json` 两份）
-  - 进程安全：`contextIsolation: true` + `nodeIntegration: false` + `sandbox: true`
-  - **preload 强制 CJS 输出**（`out/preload/index.cjs`）—— Electron sandbox 上下文不支持 ESM preload
-  - IPC 风格：Main handler 直接返回 `IpcResult<T>`，preload 透传 `IpcResponse<C>`，Renderer 端通过 `window.api.*` 访问
-  - 提供 `scripts/smoke-1.1.cjs` 无头烟雾测试：起 Electron、加载 production 产物、注入 JS 探测 `require/process/module/Buffer` 是否泄漏、走一次 `settings.get` IPC 校验主进程 handler，headless 环境也能验收
-  - 修了 `shared/ipc.ts` 的一个 dead import（`TagSuggestion`），**未改动任何类型或通道定义**
-- **2026-07-14**：Task 2.3.2-2.3.5 完成（数据库 Schema + Repository 层）：
-  - Schema v1：`feeds`（url 索引）、`articles`（guid UNIQUE 索引 + feed/published 复合索引 + is_read/is_starred 索引），`db_version` 版本化迁移
-  - FeedRepository：幂等 create（url 去重忽略末尾 / 和 www.），完整 CRUD + recordSync
-  - ArticleRepository：分页查询 + 筛选（feedId/isRead/isStarred/search）+ insertBatch（INSERT OR IGNORE 基于 guid 唯一索引去重）+ 已读/星标读写
-  - 设计决策：`better-sqlite3` 因需要 Visual Studio C++ 编译且环境探测失败而放弃，改为 `sql.js`（WASM），纯 JavaScript 跨平台零编译
-  - 数据库持久化模式：内存态操作 + 每次写后 `.export()` 到磁盘，`will-quit` 时最后存盘
-- **2026-07-14**：Task 2.3.6-2.3.8 完成（IPC handler + 验证）：
-  - 注册了 15 个 IPC handler：feed CRUD（5 个）、article 查询+状态（5 个）、sync 占位（3 个）、settings（2 个）
-  - 所有 handler 统一 `ok<T>()` / `fail()` 返回 `IpcResult<T>`，含入参校验
-  - preload 从手动枚举升级为 `invoke<C>(channel, args)` / `invokeVoid<C>(channel)` 泛型封装
-  - `npm run smoke:db` 无头烟雾测试全 8 项通过（创建/列表/去重/获取/更新/删除/文章/设置）
-- **2026-07-14**：Phase 2 Integration 完成验收：
-  - 补齐 DataSource 接口的 `createFeed` 方法（IpcDataSource + MockDataSource 双实现）
-  - 在 FeedList 顶部添加「新增订阅源」输入框（URL 输入 + 提交按钮）
-  - `node scripts/smoke-phase2.cjs` 9/9 通过（后端全链路）
-  - `node scripts/smoke-2.4-ui-ipc.cjs` 6/6 通过（UI 端到端 IPC：ipcSeed/listHasData/clickWorks/contentLoaded）
-  - Phase 2 "添加订阅源 → 同步 → 阅读 → 已读/星标" 完整闭环可演示
-
-- **2026-07-14**：修复侧栏空白名称 bug（Issue: 添加订阅源后侧栏不立即显示名称，需重启才出现）：
-  - 根因1：`FeedRepository.create()` 在用户未填 title 时将 `title` 设为空字符串
-  - 根因2：`App.handleSync()` 同步完成后只刷新 articles 不刷新 feeds，导致 sync 写入的 siteTitle 未反映到侧栏
-  - 修复1：`FeedRepository.create()` 在 title 为空时用 URL hostname 兜底（如 sspai.com/feed → 显示 "sspai.com"）
-  - 修复2：`App.handleSync()` 同步完成后增加 `refreshFeeds()` 调用，自动更新侧栏 siteTitle
-  - `npm run build` + `node scripts/test-real-feed.cjs https://sspai.com/feed` 7/7 通过
-- **2026-07-14**：Task 2.2 首版实现位于 `feat/task-2.2-feed-pipeline`：
-  - 使用 `rss-parser` 统一 RSS/Atom，原生校验 JSON Feed 1/1.1；
-  - 使用 `@mozilla/readability` + `jsdom` 提取正文，`sanitize-html` 白名单清洗，`turndown` + GFM 插件转换 Markdown；
-  - HTTP 抓取具备协议校验、超时、有限重试、HTTP 状态和响应大小限制；
-  - Feed 同步只保存条目和 Feed 自带内容；Reader/AI 首次请求正文时才抓取文章页并运行 Readability，之后复用持久化的 source HTML、cleaned HTML 和 Markdown；
-  - 提供 `SyncService`、`ArticleContentService`、OPML 解析/去重/原子导出，以及与数据库解耦的 `FeedSyncStore`、`ArticleContentStore`、`OpmlFeedStore`；
-  - 引入 Vitest 测试，离线测试覆盖三种 Feed、清洗、同步、HTTP 和 OPML；另提供 NASA RSS、Mozilla Atom 和 JSON Feed 官方源的网络兼容性验证。
-- **2026-07-14**：Task 2.2 与 Task 2.3 完成集成：
-  - 新增 Schema v2，分层保存 Feed 原文、文章页原文、Cleaned HTML/Markdown 和清洗元数据；
-  - 文章去重从全局 guid 调整为 `(feed_id, guid)`，修复批量插入新增数量统计；
-  - `SqliteContentPipelineStore` 接通同步、按需正文和 OPML，主进程用真实服务替换 sync 占位 handler，preload 增加 content/opml API；
-  - `npm run smoke:phase2` 以本地 HTTP fixture 验证后端闭环：添加 Feed、两次同步去重、同步失败状态、SQLite 落盘、按需抓取且缓存复用、已读/星标和 OPML 往返；该脚本不覆盖 Renderer UI。
-- **2026-07-14 ~ 2026-07-15**：Phase 2 集成收尾（张晨阳）：
-  - UI 切真 IPC：`IpcDataSource` + `createDataSource` 工厂（URL `?mock=1` 选 mock），`ArticleReader` 按需 `getCleanedHtml`
-  - P1 添加订阅源 UI：header `+ 添加订阅源` 按钮 + `AddFeedDialog`
-  - P2 OPML UI：header `↓/↑ OPML` 按钮 + `OpmlButtons` + `Toast`
-  - 修 P1 反馈的三个收尾问题：
-    1. 同步按钮无论成败都报"同步完成"——加 `okCount/failCount` 跟踪，三态 toast（全部成功/全部失败/部分失败）
-    2. 添加订阅绕过了 DataSource——`handleAddFeed` 改用 `ds.createFeed(...) + ds.syncFeed(...)`，与 mock 模式同链路
-    3. 仓库卫生：删除 `dev.err`，`.gitignore` 加 `*.err / dev.err / dev.log / *.out`；README/agents.md 同步
-  - 修 Electron 31 在 Windows 上的三个运行时 bug（影响 smoke 正确性）：
-    1. `app.setPath('userData', ...)` 在 `app.whenReady()` 之前调用在 Windows 上不生效——移到 whenReady 内部
-    2. `process.env` 在 `whenReady` 之后会被清——所有 smoke env 在 ready 前 snapshot 到 `SMOKE_FLAGS` 常量
-    3. Renderer 端 React mount 时 useEffect 跑过一次后，再 seed 数据 React 不知道——加 `window.addEventListener('juhe:refresh', ...)` 事件，smoke 探针 seed 后 dispatch
-  - smoke 探针从 fixed `await sleep(...)` 改为 `waitFor(() => cond)` 轮询，时序从 6s+ 超时变成 ~200ms
-- 5/5 smoke 全过：`smoke` (1.1) / `smoke:ui` (2.1 mock) / `smoke:db` (2.3) / `smoke:phase2` (后端 9/9) / `smoke:ui-ipc` (UI + P1/P2 9/9)。
-- **2026-07-15**：Phase 2.5.1 三个子任务 + Mercury 风格重塑（张晨阳）：
-  - 删除订阅源：ContextMenu 右键菜单（删除 / 复制 URL）+ ConfirmDialog forwardRef Promise 化 + IPC feed.delete + juhe:refresh 触发 React 重拉
-  - OPML 导入自动同步：handleOpmlImport 过滤 `lastSyncAt === null || !lastSyncSuccess` 的 feed 调 syncFeed，UI 显示底部 Toast
-  - 三栏拖拽：ResizeHandle（4px→2px hover）+ usePaneWidths hook 持久化到 localStorage
-  - Mercury（antirez.com）视觉重塑：顶栏 44px 紧凑、左栏 tab 切换 + 底部状态栏、文章列表 4 列网格、阅读区 serif 标题 + monospace URL + 摘要折叠、`<html data-theme>` + CSS 变量双主题
-  - 修探针：feedListRendered 匹配 `siteTitle || title`（兼容 sync 后的渲染）；smoke-2.5.cjs OK 判定对齐到 `uiIpc.ok:true`
-  - **6/6 smoke 全过**（timing：seed ~90ms, feedListRendered 0~1ms, articleListRendered ~55ms, contentRendered ~170ms）
-  - 新增 `scripts/smoke-2.5.cjs` + `npm run smoke:phase2.5` script
-- **2026-07-15**：Phase 3 Integration UI 端到端（张晨阳）：
-  - 6 个 pages 全建好（SettingsPage/TagsPage/NotesPage/DigestsPage/TopicsPage/LogsPage），每个都自带 loading/empty/error 三态
-  - 顶栏 6 个 nav 按钮（⚙/#/✎/☷/★/📋）切换 `currentPage` state，App.tsx 加 router 逻辑
-  - IpcDataSource 扩展 30+ 方法：tag/note/digest/topic/ai/settings/log/opml/content/getCleanedMarkdown
-  - useAppearance hook：fontTheme/visualTheme/language 切换 → 写 `<html>` 属性 + CSS 变量 → settings:update 持久化
-  - ArticleReader 加 5 个 AI 按钮（摘要/翻译/标签建议/笔记/专题）+ 折叠结果区
-  - Topic/Log 主进程 handler 全注册 stub 返回 `NOT_IMPLEMENTED`，等陈冠中 Phase 4 接入
-  - 写 `scripts/smoke-3.4-integration.cjs`（21 项校验）+ `npm run smoke:integration` script
-  - 修 `smoke-2.1` paneWidths 容差 2→10（fr 1px 舍入 + 8px handle 是固有行为）
-  - 修探针：`feedListRendered` 改读 dbFeedDump 取 siteTitle；`fontToggled/visualToggled` 改读 `<html data-*>`；tag/笔记创建验证走 IPC 直接检查 DB（绕开 React re-render 时序）
-  - 探针发现 preload 包装陷阱：preload `tag.create(input)` 内部已包 `{ input }`，探针传 `{ input: {...} }` 会多包一层。统一为 `tag.create({ name: 'X' })` 风格
-  - **8/8 smoke 全过**（smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration）
-- **2026-07-15**：Task 2.5.3 完成（Persistence & IPC，陈冠中）：
-  - `AppSettings` 新增 `fontTheme`（string, default `'default'`）、`visualTheme`（`'classic' | 'paper'`，default `'classic'`）、`sidebarPercent`（10-40, default 18）、`listPercent`（15-50, default 28）四个字段
-  - v3 迁移：新增 `settings` key-value 表持久化应用设置
-  - `electron/main/db/sqlite-settings.ts`：`loadSettings()` 从 SQLite 加载已保存值合并到 DEFAULT_SETTINGS；`saveSettings(partial)` 只写变更 key
-  - `settings:get` / `settings:update` IPC handler 从 stub 改为真实 SQLite 读写，重启后持久化
-   - `usePaneWidths` 从 localStorage 改为 `window.api.settings.get/update` IPC，拖拽宽度重启保持
-- **2026-07-15**：Task 3.3 AI 服务层完成（陈冠中）：
-  - v4 migration：新增 `ai_providers` 表（id/name/base_url/model_name/api_key/is_default）
-  - `AiProviderRepository`：CRUD + `getByIdWithKey`/`getDefaultWithKey` 内部 API Key 获取
-  - `openai-client.ts`：`chatCompletion(provider, messages, options)` OpenAI-compatible HTTP 调用，超时控制、错误解析；`testConnection(provider, apiKey)` 连接测试
-  - `summary-agent.ts`：内置 brief/standard/detailed 三套默认 Prompt 模板，支持 `customPromptTemplate` 覆盖
-  - `translation-agent.ts`：内置 paragraph-by-paragraph bilingual 翻译 Prompt，解析 `--- ORIGINAL / TRANSLATED ---` 格式输出
-  - 注册 7 个 AI IPC handler：`ai:providerList/create/update/delete/test` + `ai:generateSummary` + `ai:generateTranslation`
-   - preload 暴露 `window.api.ai.*` 类型安全 API
-- **2026-07-15**：Task 3.3 剩余部分完成（陈冠中）：
-  - v5 migration：新增 `tags`、`article_tags`、`notes`、`digests`、`ai_results` 五张表
-  - `TagRepository`：CRUD + addToArticle/removeFromArticle/batchAdd/getByArticle + 同名校验幂等创建
-  - `NoteRepository`：CRUD + 删除时自动从所关联 digests 移除
-  - `DigestRepository`：CRUD + `exportDigest(id, format)` 输出 Markdown（YAML front matter）或 HTML（内联样式 + escape）
-  - `AiResultCache`：key-value 式缓存（按 articleId + resultType 覆盖旧缓存）
-  - `tag-agent.ts`：内置 Prompt → JSON 数组解析 → `TagSuggestion[]`，失败返回空列表
-  - 注册 ai_data 3 个 handler：`ai:suggestTags`、`ai:getSummary`、`ai:getTranslation`、`ai:getTagSuggestions`
-  - 注册 tag 7 个 + note 4 个 + digest 6 个 IPC handler
-  - preload 暴露 `window.api.ai`（补齐 3 通道）、`window.api.tag`、`window.api.note`、`window.api.digest`
-  - summary/translation/tag_suggestions 生成结果自动缓存到 ai_results 表
-- **2026-07-15**：Task 3.2 第一批内容可靠性增强（张宇凡）：
-  - HTTP 文本下载支持从响应头、BOM、HTML meta 和 XML encoding 声明识别字符集，并兼容 `gb2312` 到 `gbk` 的常见别名，修复中文旧站无响应头 charset 时的乱码问题。
-  - 正文阅读区为长链接、代码块和宽表格补充窄栏自适应与横向滚动，避免三栏拖拽至极端宽度时内容撑破布局。
-  - 新增 GBK 页面、中文/英文混排、引用、列表、代码块和表格固定回归样本。
-  - 修复 SQLite settings 的 TypeScript 类型错误；`settings:update` 现在拒绝未知字段、错误类型和越界值，Renderer 统一复用 preload 权威类型。
-  - 第二批补充：HTTP 重试支持 `Retry-After` 与非法资源限制拦截；同步和正文清洗失败持久化稳定错误码，便于日志检索和问题反馈。
-  - 修复极端三栏宽度总和可能超过 100% 的布局问题，改用扣除拖拽手柄后的 `fr` 分配，并联动限制侧栏/列表，为阅读区保留至少 20%。
-  - UI IPC smoke 新增极限拖拽、中英混排、长代码和宽表格验证，确认窗口与正文容器均不横向溢出。
-- **2026-07-16**：Phase 3 缺陷修复（陈冠中）：
-  - **P0 - 补齐类型导入**：`electron/main/index.ts` 补上 `AIProvider`、`Topic`、`Briefing`、`TimelineEntry`、`EventGroup`、`LogEntry` 六个缺失的类型导入，消除 Main 进程 6 个类型错误（其余类型错误在 Renderer 端，由张晨阳负责）。
-  - **P0 - 默认 Provider 逻辑断裂修复**：`AI_PROVIDER_CREATE` / `AI_PROVIDER_UPDATE` handler 在 isDefault 为 true 时同步调用 `saveSettings({ defaultProviderId })`，`AI_PROVIDER_DELETE` handler 在删除当前默认 Provider 时清除 `defaultProviderId`。保证 AI 生成 handler 能正确读取用户设定的默认 Provider。
-  - **P0 - 烟测判定修复**：`smoke-3.3` 探针判定分离为 coreSections（base/sp/prov/tag/note/dig，不得跳过且必须全部通过，Provider test 必须 !== false）与 aiSections（ais/ait/aig/aic，允许跳过但未跳过则必须通过）；`smoke-3.4-integration` 增加 uiIpc.ok 检查。
-  - **P1 - 文摘 HTML 导出 XSS 修复**：`digest-repository.ts` 的 `buildHtmlExport` 先对 `markdownContent` 调 `escapeHtml()` 再做 Markdown 正则替换，防止用户笔记中的 HTML 标签或 `<script>` 注入导出页面。
-- **2026-07-16**：smoke-3.3 探针修复（陈冠中）：
-  - **JSON.stringify 双引号冲突修复**：`scripts/smoke-3.3-probe.js` 中 `__AI_BASE_URL__` / `__AI_KEY__` / `__FEED_URL__` 占位符去掉外层单引号，消除 `JSON.stringify` 替换时产生的双重引号导致 URL 解析失败（`Failed to parse URL from "http://..."/chat/completions`）。修复后 Provider test 从 false 变为 true。
-  - **note 探针修复**：note 创建改为使用刚创建的 feed ID (`nf.data.id`) 而非 `fl.data[0].id`，避免查错 feed 导致 checks 为空。
-  - **persistedFontTheme 补齐**：`sp` section 新增 `persistedFontTheme` 检查，确保字体主题重启持久化也被验证。
-- **2026-07-16**：IpcDataSource 双包层修复（陈冠中，跨模块协助张晨阳）：
-  - **根因**：`src/data/ipcDataSource.ts` 在所有 Tag/Note/Digest/Topic/AI/Settings/Log 方法调用 preload API 时多包了一层对象。例如 `window.api.settings.update({ settings })` → preload 内部再包一层 `{ settings: { settings: {...} } }` → Main handler 收到的是 `{ settings: {...} }` 而非 `Partial<AppSettings>` → 校验失败。
-  - **修复**：移除 IpcDataSource 中 30+ 处调用的多余 `{}` 包裹，参数直接透传给 preload（preload 内部会统一包一层）。涵盖 tag (5 处)、note (4 处)、digest (4 处)、topic (5 处)、ai provider (4 处)、ai operations (6 处)、settings (1 处)、log (1 处)。
-- **2026-07-15 ~ 2026-07-17**：Phase 3.4 Bug Fix & UX Polish（张晨阳）：
-  - **3.4.1.1/.2 状态同步**：`App.handleSelectArticle` / `handleToggleStar` 同时更新 `articlesState` + `allArticlesState`，FeedList 状态栏计数始终从 allArticles 派生。
-  - **3.4.1.3 AI 结果区 reset bug 修复**：`ArticleReader` useEffect 切换 article.id 时先无条件清空 5 个 AI 字段（`activePanel/summary/translationParagraphs/tagSuggestions/noteMarkdown`），再走 cleanedHtml 短路或 fetch 分支。修复前 `if (article.cleanedHtml) return;` 提前 return 跳过了 reset。
-  - **3.4.1.4/.5 自写 Markdown 渲染**：`src/utils/markdown.ts`（不引 marked），escape HTML → INLINE_RULES（link/code/bold/italic，URL scheme 白名单 http/https/mailto/#/）→ 段落（双换行）+ 单换行 `<br>`。`ArticleReader` 摘要/翻译用 `dangerouslySetInnerHTML={{ __html: renderMarkdown(s) }}` 替换纯文本。
-  - **3.4.1.6 删除提示用 allArticles**：`handleDeleteFeed` 改用 `allArticles.filter(a => a.feedId === feed.id).length` 统计真实文章数（不受当前筛选影响）。
-  - **3.4.4.1 page 返回按钮 + 当前页标题**：`Layout.tsx` 在 `.app-page` 容器顶部加 `.app-page__header`（back 按钮 + 当前 page title），从 `navItems.find(n => n.id === currentPage)?.label` 取标题。
-  - **3.4.4.2 纸质 + 深色统一**：`useAppearance` 改为接收 `effectiveTheme: 'light' | 'dark'` 参数（从 `useTheme().effective` 取）；`applyToHtml` 只在 `visualTheme === 'paper' && effectiveTheme === 'light'` 时写暖黄变量；深色 + paper 时清掉所有 paper 变量 → 走 useTheme dark 调色板，与经典深色完全一致。
-  - **3.4.4.3 顶栏搜索框**：`src/components/SearchBar/SearchBar.tsx` 300ms 防抖 + 下拉浮层 + 8 条上限 + 失焦/Esc 关闭 + 点击结果跳到 reader（`selectFeed(target.feedId) → selectArticle(id) → setCurrentPage('reader')`）；`IpcDataSource.articles({ search })` 透传（陈冠中 3.4.3 已实现）。
-  - **3.4.4.4 通用设置弹窗 + AI 设置子页面拆分**：
-    - 新组件 `src/components/GeneralSettingsModal/`（语言/字体/视觉/字号/阅读宽度 + 即时生效 + IPC 持久化 + Esc/点 backdrop 关闭）
-    - `SettingsPage` 拆为 AI only（Provider + AI 默认值）
-    - Layout nav 7 项：`general`(弹窗) / `ai`(子页) / tags / notes / digests / topics / logs；App.tsx 拦截 'general' → `setGeneralModalOpen(true) + setCurrentPage('reader')`
-  - **3.4.4.5 ArticleList 空态用 EmptyView**：`filterHint` prop 三态（`'暂无星标文章'` / `'所有文章都已读完'` / `'暂无匹配文章'`）。
-  - **smoke 探针适配 nav 7 项**：`smoke-3.4-integration` 内联探针索引 +1（general 走弹窗不占索引，ai=1, tags=2, ..., logs=6）；字体/视觉主题入口从 `.settings-page__font-card` 改为 `.general-modal__font-card`（点 navBtn[0] general 触发弹窗再验证），测试完后点 backdrop 关闭弹窗；OK 判定 `page_settingsRendered` → `page_aiRendered`。
-  - **8/8 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration。integration 探针：navBtnCount=7、fontThemeCount=3、visualThemeCount=2、fontBefore=default→fontAfter=hei、visualBefore=classic→visualAfter=paper、6 page 全部 rendered、tag/note CRUD verified、回到 reader 5 AI 按钮（实际 7 个，含星标/原文）。
-- **2026-07-15 ~ 2026-07-17**：陈冠中 main 分支同步：
-  - `1b7e039 docs: add Phase 3.4 plan (bug fixes + UX polish + fuzzy search)`
-  - `30bd39e fix RSS detection and article cleanup`
-  - `c0cde1a Merge pull request #3 from RegeonChen/agent/phase3-fixes-macos-release`
-  - `76ee8fb fix Phase 3 data contracts and add macOS packaging`
-  - `d036c26 fix: 本次打开软件后刚清洗的文章AI按钮被禁用`
-  - `ba9f236 fix: testConnection maxTokens 10 too low for DeepSeek`
-  - `dbd6beb fix: AI结果读取错位 + testConnection诊断信息不足`
-  - `90d3f22 fix: 设置项(字体/字号/阅读宽度)切换后Reader不生效`
-  - `097735a fix: 外观切换错误提示'外观切换失败' — setter返回值被.then(()=>undefined)吞掉`
-  - `c03d478 fix: IpcDataSource 双包层导致设置/Provider等全部IPC操作失败`
-- **2026-07-17**：Seed 模式（张晨阳）：
-  - 新增 `scripts/seed-test-feeds.cjs`（6 推荐 URL：阮一峰 / 少数派 / antirez / HN / Simon Willison / JSON Feed Spec，知乎日报 404 移除） + 主进程 `runSeedFeeds()` + `SMOKE_FLAGS.seedFeeds/seedList` + `app.setPath` 加 seedFeeds 分支
-  - 6 源共 165 篇文章入数据库；保留 userData 不删，方便 dev 模式直接查看（默认写到 OS userData，JUHE_SHIVI_USER_DATA env 覆盖）
-- **2026-07-17**：Task 4.1 专题 UI 完整化（张晨阳）：
-  - FullDataSource 接口 + IpcDataSource + MockDataSource 扩展 6 个 topic 4-tab 方法（`topicGetTimeline` / `topicGetEventGroups` / `topicGenerateBriefing` / `topicGetBriefing` / `topicUpdateBriefing` / `topicExportBriefing`）
-  - TopicsPage 完整化：列表（卡片 + 关键词 tag + 编辑/删除）+ TopicFormDialog（创建/编辑共用）+ stub 状态下显示"等待 4.3 接入"占位 + 仍提供新建入口
-  - TopicDetail 4 tab 容器：返回列表 + 4 tab sub-nav + 按需 lazy load
-    - Articles tab：复用 ArticleList
-    - Timeline tab：左 rail 时间线 + newInformation 高亮
-    - EventGroups tab：可折叠卡片 + 按需加载组内文章
-    - Briefing tab：生成 / 编辑 / 导出 Markdown/HTML（Blob 下载）+ 结论追溯 [N] 列表 + 支撑文章 ID + viewpointDiff
-  - smoke-4.1 探针（7 项校验）+ `npm run smoke:topic` script
-- **2026-07-19**：Task 3.5.1 摘要悬浮窗（张晨阳）：
-  - 新组件 `SummaryFloatingPanel`：可拖拽（标题栏 mousedown + document mousemove/up）+ 8 个 resize handle（4 边 + 4 角）+ 边界检测（自动 clamp 到 viewport，最小 300×200px）+ Esc 关闭
-  - 持久化：位置/大小存 `localStorage[juhe-shivi.summary-panel.position]`，viewport resize 重新 clamp
-  - 内容：Loading spinner + "Waiting for AI response…"（条件 `loading || !content`）→ Markdown 渲染后的摘要
-  - ArticleReader 集成：移除旧 `article-reader__ai-panel` 摘要折叠区；与 3.5.3 持久化协同（文章挂载时若 `article.summary` 有缓存自动打开 panel）
-  - smoke-3.5.1 探针（10 项校验：初始隐藏 / 渲染 / loading / 8 handle / 拖拽 / resize / 边界 clamp / localStorage / Esc 关闭）+ `npm run smoke:summary`
-  - **10/10 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / **smoke:summary**
-- **2026-07-19**：Task 3.5.2 UI 段落内翻译插槽 — 接张宇凡 b53e7a2 正式 split 工具（张晨阳）：
-  - 新 IPC 通道 `HTML_BLOCK_SPLIT: 'content:splitHtmlBlocks'`（shared/ipc.ts）
-  - 共享类型 `HtmlBlock { index, html, tag }`（shared/types.ts，与张宇凡版本对齐）
-  - 主进程 handler 注册（ipc-handlers.ts），调 `splitCleanedHtmlIntoBlocks(html)`
-  - preload 暴露 `window.api.content.splitHtmlBlocks(html)`
-  - FullDataSource + IpcDataSource + MockDataSource 同步实现 `htmlBlockSplit`
-  - `TranslatedArticleView` 改造：useEffect 异步 split + useRef 缓存 cleanedHtml 避免重渲染循环
-  - 修复：`ReferenceError: article is not defined` + useState 初始 loading 引起的无限循环
-  - 始终渲染外层 div（含 data-split-state="loading|ready|error"），探针能稳定检测组件挂载
-  - smoke:inline-trans 探针增加 split ready 检测（data-split-state 等待 5s）
-  - **11/11 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / smoke:summary / **smoke:inline-trans**
-- **2026-07-19**：Task 3.5.2 UI 段落内翻译插槽 — 前期准备（张晨阳）：
-  - 复用 4.1 commit 写好的 3 个组件：`html-split.ts`（`splitCleanedHtmlIntoBlocks` 浏览器 DOMParser mock）/ `TranslatedArticleView`（按段渲染）/ `TranslationSlot`（pending/ready/failed 三态）
-  - 修 `ArticleReader` 渲染条件：`activePanel === 'translation'` 即切段渲染（不等 IPC paragraphs 返回），每段立即挂 pending 插槽
-  - smoke:inline-trans 探针沿用 4.1 已写的 10 项校验（viewRendered / slotsMin1 / blockPairsMatchSlots / blocksRendered / initialPending / allReady / translatedTextContains / noFailed）
-  - 张宇凡的正式内容管线工具已就位；渲染层因进程边界保留浏览器实现，集成时按同一 `{ index, html, tag }` 契约校验结果
-  - **11/11 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic / smoke:summary / **smoke:inline-trans**
-  - smoke-3.4-integration 探针适配 `topicsPlaceholder` 选择器（`.topics-page__placeholder, .topics-page .status-view`）
-  - **9/9 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic
 
 ## 路线图
 
-1. Phase 1：创建应用脚手架并确定共享协议。
-2. Phase 2：完成订阅、同步、持久化和阅读的核心流程。
-3. Phase 3：完成课程要求的 AI、笔记、标签、多语言、日志和导出功能。
-4. Phase 4：在专题追踪流程中集成三个职责区域。
-5. Phase 5：在 Windows、macOS 和 Linux 上进行验证并准备课程交付。
+1. Phase 1–3.6：✅ 全部完成
+2. Phase 4：专题追踪端到端集成（张晨阳 4.1 + 张宇凡 4.2 已就绪，陈冠中 4.3 待接入）
+3. Phase 5：三平台验证、问题修复、课程交付准备
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
 ## 已知问题
 
-- UI 组件库、E2E 测试框架尚未确定（采用自写 React 组件 + Vitest 单元测试 + headless smoke 探针，已满足课程验收；E2E 框架未引入但不影响功能完整性）。
-- **API Key 明文存储**：`ai_providers.api_key` 以明文写入 SQLite，违反 `shared/types.ts` 中"通过安全存储管理、不保存明文"的约定。计划 v0.3.1 改用 `safeStorage.encryptString` 加密。
-- 不同 OpenAI-compatible Provider 在 Endpoint、流式响应和用量信息方面可能存在差异，需要进行兼容性测试（v0.2.x 已通过 OpenAI / DeepSeek 验证，其它 provider 待用户配置时回归）。
-- **跨平台行为测试尚未完成**：Phase 5 任务。A 仅 Windows 环境，macOS / Linux 实际启动 + 字体 + 窗口装饰 + 快捷键需要陈冠中 + 张宇凡在各自平台跑 `npm run dist:mac` / Linux 启动确认。
-- Feed、HTML 和 OPML 已有固定离线样本；AI 功能的固定测试样本尚未建立。
-- 完整 `npm audit` 报告 Electron 31、Vite 5/electron-vite 2 存在 4 组开发/运行工具链公告（2 moderate、2 high）；生产依赖审计为 0。修复需要 Electron、Vite 和 electron-vite 跨大版本升级，应由脚手架负责人协调并在发布前完成兼容性验证。
-- 专题演化图 MVP（陈冠中 2026-07-23）采用本地候选发现（标题/摘要/清洗正文） + 规范 URL/指纹/标题相似度去重。**未消耗模型 Token**；若需更高质量语义关系与观点差异，可后续接入 LLM 二次精炼。
+- **API Key 明文存储**：`ai_providers.api_key` 以明文写入 SQLite。计划 Phase 5 改用 `safeStorage` 加密。
+- **Topic / Log stub**：12 个 Topic + 2 个 Log IPC handler 仍返回 `NOT_IMPLEMENTED`，等陈冠中 Phase 4.3 接入。
+- **部分数据库仓储缺少单元测试**：Tag/Note/Digest/AIProvider/AiResultCache 的测试覆盖不足。
+- **AI 真实生成未被自动化测试覆盖**：smoke 探针中 AI section 允许 skipped。
+- **跨平台行为测试**：尚未在 macOS 和 Linux 上进行完整验证。
+- **npm audit**：Electron 31、Vite 5/electron-vite 2 存在 4 组工具链公告（2 moderate、2 high），需在发布前升级。
+- **不同 OpenAI-compatible Provider 兼容性**：需要在多 Provider 上进行兼容性测试。
