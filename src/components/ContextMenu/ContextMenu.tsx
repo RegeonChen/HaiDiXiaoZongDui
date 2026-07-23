@@ -2,6 +2,7 @@
  * 简单右键菜单
  *  - show(x, y, items) 打开
  *  - 点外面 / Esc 关闭
+ *  - Phase 3.5.x：item 可携带 submenu（hover 弹出子菜单），用于"移动到..."等场景
  */
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -14,6 +15,8 @@ export interface ContextMenuItem {
   disabled?: boolean;
   /** 设为 'separator' 显示为分隔线（label 会被忽略） */
   separator?: boolean;
+  /** 子菜单：hover/click 弹出（Phase 3.5.x 加入） */
+  submenu?: ContextMenuItem[];
 }
 
 interface MenuState {
@@ -30,9 +33,13 @@ export function showContextMenu(x: number, y: number, items: ContextMenuItem[]):
 
 export function ContextMenuHost() {
   const [state, setState] = useState<MenuState | null>(null);
+  const [openSubmenu, setOpenSubmenu] = useState<number | null>(null);
 
   useEffect(() => {
-    externalShow = (x, y, items) => setState({ x, y, items });
+    externalShow = (x, y, items) => {
+      setState({ x, y, items });
+      setOpenSubmenu(null);
+    };
     return () => {
       externalShow = null;
     };
@@ -55,7 +62,7 @@ export function ContextMenuHost() {
   if (!state) return null;
 
   // 避免超出窗口
-  const maxX = window.innerWidth - 180;
+  const maxX = window.innerWidth - 200;
   const maxY = window.innerHeight - 40;
   const x = Math.min(state.x, maxX);
   const y = Math.min(state.y, maxY);
@@ -77,6 +84,60 @@ export function ContextMenuHost() {
         {state.items.map((item, idx) =>
           item.separator ? (
             <div key={idx} className="context-menu__separator" role="separator" />
+          ) : item.submenu ? (
+            <div
+              key={idx}
+              className="context-menu__item context-menu__item--has-submenu"
+              onMouseEnter={() => setOpenSubmenu(idx)}
+              onMouseLeave={(e) => {
+                // 只有当鼠标确实离开整个子菜单触发器（不是移到子菜单上）时才关闭
+                const related = e.relatedTarget as HTMLElement | null;
+                if (!related || !related.closest('.context-menu__submenu')) {
+                  setOpenSubmenu(null);
+                }
+              }}
+              data-submenu-open={openSubmenu === idx ? 'true' : 'false'}
+            >
+              <span className="context-menu__item-label">{item.label}</span>
+              <span className="context-menu__item-arrow" aria-hidden="true">▸</span>
+              {openSubmenu === idx && (
+                <div
+                  className="context-menu__submenu"
+                  style={{ top: 0, left: '100%' }}
+                  onMouseEnter={() => setOpenSubmenu(idx)}
+                  onMouseLeave={(e) => {
+                    const related = e.relatedTarget as HTMLElement | null;
+                    if (!related || !related.closest('.context-menu__item--has-submenu')) {
+                      setOpenSubmenu(null);
+                    }
+                  }}
+                >
+                  {item.submenu.map((sub, subIdx) => (
+                    sub.separator ? (
+                      <div
+                        key={`sub-${subIdx}`}
+                        className="context-menu__separator"
+                        role="separator"
+                      />
+                    ) : (
+                      <button
+                        key={`sub-${subIdx}`}
+                        type="button"
+                        className={`context-menu__item ${sub.danger ? 'is-danger' : ''}`}
+                        disabled={sub.disabled}
+                        onClick={() => {
+                          setState(null);
+                          setOpenSubmenu(null);
+                          sub.onClick();
+                        }}
+                      >
+                        {sub.label}
+                      </button>
+                    )
+                  ))}
+                </div>
+              )}
+            </div>
           ) : (
             <button
               key={idx}

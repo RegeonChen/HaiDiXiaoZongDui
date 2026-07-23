@@ -48,6 +48,47 @@
   cursor: not-allowed;
 }
 
+/* Phase 3.5.x：子菜单触发器 + 弹出层 */
+.context-menu__item--has-submenu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  cursor: default;
+}
+
+.context-menu__item--has-submenu:hover {
+  background: var(--bg);
+}
+
+.context-menu__item-label {
+  flex: 1;
+  padding: 6px 4px 6px 10px;
+}
+
+.context-menu__item-arrow {
+  padding: 6px 8px 6px 0;
+  color: var(--fg-muted, #9ca3af);
+  font-size: 10px;
+}
+
+.context-menu__submenu {
+  position: absolute;
+  top: -4px;
+  left: 100%;
+  min-width: 160px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 1201;
+}
+
 .context-menu__separator {
   height: 1px;
   background: var(--border);

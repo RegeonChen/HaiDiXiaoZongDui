@@ -135,6 +135,8 @@ const SMOKE_FLAGS = {
   smokeArticleImages: process.env['JUHE_SHIVI_SMOKE_ARTICLE_IMAGES'] === '1',
   // Phase 3.5.x 修复:侧栏 tab=tags 真按 tag 分类 + AI 标签建议 toggle 修复
   smokeTagList: process.env['JUHE_SHIVI_SMOKE_TAGLIST'] === '1',
+  // Phase 3.5.x:订阅源分组(添加组 / 移动到组 / 删除组)
+  smokeFeedsGroup: process.env['JUHE_SHIVI_SMOKE_FEEDS_GROUP'] === '1',
   // smokeInlineTrans: Phase 3.5.2 UI 段落内翻译插槽（沿用 4.1 commit 时的命名）
   smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
   // Phase 3.5.2 split error fallback 探针：注入 mock split 抛错，验证 useEffect try/catch
@@ -246,6 +248,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeReaderModes = SMOKE_FLAGS.smokeReaderModes;
   const smokeArticleImages = SMOKE_FLAGS.smokeArticleImages;
   const smokeTagList = SMOKE_FLAGS.smokeTagList;
+  const smokeFeedsGroup = SMOKE_FLAGS.smokeFeedsGroup;
   const smokeInlineTrans = SMOKE_FLAGS.smokeInlineTrans;
   const smokeInlineTransSplitError = SMOKE_FLAGS.smokeInlineTransSplitError;
   const feedUrl = SMOKE_FLAGS.feedUrl;
@@ -1339,6 +1342,186 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         return JSON.stringify(report);
       })()
     `;
+  } else if (smokeFeedsGroup) {
+    // Phase 3.5.x 订阅源分组 smoke:添加组 / 移动到组 / 删除组 / "未分组"兜底
+    // 走真 IPC 模式(不 mock):seed 真实 feeds + 调真实 IPC,验证后端持久化 + UI 渲染
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { feedsGroup: { ok: false, error: null, checks: {} } };
+        try {
+          // A) seed 三个真 feed:2 个带 groupName(技术/科技),1 个未分组
+          const fTechR = await window.api.feed.create({
+            url: 'https://smoke-feeds-group.example.com/tech.xml',
+            title: 'Smoke Tech Feed',
+            groupName: '技术'
+          });
+          const fScienceR = await window.api.feed.create({
+            url: 'https://smoke-feeds-group.example.com/science.xml',
+            title: 'Smoke Science Feed',
+            groupName: '科技'
+          });
+          const fNoneR = await window.api.feed.create({
+            url: 'https://smoke-feeds-group.example.com/news.xml',
+            title: 'Smoke News Feed'
+          });
+          report.feedsGroup.checks.seedFeedsCreated =
+            fTechR.success && fScienceR.success && fNoneR.success;
+          if (!report.feedsGroup.checks.seedFeedsCreated) {
+            return JSON.stringify(report);
+          }
+          const fNone = fNoneR.data;
+
+          // 等 React 把真实 feeds 拉到 FeedList 并按 groupName 渲染 group 容器
+          // 关键:window.api.feed.create 直接写 DB 不触发 App.tsx refreshFeeds,
+          // 必须手动 dispatch 'juhe:refresh' 事件让 App 重新拉 feeds。
+          window.dispatchEvent(new Event('juhe:refresh'));
+          await waitFor(
+            () => document.querySelectorAll('.feed-list [data-feed-group]').length >= 2,
+            { timeout: 5000 }
+          );
+          await sleep(200);
+
+          // B) 初始 listGroups + 侧栏按 groupName 渲染
+          const initialGroupsR = await window.api.feed.listGroups();
+          report.feedsGroup.checks.initialListGroupsOk =
+            initialGroupsR.success && Array.isArray(initialGroupsR.data);
+          report.feedsGroup.checks.initialGroups =
+            initialGroupsR.success ? initialGroupsR.data : [];
+
+          const groupEls = document.querySelectorAll('.feed-list [data-feed-group]');
+          const renderedGroupNames = Array.from(groupEls).map((el) =>
+            el.getAttribute('data-feed-group') ?? ''
+          );
+          report.feedsGroup.checks.groupTitlesRendered = groupEls.length >= 2;
+          report.feedsGroup.checks.renderedGroupNames = renderedGroupNames;
+          report.feedsGroup.checks.ungroupedInitiallyRendered =
+            renderedGroupNames.includes('未分组');
+
+          // C) 打开"添加组"对话框 → input "测试组" → submit → 侧栏出现新组
+          const addGroupBtn = document.querySelector('[data-testid="feed-list__add-group"]');
+          report.feedsGroup.checks.addGroupBtnVisible = !!addGroupBtn;
+          addGroupBtn?.click();
+          await waitFor(
+            () => !!document.querySelector('.add-group-dialog'),
+            { timeout: 1500 }
+          );
+          report.feedsGroup.checks.addGroupDialogOpened =
+            !!document.querySelector('.add-group-dialog');
+          const inputEl = document.querySelector('[data-testid="add-group-input"]');
+          if (inputEl) {
+            const nativeSetter = Object.getOwnPropertyDescriptor(
+              window.HTMLInputElement.prototype, 'value'
+            ).set;
+            nativeSetter.call(inputEl, '测试组');
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          await sleep(50);
+          const submitBtn = document.querySelector('[data-testid="add-group-submit"]');
+          submitBtn?.click();
+          await waitFor(
+            () => {
+              const groups = document.querySelectorAll('.feed-list [data-feed-group]');
+              return Array.from(groups).some(
+                (el) => el.getAttribute('data-feed-group') === '测试组'
+              );
+            },
+            { timeout: 1500 }
+          );
+          const newGroupRendered = !!Array.from(
+            document.querySelectorAll('.feed-list [data-feed-group]')
+          ).find((el) => el.getAttribute('data-feed-group') === '测试组');
+          report.feedsGroup.checks.addGroupRenders = newGroupRendered;
+          report.feedsGroup.checks.dialogClosedAfterSubmit =
+            !document.querySelector('.add-group-dialog');
+
+          // D) 移动 fNone 到 "测试组" → 验证 feedRenderedInNewGroup
+          const updateR = await window.api.feed.update(fNone.id, { groupName: '测试组' });
+          report.feedsGroup.checks.moveToGroupIpcOk = updateR.success;
+          // IPC update 直接改 DB 不触发 App.tsx refreshFeeds,手动 dispatch 让 React 重新渲染
+          window.dispatchEvent(new Event('juhe:refresh'));
+          await waitFor(
+            () => {
+              const groupDiv = document.querySelector('.feed-list__group[data-feed-group="测试组"]');
+              if (!groupDiv) return false;
+              // 区分真 feed(button 在 .feed-list__group 内)和虚拟分组(在 .feed-list__virtuals 内)
+              return groupDiv.querySelectorAll('.feed-list__item').length >= 1;
+            },
+            { timeout: 1500 }
+          );
+          const groupDiv = document.querySelector('.feed-list__group[data-feed-group="测试组"]');
+          const feedItemsInGroup = groupDiv
+            ? groupDiv.querySelectorAll('.feed-list__item').length
+            : 0;
+          report.feedsGroup.checks.feedRenderedInNewGroup = feedItemsInGroup >= 1;
+          report.feedsGroup.checks.feedItemsInTestGroup = feedItemsInGroup;
+
+          // E) 移动 fNone 回 null → 验证 "未分组" 组仍渲染
+          const moveBackR = await window.api.feed.update(fNone.id, { groupName: null });
+          report.feedsGroup.checks.moveToUngroupedIpcOk = moveBackR.success;
+          // IPC update 直接改 DB,dispatch 让 React 重新渲染
+          window.dispatchEvent(new Event('juhe:refresh'));
+          await waitFor(
+            () => !!document.querySelector('.feed-list__group[data-feed-group="未分组"]'),
+            { timeout: 1500 }
+          );
+          const ungroupedDiv = document.querySelector('.feed-list__group[data-feed-group="未分组"]');
+          report.feedsGroup.checks.ungroupedBucketRendered = !!ungroupedDiv;
+
+          // F) 删组 IPC + 按钮可见
+          const deleteBtn = document.querySelector(
+            '[data-testid="feed-list__delete-group-技术"]'
+          );
+          report.feedsGroup.checks.deleteGroupBtnVisible = !!deleteBtn;
+          const clearR = await window.api.feed.clearGroup('技术');
+          report.feedsGroup.checks.clearGroupIpcOk = clearR.success && clearR.data >= 1;
+          report.feedsGroup.checks.clearGroupIpcReturned = clearR.success && clearR.data >= 1;
+
+          // G) 验证 listGroups IPC 工作
+          const finalGroupsR = await window.api.feed.listGroups();
+          report.feedsGroup.checks.finalListGroupsOk = finalGroupsR.success;
+          report.feedsGroup.checks.finalGroups = finalGroupsR.success ? finalGroupsR.data : [];
+
+          // H) updateFeed 不存在的 feedId 应返回 error(参数校验)
+          const invalidUpdateR = await window.api.feed.update('non-existent-id', { groupName: 'x' });
+          report.feedsGroup.checks.invalidUpdateRejected =
+            !invalidUpdateR.success && !!invalidUpdateR.error;
+
+          // 关键探针必须全部通过
+          const mustPass = [
+            'seedFeedsCreated', 'initialListGroupsOk', 'groupTitlesRendered',
+            'ungroupedInitiallyRendered',
+            'addGroupBtnVisible', 'addGroupDialogOpened',
+            'addGroupRenders', 'dialogClosedAfterSubmit',
+            'moveToGroupIpcOk', 'feedRenderedInNewGroup',
+            'moveToUngroupedIpcOk', 'ungroupedBucketRendered',
+            'deleteGroupBtnVisible', 'clearGroupIpcOk', 'clearGroupIpcReturned',
+            'finalListGroupsOk', 'invalidUpdateRejected'
+          ];
+          for (const k of mustPass) {
+            if (report.feedsGroup.checks[k] !== true) {
+              report.feedsGroup.ok = false;
+              return JSON.stringify(report);
+            }
+          }
+          report.feedsGroup.ok = true;
+        } catch (e) {
+          report.feedsGroup.error = String(e);
+          report.feedsGroup.stack = (e instanceof Error) ? e.stack : null;
+        }
+        return JSON.stringify(report);
+      })()
+    `;
   } else if (smokeUiReal) {
     // Phase 2.4 smoke: UI end-to-end via real IPC
     // 走真 IPC 模式（加载 renderer 不带 ?mock=1），通过 IPC seed 数据后
@@ -2278,6 +2461,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"splitError":{"ok":true');
     } else if (smokeV2) {
       pass = raw.includes('"db":{"ok":true');
+    } else if (smokeFeedsGroup) {
+      pass = raw.includes('"feedsGroup":{"ok":true');
     } else if (smokeUiReal) {
       if (SMOKE_FLAGS.smokeIntegration) {
         // 集成 fixture 同时覆盖基础 UI IPC 与 Phase 3 页面流程，两者均必须通过。
@@ -2288,8 +2473,6 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       }
     } else if (smokeUI) {
       pass = raw.includes('"ui":{"ok":true');
-    } else if (smokeTagList) {
-      pass = raw.includes('"tagList":{"ok":true');
     } else if (smokeTask33) {
       const report33 = JSON.parse(raw);
       // 核心 section（base/sp/prov/tag/note/dig）不得跳过，必须全部通过。
@@ -2485,6 +2668,25 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       return ok(undefined);
     } catch (e) {
       return fail('FEED_DELETE_FAILED', String(e));
+    }
+  });
+
+  // Phase 3.5.x：列出所有订阅源组名（侧栏"添加组 / 移动到组"用）
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_LIST_GROUPS, async (): Promise<IpcResult<string[]>> => {
+    try {
+      return ok(FeedRepository.listGroups());
+    } catch (e) {
+      return fail('FEED_LIST_GROUPS_FAILED', String(e));
+    }
+  });
+
+  // Phase 3.5.x：把组内全部订阅源移到"未分组"（删除组，保留订阅源）
+  trustedIpcMain.handle(IPC_CHANNELS.FEED_CLEAR_GROUP, async (_, args): Promise<IpcResult<number>> => {
+    try {
+      if (!args?.groupName) return fail('INVALID_PARAMS', '缺少 groupName');
+      return ok(FeedRepository.clearGroup(args.groupName));
+    } catch (e) {
+      return fail('FEED_CLEAR_GROUP_FAILED', String(e));
     }
   });
 

@@ -22,6 +22,7 @@ import { FeedList } from './components/FeedList/FeedList';
 import { ArticleList } from './components/ArticleList/ArticleList';
 import { ArticleReader } from './components/ArticleReader/ArticleReader';
 import { AddFeedDialog } from './components/AddFeedDialog/AddFeedDialog';
+import { AddGroupDialog } from './components/AddGroupDialog/AddGroupDialog';
 import { Toast, type ToastItem } from './components/Toast/Toast';
 import { ConfirmDialog, type ConfirmDialogHandle } from './components/ConfirmDialog/ConfirmDialog';
 import { ContextMenuHost } from './components/ContextMenu/ContextMenu';
@@ -64,7 +65,12 @@ export function App() {
   const [tags, setTags] = useState<Tag[]>([]);
   // Phase 3.5.x：每个 tag 名下的真实文章数（来自 article_tags SQL 聚合）
   const [tagCounts, setTagCounts] = useState<Record<string, number>>({});
+  // Phase 3.5.x：订阅源分组（侧栏"添加组 / 移动到组"）
+  // groups 同时包含"用户主动添加的空组"和"已用组名"，是 UI 侧本地缓存；
+  // 服务端"添加组"无空组概念，依赖用户把第一个 feed 移动到新组来"创建"组。
+  const [groups, setGroups] = useState<string[]>([]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addGroupDialogOpen, setAddGroupDialogOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const toastIdRef = useRef(0);
@@ -140,12 +146,27 @@ export function App() {
     if (r.kind === 'ready') setTagCounts(r.data);
   }, [ds]);
 
+  // Phase 3.5.x：拉所有订阅源组名（侧栏"添加组"按钮 + 移动到组子菜单共用）
+  // 合并服务端实际组名 + 本地"用户主动添加的空组"缓存,
+  // 避免空组被服务端列在 listGroups 结果里之后又因没人用而被淘汰。
+  const refreshGroups = useCallback(async () => {
+    const r = await ds.feedListGroups();
+    if (r.kind === 'ready') {
+      setGroups((prev) => {
+        const set = new Set(r.data);
+        for (const g of prev) set.add(g);
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh'));
+      });
+    }
+  }, [ds]);
+
   // 初次拉取 feeds + 全部文章（侧栏计数）
   useEffect(() => {
     void refreshFeeds();
     void refreshCounts();
     void refreshTags();
     void refreshTagCounts();
+    void refreshGroups();
     void (async () => {
       const result = await ds.articles({});
       if (result.kind === 'ready') {
@@ -154,7 +175,7 @@ export function App() {
         setAllArticlesState({ kind: 'ready', data: [] });
       }
     })();
-  }, [refreshFeeds, refreshTags, refreshTagCounts, ds]);
+  }, [refreshFeeds, refreshTags, refreshTagCounts, refreshGroups, ds]);
 
   // 当 feed 选择变化时拉取对应文章
   useEffect(() => {
@@ -180,6 +201,7 @@ export function App() {
       void refreshCounts();
       void refreshTags();
       void refreshTagCounts();
+      void refreshGroups();
       void (async () => {
         const r = await ds.articles({});
         if (r.kind === 'ready') setAllArticlesState({ kind: 'ready', data: r.data });
@@ -187,7 +209,7 @@ export function App() {
     };
     window.addEventListener('juhe:refresh', handler);
     return () => window.removeEventListener('juhe:refresh', handler);
-  }, [refreshFeeds, refreshCounts, refreshTags, refreshTagCounts, ds]);
+  }, [refreshFeeds, refreshCounts, refreshTags, refreshTagCounts, refreshGroups, ds]);
 
   // Phase 3.6.2：组件卸载时清理进度条延迟计时器
   useEffect(() => {
@@ -413,6 +435,67 @@ export function App() {
     [articles, ds, pushToast, refreshFeeds, refreshCounts, selectFeed, selection.feedId]
   );
 
+  // Phase 3.5.x：添加组（仅本地缓存 + 立即渲染；用户还需把订阅源移动到新组来"激活"组）
+  const handleAddGroup = useCallback(
+    (name: string) => {
+      setGroups((prev) => {
+        if (prev.some((g) => g.toLowerCase() === name.toLowerCase())) return prev;
+        return [...prev, name].sort((a, b) => a.localeCompare(b, 'zh'));
+      });
+      pushToast(`已添加组「${name}」`, 'success');
+      return { ok: true, message: 'ok' };
+    },
+    [pushToast]
+  );
+
+  // Phase 3.5.x：把订阅源移动到指定组（null = 未分组）
+  const handleMoveFeedToGroup = useCallback(
+    async (feed: Feed, groupName: string | null) => {
+      try {
+        const r = await ds.updateFeed(feed.id, { groupName });
+        if (r.kind === 'ready') {
+          await refreshFeeds();
+          await refreshGroups();
+          const target = groupName ?? '未分组';
+          pushToast(`已将「${feed.siteTitle || feed.title}」移到「${target}」`, 'success');
+        } else {
+          pushToast(`移动失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        }
+      } catch (e) {
+        pushToast(`移动失败：${String(e)}`, 'error');
+      }
+    },
+    [ds, pushToast, refreshFeeds, refreshGroups]
+  );
+
+  // Phase 3.5.x：删除组（组内所有订阅源移到"未分组"，订阅源本身保留）
+  const handleDeleteGroup = useCallback(
+    async (groupName: string) => {
+      const ok = await confirmRef.current?.open({
+        title: '删除组',
+        message: `确定要删除组「${groupName}」？组内订阅源会保留并移到「未分组」。`,
+        confirmLabel: '删除',
+        cancelLabel: '取消',
+        danger: true
+      });
+      if (!ok) return;
+      try {
+        const r = await ds.feedClearGroup(groupName);
+        if (r.kind === 'ready') {
+          setGroups((prev) => prev.filter((g) => g !== groupName));
+          await refreshFeeds();
+          await refreshGroups();
+          pushToast(`已删除组「${groupName}」（${r.data} 个订阅源移到未分组）`, 'success');
+        } else {
+          pushToast(`删除失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        }
+      } catch (e) {
+        pushToast(`删除失败：${String(e)}`, 'error');
+      }
+    },
+    [ds, pushToast, refreshFeeds, refreshGroups]
+  );
+
   // OPML 导入
   const handleOpmlImport = useCallback(async () => {
     const api = (window as unknown as { api?: { opml?: { import: () => Promise<{ success: boolean; data?: { feedsImported: number; feedsSkipped: number; errors: string[] } | null; error?: { message: string } }> } } }).api;
@@ -509,6 +592,10 @@ export function App() {
         failedFeedIds={syncing ? undefined : failedFeedIds}
         tags={tags}
         tagCounts={tagCounts}
+        groups={groups}
+        onAddGroup={() => setAddGroupDialogOpen(true)}
+        onMoveFeedToGroup={handleMoveFeedToGroup}
+        onDeleteGroup={handleDeleteGroup}
         onSyncFeed={async (feed: Feed) => {
           pushToast(`正在同步「${feed.siteTitle || feed.title}」…`, 'info');
           const r = await ds.syncFeed(feed.id);
@@ -646,6 +733,12 @@ export function App() {
         open={addDialogOpen}
         onClose={() => setAddDialogOpen(false)}
         onSubmit={handleAddFeed}
+      />
+      <AddGroupDialog
+        open={addGroupDialogOpen}
+        existingGroups={groups}
+        onClose={() => setAddGroupDialogOpen(false)}
+        onSubmit={handleAddGroup}
       />
       <ConfirmDialog ref={confirmRef} />
       <ContextMenuHost />

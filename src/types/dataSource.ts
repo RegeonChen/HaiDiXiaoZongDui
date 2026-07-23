@@ -43,6 +43,21 @@ export interface DataSource {
    */
   createFeed(url: string, title?: string): Promise<DataSourceState<Feed>>;
   /**
+   * Phase 3.5.x：更新订阅源的部分字段（title / groupName / syncIntervalMin）。
+   * 侧栏"移动到组" / "重命名组"功能依赖此方法。
+   */
+  updateFeed(id: string, input: { title?: string; groupName?: string | null; syncIntervalMin?: number | null }): Promise<DataSourceState<Feed>>;
+  /**
+   * Phase 3.5.x：列出所有订阅源组名（去重、按字典序排序）。用于侧栏"添加组 / 移动到组"。
+   * groupName 为 null（未分组）的订阅源不计入。
+   */
+  feedListGroups(): Promise<DataSourceState<string[]>>;
+  /**
+   * Phase 3.5.x：把指定组的所有订阅源移到"未分组"（groupName = null）。
+   * 用于侧栏"删除组"操作。返回被更新的订阅源数量。
+   */
+  feedClearGroup(groupName: string): Promise<DataSourceState<number>>;
+  /**
    * 按需拉取文章的 Cleaned HTML。
    * - IPC 模式：调 window.api.content.getCleanedHtml(articleId)，可能触发服务端清洗
    * - Mock 模式：直接返回 article.cleanedHtml

@@ -175,6 +175,47 @@ export class MockDataSource implements DataSource {
     return { kind: 'ready', data: feed };
   }
 
+  // Phase 3.5.x: 更新订阅源(title / groupName / syncIntervalMin)
+  async updateFeed(
+    id: string,
+    input: { title?: string; groupName?: string | null; syncIntervalMin?: number | null }
+  ): Promise<DataSourceState<Feed>> {
+    const idx = this.feedsState.findIndex((f) => f.id === id);
+    if (idx < 0) return { kind: 'error', error: `订阅源 ${id} 不存在` };
+    const existing = this.feedsState[idx];
+    const updated: Feed = {
+      ...existing,
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.groupName !== undefined ? { groupName: input.groupName } : {}),
+      ...(input.syncIntervalMin !== undefined ? { syncIntervalMin: input.syncIntervalMin } : {}),
+      updatedAt: new Date().toISOString()
+    };
+    this.feedsState = this.feedsState.map((f) => (f.id === id ? updated : f));
+    return { kind: 'ready', data: updated };
+  }
+
+  // Phase 3.5.x: 列出所有订阅源组名(去重, 按字典序)
+  async feedListGroups(): Promise<DataSourceState<string[]>> {
+    const set = new Set<string>();
+    for (const f of this.feedsState) {
+      if (f.groupName) set.add(f.groupName);
+    }
+    return { kind: 'ready', data: Array.from(set).sort((a, b) => a.localeCompare(b, 'zh')) };
+  }
+
+  // Phase 3.5.x: 把指定组的所有订阅源移到"未分组"(groupName = null)
+  async feedClearGroup(groupName: string): Promise<DataSourceState<number>> {
+    let count = 0;
+    this.feedsState = this.feedsState.map((f) => {
+      if (f.groupName === groupName) {
+        count += 1;
+        return { ...f, groupName: null, updatedAt: new Date().toISOString() };
+      }
+      return f;
+    });
+    return { kind: 'ready', data: count };
+  }
+
   async getCleanedHtml(articleId: string): Promise<DataSourceState<string>> {
     const article = this.articlesState.find((a) => a.id === articleId);
     if (!article) return { kind: 'error', error: `文章 ${articleId} 不存在` };

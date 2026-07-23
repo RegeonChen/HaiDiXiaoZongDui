@@ -55,7 +55,13 @@ const api = {
       invoke(IPC_CHANNELS.FEED_UPDATE, { id, input }),
 
     delete: (id: string): Promise<IpcResponse<typeof IPC_CHANNELS.FEED_DELETE>> =>
-      invoke(IPC_CHANNELS.FEED_DELETE, { id })
+      invoke(IPC_CHANNELS.FEED_DELETE, { id }),
+
+    // Phase 3.5.x：列出所有订阅源组名 + 删除组（清空组内所有订阅源的 groupName）
+    listGroups: (): Promise<IpcResponse<typeof IPC_CHANNELS.FEED_LIST_GROUPS>> =>
+      invokeVoid(IPC_CHANNELS.FEED_LIST_GROUPS),
+    clearGroup: (groupName: string): Promise<IpcResponse<typeof IPC_CHANNELS.FEED_CLEAR_GROUP>> =>
+      invoke(IPC_CHANNELS.FEED_CLEAR_GROUP, { groupName })
   },
 
   // —— Article ——

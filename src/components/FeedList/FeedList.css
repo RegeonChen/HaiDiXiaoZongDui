@@ -134,6 +134,41 @@
   font-weight: 600;
 }
 
+/* Phase 3.5.x：组标题右侧放"删除组"按钮 */
+.feed-list__group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.feed-list__group-delete {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.feed-list__group-delete:hover {
+  background: rgba(220, 38, 38, 0.12);
+  color: var(--err, #dc2626);
+}
+
+.feed-list__group-empty {
+  padding: 4px 12px 8px 30px;
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+}
+
 .feed-list__item {
   appearance: none;
   border: none;

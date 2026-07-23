@@ -81,6 +81,10 @@ export const IPC_CHANNELS = {
   FEED_UPDATE:     'feed:update',
   FEED_DELETE:     'feed:delete',
 
+  // -- Feed Group（Phase 3.5.x：侧栏添加组 / 移动到组） --
+  FEED_LIST_GROUPS: 'feed:listGroups',
+  FEED_CLEAR_GROUP:  'feed:clearGroup',
+
   // -- Article（文章） --
   ARTICLE_LIST:    'article:list',
   ARTICLE_GET:     'article:get',
@@ -200,6 +204,9 @@ export interface IpcRequestMap {
   [IPC_CHANNELS.FEED_CREATE]: { args: { input: FeedCreateInput }; result: Feed };
   [IPC_CHANNELS.FEED_UPDATE]: { args: { id: string; input: FeedUpdateInput }; result: Feed };
   [IPC_CHANNELS.FEED_DELETE]: { args: { id: string };           result: void };
+  // -- Feed Group --
+  [IPC_CHANNELS.FEED_LIST_GROUPS]: { args: void;                  result: string[] };
+  [IPC_CHANNELS.FEED_CLEAR_GROUP]:  { args: { groupName: string }; result: number };
 
   // -- Article --
   [IPC_CHANNELS.ARTICLE_LIST]:            { args: { filter?: ArticleFilter }; result: { items: Article[]; total: number } };

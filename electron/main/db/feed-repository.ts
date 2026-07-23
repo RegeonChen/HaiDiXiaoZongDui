@@ -106,6 +106,40 @@ export const FeedRepository = {
   },
 
   /**
+   * Phase 3.5.x：列出所有已使用的组名（去重，按字典序排序）。
+   * 侧栏 "添加组 / 移动到组" UI 用 — 让用户能看到/选择现有组。
+   * groupName 为 null（未分组）的订阅源不计入。
+   */
+  listGroups(): string[] {
+    const db = getDatabase();
+    const rows = db.exec(
+      `SELECT DISTINCT group_name AS groupName FROM feeds
+       WHERE group_name IS NOT NULL AND group_name != ''
+       ORDER BY group_name COLLATE NOCASE ASC`
+    );
+    if (!rows.length) return [];
+    return rows[0].values.map((row) => row[0] as string);
+  },
+
+  /**
+   * Phase 3.5.x：把指定组的所有订阅源移到"未分组"（groupName = null）。
+   * 用于"删除组"操作（保留订阅源，仅解除组绑定）。
+   * 返回被更新的订阅源数量。
+   */
+  clearGroup(groupName: string): number {
+    const db = getDatabase();
+    const ts = now();
+    db.run(
+      `UPDATE feeds SET group_name = NULL, updated_at = ?
+       WHERE group_name = ?`,
+      [ts, groupName]
+    );
+    const updated = db.getRowsModified();
+    saveDatabase();
+    return updated;
+  },
+
+  /**
    * 创建新订阅源。
    * 返回创建的 Feed。若 url 重复则返回已存在的 Feed（幂等）。
    */

@@ -199,6 +199,24 @@ export class IpcDataSource implements FullDataSource {
     return unwrap(await window.api.feed.create({ url, title }));
   }
 
+  // Phase 3.5.x: 更新订阅源(title / groupName / syncIntervalMin),
+  // 侧栏"移动到组 / 重命名组"依赖
+  async updateFeed(
+    id: string,
+    input: { title?: string; groupName?: string | null; syncIntervalMin?: number | null }
+  ): Promise<DataSourceState<Feed>> {
+    return unwrap(await window.api.feed.update(id, input));
+  }
+
+  // Phase 3.5.x: 列出订阅源组 + 删除组
+  async feedListGroups(): Promise<DataSourceState<string[]>> {
+    return unwrap(await window.api.feed.listGroups());
+  }
+
+  async feedClearGroup(groupName: string): Promise<DataSourceState<number>> {
+    return unwrap(await window.api.feed.clearGroup(groupName));
+  }
+
   async getCleanedHtml(articleId: string): Promise<DataSourceState<string>> {
     return unwrap(await window.api.content.getCleanedHtml(articleId));
   }

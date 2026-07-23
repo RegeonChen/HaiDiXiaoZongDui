@@ -1,0 +1,112 @@
+/**
+ * 添加订阅源组对话框样式
+ * 风格与 AddFeedDialog 对齐
+ */
+.add-group-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: add-group-dialog-fade 0.15s ease-out;
+}
+
+@keyframes add-group-dialog-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.add-group-dialog {
+  background: var(--bg-elevated, #ffffff);
+  color: var(--fg, #1a1a1a);
+  border-radius: 10px;
+  padding: 24px;
+  width: min(420px, 90vw);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.add-group-dialog__title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.add-group-dialog__hint {
+  font-size: 13px;
+  color: var(--fg-muted, #6b7280);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.add-group-dialog__label {
+  font-size: 13px;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.add-group-dialog__input {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 6px;
+  background: var(--bg, #ffffff);
+  color: var(--fg, #1a1a1a);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.add-group-dialog__input:focus {
+  border-color: var(--accent, #3b82f6);
+}
+
+.add-group-dialog__error {
+  font-size: 13px;
+  color: #dc2626;
+  margin: 0;
+  padding: 6px 8px;
+  background: rgba(220, 38, 38, 0.08);
+  border-radius: 4px;
+}
+
+.add-group-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.add-group-dialog__btn {
+  font: inherit;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #d1d5db);
+  background: var(--bg-elevated, #ffffff);
+  color: var(--fg, #1a1a1a);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.add-group-dialog__btn:hover:not(:disabled) {
+  background: var(--bg-hover, #f3f4f6);
+}
+
+.add-group-dialog__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.add-group-dialog__btn--primary {
+  background: var(--accent, #3b82f6);
+  color: #ffffff;
+  border-color: var(--accent, #3b82f6);
+}
+
+.add-group-dialog__btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover, #2563eb);
+  border-color: var(--accent-hover, #2563eb);
+}
