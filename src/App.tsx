@@ -468,6 +468,59 @@ export function App() {
     [ds, pushToast, refreshFeeds, refreshGroups]
   );
 
+  // Phase 3.5.x：删除标签(从 tags 表 + 关联 article_tags)
+  const handleDeleteTag = useCallback(
+    async (tagId: string, tagName: string) => {
+      const ok = await confirmRef.current?.open({
+        title: '删除标签',
+        message: `确定要删除标签「${tagName}」？所有文章上的该标签关联会一并清除。`,
+        confirmLabel: '删除',
+        cancelLabel: '取消',
+        danger: true
+      });
+      if (!ok) return;
+      try {
+        await ds.tagDelete(tagId);
+        await refreshTags();
+        await refreshTagCounts();
+        pushToast(`已删除标签「${tagName}」`, 'success');
+      } catch (e) {
+        pushToast(`删除失败:${e instanceof Error ? e.message : String(e)}`, 'error');
+      }
+    },
+    [ds, pushToast, refreshTags, refreshTagCounts]
+  );
+
+  // Phase 3.5.x：批量删除未使用标签(从 ... 菜单触发)
+  const handleDeleteUnusedTags = useCallback(async () => {
+    const unusedTags = tags.filter((t) => (tagCounts[t.id] ?? 0) === 0);
+    if (unusedTags.length === 0) {
+      pushToast('没有未使用的标签', 'info');
+      return;
+    }
+    const ok = await confirmRef.current?.open({
+      title: '删除未使用标签',
+      message: `将删除 ${unusedTags.length} 个未使用标签（未被任何文章使用）：${unusedTags.slice(0, 5).map((t) => t.name).join('、')}${unusedTags.length > 5 ? '…' : ''}`,
+      confirmLabel: `删除 ${unusedTags.length} 个`,
+      cancelLabel: '取消',
+      danger: true
+    });
+    if (!ok) return;
+    let ok2 = 0;
+    let fail2 = 0;
+    for (const t of unusedTags) {
+      try {
+        await ds.tagDelete(t.id);
+        ok2 += 1;
+      } catch {
+        fail2 += 1;
+      }
+    }
+    await refreshTags();
+    await refreshTagCounts();
+    pushToast(`已删除 ${ok2} 个未使用标签${fail2 > 0 ? `，${fail2} 个失败` : ''}`, 'success');
+  }, [tags, tagCounts, ds, pushToast, refreshTags, refreshTagCounts]);
+
   // Phase 3.5.x：删除组（组内所有订阅源移到"未分组"，订阅源本身保留）
   const handleDeleteGroup = useCallback(
     async (groupName: string) => {
@@ -596,6 +649,8 @@ export function App() {
         onAddGroup={() => setAddGroupDialogOpen(true)}
         onMoveFeedToGroup={handleMoveFeedToGroup}
         onDeleteGroup={handleDeleteGroup}
+        onDeleteTag={handleDeleteTag}
+        onDeleteUnusedTags={handleDeleteUnusedTags}
         onSyncFeed={async (feed: Feed) => {
           pushToast(`正在同步「${feed.siteTitle || feed.title}」…`, 'info');
           const r = await ds.syncFeed(feed.id);

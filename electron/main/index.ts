@@ -1497,6 +1497,104 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.feedsGroup.checks.invalidUpdateRejected =
             !invalidUpdateR.success && !!invalidUpdateR.error;
 
+          // I) Bug 3:订阅源组别可折叠
+          // 先点 "技术" 组的折叠按钮 → 验证 data-collapsed=true + 内部 feed item 消失
+          const techToggleBtn = document.querySelector('[data-testid="feed-list__toggle-group-技术"]');
+          report.feedsGroup.checks.groupToggleBtnVisible = !!techToggleBtn;
+          techToggleBtn?.click();
+          await sleep(200);
+          const techGroupDiv = document.querySelector('.feed-list__group[data-feed-group="技术"]');
+          report.feedsGroup.checks.groupCollapsedAfterClick =
+            techGroupDiv?.getAttribute('data-collapsed') === 'true';
+          report.feedsGroup.checks.groupItemsHiddenWhenCollapsed =
+            (techGroupDiv?.querySelectorAll('.feed-list__item').length ?? 0) === 0;
+          // 再点 → 验证展开
+          techToggleBtn?.click();
+          await sleep(200);
+          report.feedsGroup.checks.groupExpandedAfterSecondClick =
+            techGroupDiv?.getAttribute('data-collapsed') === 'false';
+          report.feedsGroup.checks.groupItemsRestoredWhenExpanded =
+            (techGroupDiv?.querySelectorAll('.feed-list__item').length ?? 0) >= 1;
+
+          // J) Bug 1:... 按钮交互(tab=sources 时显示"全部折叠 / 全部展开")
+          const moreBtn = document.querySelector('[data-testid="feed-list__more"]');
+          report.feedsGroup.checks.moreBtnVisible = !!moreBtn;
+          moreBtn?.click();
+          await sleep(150);
+          const moreMenu = document.querySelector('[data-testid="feed-list__more-menu"]');
+          report.feedsGroup.checks.moreMenuOpened = !!moreMenu;
+          const expandAllBtn = document.querySelector('[data-testid="feed-list__expand-all"]');
+          const collapseAllBtn = document.querySelector('[data-testid="feed-list__collapse-all"]');
+          report.feedsGroup.checks.moreMenuHasExpandAll = !!expandAllBtn;
+          report.feedsGroup.checks.moreMenuHasCollapseAll = !!collapseAllBtn;
+          // 点 "全部折叠" → 验证所有组的 data-collapsed=true
+          collapseAllBtn?.click();
+          await sleep(200);
+          const allGroups = document.querySelectorAll('.feed-list__group[data-feed-group]');
+          const allCollapsed = Array.from(allGroups).every(
+            (g) => g.getAttribute('data-collapsed') === 'true'
+          );
+          report.feedsGroup.checks.collapseAllWorks = allGroups.length > 0 && allCollapsed;
+          // 再点 ... 菜单 → 全部展开
+          moreBtn?.click();
+          await sleep(100);
+          document.querySelector('[data-testid="feed-list__expand-all"]')?.click();
+          await sleep(200);
+          const allExpanded = Array.from(document.querySelectorAll('.feed-list__group[data-feed-group]'))
+            .every((g) => g.getAttribute('data-collapsed') === 'false');
+          report.feedsGroup.checks.expandAllWorks = allGroups.length > 0 && allExpanded;
+
+          // K) Bug 2:标签删除
+          // 创建 2 个标签,1 个给文章(算"使用过"),1 个不给(算"未使用")
+          const usedTagR = await window.api.tag.create({ name: '已用标签' });
+          const unusedTagR = await window.api.tag.create({ name: '未用标签' });
+          report.feedsGroup.checks.testTagsCreated =
+            usedTagR.success && unusedTagR.success;
+          if (report.feedsGroup.checks.testTagsCreated) {
+            const usedTagId = usedTagR.data.id;
+            const unusedTagId = unusedTagR.data.id;
+            // 给第一篇文章应用 "已用标签"
+            const articlesR = await window.api.article.list({});
+            const firstArticle = articlesR.success && articlesR.data.items[0];
+            if (firstArticle) {
+              await window.api.tag.addToArticle(firstArticle.id, usedTagId);
+            }
+            // 触发 App.tsx 重新拉 tags + tagCounts
+            window.dispatchEvent(new Event('juhe:refresh'));
+            await sleep(400);
+            // 切到 tab=tags → 验证标签渲染
+            const tagsTabBtn = document.querySelector('.feed-list__tab[role="tab"]:nth-of-type(2)');
+            tagsTabBtn?.click();
+            await sleep(300);
+            // 验证标签项 + 删除按钮可见
+            // 注意:外层是 probe 模板字符串,$ 表达式会被外层吃掉,这里用字符串拼接
+            const usedTagRow = document.querySelector('[data-tag-id="' + usedTagId + '"]');
+            const unusedTagRow = document.querySelector('[data-tag-id="' + unusedTagId + '"]');
+            report.feedsGroup.checks.usedTagRendered = !!usedTagRow;
+            report.feedsGroup.checks.unusedTagRendered = !!unusedTagRow;
+            // 直接调 IPC 删除未使用标签(模拟用户点 × 后通过 confirm 路径,smoke 探针绕过 confirm)
+            const deleteUnusedR = await window.api.tag.delete(unusedTagId);
+            report.feedsGroup.checks.tagDeleteIpcOk = deleteUnusedR.success;
+            window.dispatchEvent(new Event('juhe:refresh'));
+            await sleep(400);
+            // 验证未使用标签已从 DOM 消失
+            const unusedStillVisible = !!document.querySelector('[data-tag-id="' + unusedTagId + '"]');
+            report.feedsGroup.checks.unusedTagRemovedFromDom = !unusedStillVisible;
+            // 验证已用标签还在
+            const usedStillVisible = !!document.querySelector('[data-tag-id="' + usedTagId + '"]');
+            report.feedsGroup.checks.usedTagStillVisible = usedStillVisible;
+            // 验证 ... 菜单在 tab=tags 下显示"删除未使用标签"按钮
+            const tagsMoreBtn = document.querySelector('[data-testid="feed-list__more"]');
+            tagsMoreBtn?.click();
+            await sleep(200);
+            const deleteUnusedTagsBtn = document.querySelector('[data-testid="feed-list__delete-unused-tags"]');
+            report.feedsGroup.checks.moreMenuHasDeleteUnusedTags = !!deleteUnusedTagsBtn;
+            // 关闭菜单
+            document.body.click();
+            // 清理:删除已用标签
+            await window.api.tag.delete(usedTagId);
+          }
+
           // 关键探针必须全部通过
           const mustPass = [
             'seedFeedsCreated', 'initialListGroupsOk', 'groupTitlesRendered',
@@ -1506,7 +1604,15 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             'moveToGroupIpcOk', 'feedRenderedInNewGroup',
             'moveToUngroupedIpcOk', 'ungroupedBucketRendered',
             'deleteGroupBtnVisible', 'clearGroupIpcOk', 'clearGroupIpcReturned',
-            'finalListGroupsOk', 'invalidUpdateRejected'
+            'finalListGroupsOk', 'invalidUpdateRejected',
+            'groupToggleBtnVisible', 'groupCollapsedAfterClick',
+            'groupItemsHiddenWhenCollapsed', 'groupExpandedAfterSecondClick',
+            'groupItemsRestoredWhenExpanded',
+            'moreBtnVisible', 'moreMenuOpened', 'moreMenuHasExpandAll', 'moreMenuHasCollapseAll',
+            'collapseAllWorks', 'expandAllWorks',
+            'testTagsCreated', 'usedTagRendered', 'unusedTagRendered',
+            'tagDeleteIpcOk', 'unusedTagRemovedFromDom', 'usedTagStillVisible',
+            'moreMenuHasDeleteUnusedTags'
           ];
           for (const k of mustPass) {
             if (report.feedsGroup.checks[k] !== true) {

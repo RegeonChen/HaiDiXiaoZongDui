@@ -19,7 +19,7 @@
  *  - 右键菜单"移动到..."子菜单列出所有组 + "未分组"
  *  - 组标题旁"+删除"按钮可删除组（组内订阅源移到未分组）
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Article, Feed, Tag } from '@shared/types';
 import { showContextMenu } from '../ContextMenu/ContextMenu';
 import './FeedList.css';
@@ -50,6 +50,10 @@ export interface FeedListProps {
   onMoveFeedToGroup?: (feed: Feed, groupName: string | null) => void;
   /** Phase 3.5.x：删除组（组内订阅源移到未分组） */
   onDeleteGroup?: (groupName: string) => void;
+  /** Phase 3.5.x：删除标签 */
+  onDeleteTag?: (tagId: string, tagName: string) => void;
+  /** Phase 3.5.x：删除未使用标签（count === 0） */
+  onDeleteUnusedTags?: () => void;
 }
 
 type Tab = 'sources' | 'tags';
@@ -80,10 +84,78 @@ export function FeedList({
   groups = [],
   onAddGroup,
   onMoveFeedToGroup,
-  onDeleteGroup
+  onDeleteGroup,
+  onDeleteTag,
+  onDeleteUnusedTags
 }: FeedListProps) {
-  const [tab, setTab] = useState<Tab>('sources');
+  const [tab, setTabRaw] = useState<Tab>(() => {
+    // Phase 3.5.x：tab 也持久化,避免 refreshFeeds setState loading 导致 FeedList
+    // unmount/remount 时 tab 状态被重置回默认 'sources'。持久化保证切到 tab=tags 后
+    // 即便整个组件树被 reload 也能恢复用户当前所在 tab。
+    try {
+      const raw = localStorage.getItem('juhe-shivi.feed-list.tab');
+      if (raw === 'sources' || raw === 'tags') return raw;
+    } catch {
+      // localStorage 不可用时静默回退默认
+    }
+    return 'sources';
+  });
+  const setTab = useCallback((next: Tab) => {
+    setTabRaw(next);
+    try {
+      localStorage.setItem('juhe-shivi.feed-list.tab', next);
+    } catch {
+      // 静默失败
+    }
+  }, []);
   const [showAll, setShowAll] = useState(true);
+  // Phase 3.5.x：折叠的订阅源组（持久化到 localStorage）
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('juhe-shivi.feed-list.collapsed-groups');
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw) as unknown;
+      return Array.isArray(arr) ? new Set(arr.filter((v): v is string => typeof v === 'string')) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  // "更多" 菜单开关
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  // 同步折叠状态到 localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'juhe-shivi.feed-list.collapsed-groups',
+        JSON.stringify(Array.from(collapsedGroups))
+      );
+    } catch {
+      // localStorage 可能不可用(隐私模式等),静默失败即可
+    }
+  }, [collapsedGroups]);
+
+  const toggleGroupCollapse = useCallback((group: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  }, []);
+
+  const expandAll = useCallback(() => setCollapsedGroups(new Set()), []);
+
+  // "更多" 按钮点外面关闭
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('[data-testid="feed-list__more"], [data-testid="feed-list__more-menu"]')) return;
+      setMoreMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onClick);
+    return () => window.removeEventListener('mousedown', onClick);
+  }, [moreMenuOpen]);
 
   // Phase 3.6.3：优先使用数据库精确计数（顶层三个虚拟分组），未提供时 fallback 到本地计算
   // PLAN 3.6.3 仅要求"所有订阅源/未读/星标文章"三个虚拟分类使用数据库精确计数；
@@ -129,6 +201,15 @@ export function FeedList({
       return a.localeCompare(b, 'zh');
     });
   }, [feeds, groups]);
+
+  // Phase 3.5.x：折叠所有（点击"..." 菜单时用，需要在 grouped 之后定义）
+  const collapseAll = useCallback(() => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      for (const [g] of grouped) next.add(g);
+      return next;
+    });
+  }, [grouped]);
 
   const handleContextMenu = (e: React.MouseEvent, feed: Feed) => {
     e.preventDefault();
@@ -230,11 +311,67 @@ export function FeedList({
           <button
             type="button"
             className="feed-list__icon-btn"
-            title="更多（暂未实现）"
-            disabled
+            title="更多操作"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMoreMenuOpen((prev) => !prev);
+            }}
+            data-testid="feed-list__more"
           >
             ⋯
           </button>
+          {moreMenuOpen && (
+            <div
+              className="feed-list__more-menu"
+              role="menu"
+              data-testid="feed-list__more-menu"
+            >
+              {tab === 'sources' && (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="feed-list__more-item"
+                    onClick={() => {
+                      expandAll();
+                      setMoreMenuOpen(false);
+                    }}
+                    data-testid="feed-list__expand-all"
+                  >
+                    ▾ 全部展开
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="feed-list__more-item"
+                    onClick={() => {
+                      collapseAll();
+                      setMoreMenuOpen(false);
+                    }}
+                    data-testid="feed-list__collapse-all"
+                  >
+                    ▸ 全部折叠
+                  </button>
+                </>
+              )}
+              {tab === 'tags' && (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="feed-list__more-item"
+                    onClick={() => {
+                      onDeleteUnusedTags?.();
+                      setMoreMenuOpen(false);
+                    }}
+                    data-testid="feed-list__delete-unused-tags"
+                  >
+                    🧹 删除未使用标签
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           {/* Phase 3.5.x：tab=sources 时显示"添加组"按钮；tab=tags 不显示 */}
           {tab === 'sources' && onAddGroup && (
             <button
@@ -276,10 +413,27 @@ export function FeedList({
           grouped.map(([group, list]) => {
             // "未分组"是兜底组，不能删除也不能添加（也没意义）
             const canDelete = group !== UNGROUPED_KEY && !!onDeleteGroup;
+            const isCollapsed = collapsedGroups.has(group);
             return (
-              <div key={group} className="feed-list__group" data-feed-group={group}>
+              <div
+                key={group}
+                className={`feed-list__group ${isCollapsed ? 'is-collapsed' : ''}`}
+                data-feed-group={group}
+                data-collapsed={isCollapsed ? 'true' : 'false'}
+              >
                 <div className="feed-list__group-title">
-                  <span>{group}</span>
+                  <button
+                    type="button"
+                    className="feed-list__group-toggle"
+                    onClick={() => toggleGroupCollapse(group)}
+                    title={isCollapsed ? '展开' : '折叠'}
+                    aria-label={isCollapsed ? `展开 ${group}` : `折叠 ${group}`}
+                    data-testid={`feed-list__toggle-group-${group}`}
+                  >
+                    <span className="feed-list__group-arrow">{isCollapsed ? '▸' : '▾'}</span>
+                    <span className="feed-list__group-name">{group}</span>
+                    <span className="feed-list__group-count">{list.length}</span>
+                  </button>
                   {canDelete && (
                     <button
                       type="button"
@@ -292,7 +446,7 @@ export function FeedList({
                     </button>
                   )}
                 </div>
-                {list.length === 0 ? (
+                {!isCollapsed && (list.length === 0 ? (
                   <div className="feed-list__group-empty">
                     还没有订阅源。右键其他订阅源 → 移动到「{group}」。
                   </div>
@@ -326,7 +480,7 @@ export function FeedList({
                       </button>
                     );
                   })
-                )}
+                ))}
               </div>
             );
           })
@@ -347,24 +501,44 @@ export function FeedList({
                 const count = tagCounts?.[t.id] ?? 0;
                 const isSelected = selected === `tag:${t.id}`;
                 return (
-                  <button
+                  <div
                     key={t.id}
-                    type="button"
-                    className={`feed-list__item ${isSelected ? 'is-active' : ''}`}
-                    onClick={() => onSelect(`tag:${t.id}`)}
+                    className={`feed-list__tag-row ${isSelected ? 'is-active' : ''}`}
                     data-tag-id={t.id}
-                    title={`${t.name} · ${count} 篇文章`}
+                    data-tag-count={count}
                   >
-                    <span
-                      className="feed-list__icon"
-                      style={{ color: t.color ?? 'var(--accent)' }}
-                      aria-hidden="true"
+                    <button
+                      type="button"
+                      className="feed-list__item"
+                      onClick={() => onSelect(`tag:${t.id}`)}
+                      title={`${t.name} · ${count} 篇文章`}
                     >
-                      #
-                    </span>
-                    <span className="feed-list__label">{t.name}</span>
-                    <span className="feed-list__count">{count}</span>
-                  </button>
+                      <span
+                        className="feed-list__icon"
+                        style={{ color: t.color ?? 'var(--accent)' }}
+                        aria-hidden="true"
+                      >
+                        #
+                      </span>
+                      <span className="feed-list__label">{t.name}</span>
+                      <span className="feed-list__count">{count}</span>
+                    </button>
+                    {onDeleteTag && (
+                      <button
+                        type="button"
+                        className="feed-list__tag-delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteTag(t.id, t.name);
+                        }}
+                        title={`删除标签「${t.name}」`}
+                        aria-label={`删除标签 ${t.name}`}
+                        data-testid={`feed-list__delete-tag-${t.id}`}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>

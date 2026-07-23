@@ -142,6 +142,60 @@
   gap: 4px;
 }
 
+/* Phase 3.5.x：组标题改为可点击 button(展开/折叠) */
+.feed-list__group-toggle {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 3px;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.feed-list__group-toggle:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.feed-list__group-arrow {
+  font-size: 9px;
+  width: 10px;
+  display: inline-block;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.feed-list__group-name {
+  flex: 1;
+}
+
+.feed-list__group-count {
+  font-size: 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 6px;
+  line-height: 1.4;
+  min-width: 18px;
+  text-align: center;
+}
+
+.feed-list__group.is-collapsed > .feed-list__group-title + .feed-list__group-empty,
+.feed-list__group.is-collapsed > .feed-list__group-title + .feed-list__item {
+  display: none;
+}
+
 .feed-list__group-delete {
   appearance: none;
   border: none;
@@ -167,6 +221,90 @@
   font-size: 11px;
   color: var(--muted);
   font-style: italic;
+}
+
+/* Phase 3.5.x：标签行(hover 显示 × 删除按钮) */
+.feed-list__tag-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.feed-list__tag-row > .feed-list__item {
+  flex: 1;
+  padding-right: 24px;
+}
+
+.feed-list__tag-row.is-active > .feed-list__item {
+  background: var(--accent-soft, rgba(59, 130, 246, 0.12));
+  color: var(--fg);
+}
+
+.feed-list__tag-delete {
+  appearance: none;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 100ms ease, background 100ms ease, color 100ms ease;
+}
+
+.feed-list__tag-row:hover .feed-list__tag-delete,
+.feed-list__tag-delete:focus-visible {
+  opacity: 1;
+}
+
+.feed-list__tag-delete:hover {
+  background: rgba(220, 38, 38, 0.12);
+  color: var(--err, #dc2626);
+}
+
+/* Phase 3.5.x：顶栏"更多"按钮的弹出菜单 */
+.feed-list__more-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
+  min-width: 140px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feed-list__more-item {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 100ms ease;
+}
+
+.feed-list__more-item:hover {
+  background: var(--bg);
 }
 
 .feed-list__item {
