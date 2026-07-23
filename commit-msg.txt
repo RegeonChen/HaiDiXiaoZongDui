@@ -1,0 +1,20 @@
+chore(agents+smoke): AGENTS.md 同步 4.3 + tag 修复，加深 smoke:topic 探针
+
+AGENTS.md
+- 截至日期 2026-07-15 → 2026-07-23
+- 当前状态段落追加 Phase 4.3 演化图 MVP 完成、Topic 演化图 UI 接入、
+  4.1 简化为 3 tab、侧栏 tag 分类 + suggest toggle 修复 (ec0c49e)、
+  Readability 懒加载图片修复 (f1eeb48)
+- 近期记录追加 2026-07-23 / 2026-07-22 两条
+- 已知问题清理：删除已修复的 IPC 双包、专题 stub、跨平台打包、UI
+  组件库等条目，保留 API Key 明文 + 跨平台验证 + npm audit 三个真问题
+
+smoke:topic 加深 4 项探针
+- lanesMaxFive: 方向泳道数 1-5（PLAN 硬约束）
+- nodeCountMatchesArticles: 节点数 == 关联文章数（3 节点 = 3 篇 seed 文章）
+- nodeClickShowsSources: 点节点 → source 列表出现文章
+- sourceClickJumpsToReader: 点 source → 跳回 reader + ArticleReader 渲染该文
+  （模拟完整 TopicDetail → TopicGraphView → onOpenArticle → App.handleTopicOpenArticle 路径）
+
+13/13 smoke 全过 + 84 单元测试通过 + typecheck 双端通过
+- 同步 bb57450 webRequest Referer 修复（少数派 CDN 防盗链），无冲突

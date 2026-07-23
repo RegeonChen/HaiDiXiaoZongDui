@@ -1093,11 +1093,48 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           await waitFor(() => !!document.querySelector('.topics-page__item-main'), { timeout: 2500 });
           document.querySelector('.topics-page__item-main')?.click();
           await waitFor(() => document.querySelectorAll('.topic-graph__node').length >= 3, { timeout: 3000 });
+          const nodeCount = document.querySelectorAll('.topic-graph__node').length;
+          const laneCount = document.querySelectorAll('.topic-graph__lane').length;
+          const edgeCount = document.querySelectorAll('.topic-graph__edge').length;
           report.topic.checks.graphUiRendered =
-            document.querySelectorAll('.topic-graph__node').length >= 3 &&
-            document.querySelectorAll('.topic-graph__lane').length >= 3 &&
-            document.querySelectorAll('.topic-graph__edge').length >= 2 &&
+            nodeCount >= 3 && laneCount >= 3 && edgeCount >= 2 &&
             !!document.querySelector('.topic-graph-detail__sources button');
+
+          // 加深探针 1：方向泳道数 <= 5（PLAN 硬约束：5 个固定方向）
+          report.topic.checks.lanesMaxFive = laneCount > 0 && laneCount <= 5;
+          report.topic.checks.lanesCount = laneCount;
+
+          // 加深探针 2：节点数 == 关联文章数（自动关联种子文章，3 篇 seed → 3 个节点）
+          const associatedArticleCount = graphR.success
+            ? graphR.data.nodes.reduce((sum, n) => sum + (n.articleIds?.length ?? 0), 0)
+            : 0;
+          report.topic.checks.nodeCountMatchesArticles =
+            nodeCount === associatedArticleCount && nodeCount >= 3;
+          report.topic.checks.nodeCount = nodeCount;
+          report.topic.checks.associatedArticleCount = associatedArticleCount;
+
+          // 加深探针 3：点节点 → 详情面板 source 列表出现文章
+          const firstNode = document.querySelector('.topic-graph__node');
+          firstNode?.click();
+          await waitFor(
+            () => document.querySelectorAll('.topic-graph-detail__sources li button').length >= 1,
+            { timeout: 1500 }
+          );
+          const sourceBtnCount = document.querySelectorAll('.topic-graph-detail__sources li button').length;
+          report.topic.checks.nodeClickShowsSources = sourceBtnCount >= 1;
+          report.topic.checks.sourceBtnCount = sourceBtnCount;
+
+          // 加深探针 4：点 source 列表里的文章 → 跳回 reader + ArticleReader 渲染该文
+          const sourceBtn = document.querySelector('.topic-graph-detail__sources li button');
+          sourceBtn?.click();
+          await waitFor(() => !!document.querySelector('.pane-reader'), { timeout: 2000 });
+          await sleep(80);
+          const readerVisible = !!document.querySelector('.pane-reader');
+          const readerTitleEl = document.querySelector('.article-reader__title');
+          const readerTitle = readerTitleEl?.textContent?.trim() ?? '';
+          report.topic.checks.sourceClickJumpsToReader =
+            readerVisible && readerTitle.length > 0;
+          report.topic.checks.readerTitle = readerTitle;
 
           const deleteR = await window.api.topic.delete(topicId);
           const deletedGetR = await window.api.topic.get(topicId);
@@ -1109,7 +1146,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
           report.topic.ok = [
             'topicsPageRendered', 'titleText', 'newBtnVisible', 'placeholderOrEmptyVisible',
-            'ipcTopicListOk', 'crudWorks', 'graphWorks', 'articlesWorks', 'graphUiRendered'
+            'ipcTopicListOk', 'crudWorks', 'graphWorks', 'articlesWorks', 'graphUiRendered',
+            'lanesMaxFive', 'nodeCountMatchesArticles', 'nodeClickShowsSources', 'sourceClickJumpsToReader'
           ].every((k) => report.topic.checks[k] === true);
         } catch (e) {
           report.topic.error = String(e);

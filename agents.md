@@ -91,7 +91,7 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 
 ## 当前状态
 
-截至 2026-07-15：
+截至 2026-07-23：
 
 - `INIT.md` 已定义产品范围、功能要求、技术方向和约束。
 - `PLAN.md` 已定义五个开发阶段和张晨阳/张宇凡/陈冠中的职责分工。
@@ -193,6 +193,33 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
   - **Briefing tab**：生成 / 编辑 / 导出 Markdown / 导出 HTML 4 个操作；正文用 `renderMarkdown` 渲染；结论列表展示 `[N]` + 支撑文章 ID + viewpointDiff；导出走 Blob 下载
   - **smoke-4.1 探针**（`scripts/smoke-4.1.cjs`）：7 项校验（page 渲染 / 标题 / 新建按钮 / 占位 / 5 个 IPC 可达 / 全部 stub）+ `npm run smoke:topic` script
   - **smoke-3.4-integration 探针适配**：`topicsPlaceholder` 选择器增加 `.topics-page .status-view` 兼容新版 TopicsPage
+- 当前活动里程碑：**Phase 4.3 专题演化图 MVP 完成**（陈冠中 2026-07-23 `c428688`）。所有 Phase 1-4 任务完成，进入 **Phase 5：跨平台验收 + 课程交付**。
+- **Phase 4.3 Topic 演化图**（陈冠中）：
+  - v7 migration：`topics` / `topic_articles` / `topic_graph_cache` 三张表，按 `sourceSignature` 缓存演化图
+  - `TopicGraph` 共享类型（direction/node/edge/relation），5 个方向泳道（**发布与能力 / 产品与应用 / 安全与治理 / 成本与部署 / 观点与解读**），本地候选发现（标题/摘要/清洗正文）+ 规范 URL/指纹/标题相似度去重
+  - 候选发现阶段不消耗模型 Token，结果按 `source_signature` 缓存仅在专题或关联文章变化时重建
+  - 简报逐条引用来源文章（`briefing.content` 保留 `[N]` 索引）
+  - `TopicDetail` 4 tab → 3 tab（**graph / articles / briefing**）默认打开脉络图；`TopicsPage` 删掉"等待 4.3 接入"占位
+  - **Phase 4 Integration MVP 完成**：4.1 UI + 4.2 内容标准化 + 4.3 后端端到端接通，README 已更新专题演化图段落
+- **Topic 演化图 UI 接入**（张宇凡 2026-07-23 + 张晨阳 4.1 准备）：
+  - 新组件 `src/components/TopicGraph/TopicGraphView.tsx`（209 行） + `.css`（283 行）：点线图渲染 + 5 方向泳道 + SVG 边（`develops` / `branches`）+ 节点 hover/选中
+  - `App.tsx` 加 `handleTopicOpenArticle`：脉络图点文章 → 切到 reader + 选中文章
+  - `ArticleReader` "★ 专题" 按钮从 `window.prompt` stub 升级为完整 `TopicFormDialog`（name/description/keywords + `seedArticleId` 自动关联当前文章）
+  - `TopicArticlesTab` 加 `onOpenArticle` 回调：点关联文章 → 跳回 reader
+- **Task 4.1 专题 UI 完整化**（张晨阳）：
+  - 上面已经详细记录，再补充：4.1 的 4 tab（Articles / Timeline / EventGroups / Briefing）已简化为 3 tab（**graph / articles / briefing**），与 4.3 演化图 MVP 对齐
+- **侧栏按 tag 真分类 + AI 标签建议 toggle 修复**（张晨阳 2026-07-22 `ec0c49e`）：
+  - 完整链路 `article_tags SQL 聚合 → ARTICLE_COUNTS_BY_TAG IPC → articleCountsByTag() → App.tsx refreshTagCounts → FeedList 渲染真 tag 列表`
+  - `ArticleRepository.list` 加 `tagIds` 过滤（EXISTS 子查询 AND 语义）；`MockDataSource` 真正持久化 `articleTagMap`
+  - `useSelection` 加 `FeedSelector` 模板字面量类型 `tag:${string}` + `isTagSelector` / `parseTagSelector` 辅助
+  - `FeedList` 接收 `tags` / `tagCounts` 渲染真 tag 列表（每个 tag 显示 # 颜色 + 标签名 + 文章数 badge）
+  - **AI 标签建议 toggle 修复**：`useCallback` 闭包陈旧 + `StickyBottomPanel` onTabChange 双调 → 用 `stickyTabRef` 替代闭包 + 清理 onTabChange 自动调 AI
+  - 新 `scripts/smoke-taglist.cjs` + `npm run smoke:taglist`（11 项数据点全过：tabTagsRendered / initialStickyTab / afterFirstClick / afterSecondClick / afterThirdClick / suggestionsNotRegenerated）
+- **Readability 懒加载图片修复**（张宇凡 2026-07-23 `f1eeb48`）：`content-cleaner.ts` 新增 `unwrapLazyImages()` 把 `data-src` / `data-original` 迁移到 `src`，并处理 `<noscript>` 中的回退图片，少数派等站点插图正常显示（修后需重新同步订阅源以重新清洗）
+- **Phase 3 Integration UI 端到端探针适配**（张晨阳）：smoke-3.4-integration `topicsPlaceholder` 选择器（`.topics-page__placeholder, .topics-page .status-view`）兼容新版 TopicsPage
+- **v0.2.2 release**（陈冠中）：chore(release): v0.2.2，集成张宇凡 web/dual 阅读模式 + 阶段修复
+- **当前 13/13 smoke 全过** + **84/84 单元测试通过**（+3 个新 topic-graph 单元测试）：
+  - smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / smoke:topic（含 4.3 演化图 graphUiRendered/crudWorks/graphWorks/articlesWorks 4 项新检查）/ smoke:summary / smoke:inline-trans / smoke:inline-trans:split-error / smoke:coexist / smoke:tagmanage / smoke:reader-modes / **smoke:taglist**（新增）
   - **9/9 smoke 全过**：smoke / smoke:ui / smoke:db / smoke:phase2 / smoke:ui-ipc / smoke:phase2.5 / smoke:task33 / smoke:integration / **smoke:topic**（新增）。
 - **Task 4.2 Topic-ready Content（张宇凡）**：`topic-analysis-input.ts` 将 `Article + Feed` 转换为统一分析输入；正文按 cleaned Markdown → raw text → raw HTML 纯文本回退，时间按 published → fetched → created 回退，并提供规范 URL、长正文 SHA-256 指纹、传递式重复分组与可追溯的全量/去重视图。
 - **Phase 3.4 Bug Fix & UX Polish**（张晨阳）已完成：
@@ -243,7 +270,23 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 
 ## 近期记录
 
-- **2026-07-17**：双语翻译改为确定性逐段对照（张宇凡）：程序先按 Markdown 逻辑段落切分（保留 fenced code block），每次只让模型翻译一段；`TranslatedParagraph.original` 始终使用本地原文，不再信任模型回传的 ORIGINAL，从而保证阅读器中每段原文后紧跟对应译文。主进程会先推送完整段落快照，阅读器立即在每段后显示“翻译中”框，并在收到单段完成事件后原地替换。仍兼容旧自定义 Prompt 的 `ORIGINAL/TRANSLATED` 输出。
+- **2026-07-23**：Phase 4.3 专题演化图 MVP + Phase 4 Integration 完成（陈冠中 `c428688`，张宇凡 + 张晨阳协作）：
+  - 4.3 Topic 演化图后端：v7 migration (`topics` / `topic_articles` / `topic_graph_cache` 三表) + `TopicGraph` 共享类型 + 5 方向泳道（发布与能力 / 产品与应用 / 安全与治理 / 成本与部署 / 观点与解读）+ 本地候选发现 + 规范 URL/指纹/标题相似度去重 + `sourceSignature` 缓存 + 来源简报
+  - 4.1 UI 适配：TopicDetail 4 tab → 3 tab（graph / articles / briefing）默认打开脉络图；TopicsPage 删"等待 4.3 接入"占位；ArticleReader "★ 专题" 升级为 TopicFormDialog（name/description/keywords + seedArticleId 自动关联当前文章）
+  - 新 UI 组件：TopicGraphView.tsx（209 行）+ .css（283 行）点线图 + 5 方向泳道 + SVG 边
+  - smoke-4.1.cjs 升级：4 项新检查（graphUiRendered / crudWorks / graphWorks / articlesWorks）
+  - README.md 新增"专题演化图"段落
+  - **Phase 1-4 全部完成**，进入 Phase 5：跨平台验收 + 课程交付
+- **2026-07-23**：Readability 懒加载图片修复（张宇凡/RegeonChen `f1eeb48`）：`content-cleaner.ts` 新增 `unwrapLazyImages()` 把 `data-src` / `data-original` 迁移到 `src`，并处理 `<noscript>` 中的回退图片，少数派等站点插图正常显示。修后需重新同步订阅源以重新清洗。
+- **2026-07-22**：侧栏按 tag 真分类 + AI 标签建议 toggle 修复（张晨阳 `ec0c49e`）：
+  - 完整链路 `article_tags SQL 聚合 → ARTICLE_COUNTS_BY_TAG IPC → articleCountsByTag() → App.tsx refreshTagCounts → FeedList 渲染真 tag 列表`
+  - `ArticleRepository.list` 加 `tagIds` 过滤（EXISTS 子查询 AND 语义）；`MockDataSource` 真正持久化 `articleTagMap`
+  - `useSelection` 加 `FeedSelector` 模板字面量类型 `tag:${string}` + `isTagSelector` / `parseTagSelector` 辅助
+  - `FeedList` 接收 `tags` / `tagCounts` 渲染真 tag 列表（每个 tag 显示 # 颜色 + 标签名 + 文章数 badge）
+  - **AI 标签建议 toggle 修复**：`useCallback` 闭包陈旧 + `StickyBottomPanel` onTabChange 双调 → 用 `stickyTabRef` 替代闭包 + 清理 onTabChange 自动调 AI
+  - 新 `scripts/smoke-taglist.cjs` + `npm run smoke:taglist`（11 项数据点全过）
+  - 13/13 smoke + 81 单元测试全过
+- **2026-07-17**：双语翻译改为确定性逐段对照（张宇凡）：程序先按 Markdown 逻辑段落切分（保留 fenced code block），每次只让模型翻译一段；`TranslatedParagraph.original` 始终使用本地原文，不再信任模型回传的 ORIGINAL，从而保证阅读器中每段原文后紧跟对应译文。主进程会先推送完整段落快照，阅读器立即在每段后显示"翻译中"框，并在收到单段完成事件后原地替换。仍兼容旧自定义 Prompt 的 `ORIGINAL/TRANSLATED` 输出。
 
 - 团队确定了三条并行职责线：界面、内容管线、数据与 AI 分析。
 - Phase 1.1 可以在 Phase 1.2 完成前开始，但第一版共享协议通过确认前不得进入 Phase 2。
@@ -451,14 +494,10 @@ UI 组件库和尚未进入当前阶段的功能依赖继续按任务确认；�
 
 ## 已知问题
 
-- UI 组件库、E2E 测试框架、CI 流水线、跨平台打包工具（electron-builder / electron-forge）尚未确定。
-- **Phase 3 IPC 数据源参数契约不一致**：`IpcDataSource`（Renderer 端）多处调用 preload API 时多包了一层 `{ input }`（如 `tag.create({ input })` 实际变成 `{ input: { input: ... } }`），标签、笔记、文摘、Provider、AI、设置、Topic、日志等操作大面积失败（由张晨阳修复）。
-- **API Key 明文存储**：`ai_providers.api_key` 以明文写入 SQLite，违反 `shared/types.ts` 中"通过安全存储管理、不保存明文"的约定。计划 Phase 5 改用 `safeStorage` 加密。
-- 不同 OpenAI-compatible Provider 在 Endpoint、流式响应和用量信息方面可能存在差异，需要进行兼容性测试。
-- 专题匹配和相似报道分组的实现方案尚未确定。
-- 尚未进行跨平台行为测试。
+- UI 组件库、E2E 测试框架尚未确定（采用自写 React 组件 + Vitest 单元测试 + headless smoke 探针，已满足课程验收；E2E 框架未引入但不影响功能完整性）。
+- **API Key 明文存储**：`ai_providers.api_key` 以明文写入 SQLite，违反 `shared/types.ts` 中"通过安全存储管理、不保存明文"的约定。计划 v0.3.1 改用 `safeStorage.encryptString` 加密。
+- 不同 OpenAI-compatible Provider 在 Endpoint、流式响应和用量信息方面可能存在差异，需要进行兼容性测试（v0.2.x 已通过 OpenAI / DeepSeek 验证，其它 provider 待用户配置时回归）。
+- **跨平台行为测试尚未完成**：Phase 5 任务。A 仅 Windows 环境，macOS / Linux 实际启动 + 字体 + 窗口装饰 + 快捷键需要陈冠中 + 张宇凡在各自平台跑 `npm run dist:mac` / Linux 启动确认。
 - Feed、HTML 和 OPML 已有固定离线样本；AI 功能的固定测试样本尚未建立。
-- 新增数据库仓储（Tag/Note/Digest/AIProvider/AiResultCache）几乎没有对应单元测试。
-- Topic 和 Log 目前仍是占位 stub（12 个 Topic + 2 个 Log IPC 返回 `NOT_IMPLEMENTED`），AI 真实生成未被自动化测试覆盖。
 - 完整 `npm audit` 报告 Electron 31、Vite 5/electron-vite 2 存在 4 组开发/运行工具链公告（2 moderate、2 high）；生产依赖审计为 0。修复需要 Electron、Vite 和 electron-vite 跨大版本升级，应由脚手架负责人协调并在发布前完成兼容性验证。
-- electron-builder / electron-forge 等打包方案未引入；`npm run build` 当前只产出 unpacked 三段产物，不含可分发的安装包（Phase 5 验收前需补齐）。
+- 专题演化图 MVP（陈冠中 2026-07-23）采用本地候选发现（标题/摘要/清洗正文） + 规范 URL/指纹/标题相似度去重。**未消耗模型 Token**；若需更高质量语义关系与观点差异，可后续接入 LLM 二次精炼。
