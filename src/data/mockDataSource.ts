@@ -24,6 +24,7 @@ import type {
   Briefing,
   TimelineEntry,
   EventGroup,
+  TopicGraph,
   AIProvider,
   AIProviderCreateInput,
   AIProviderUpdateInput,
@@ -57,6 +58,7 @@ export class MockDataSource implements DataSource {
   private notesState: Note[] = [];
   private digestsState: Digest[] = [];
   private topicsState: Topic[] = [];
+  private topicGraphState: Map<string, TopicGraph> = new Map();
   private providersState: AIProvider[] = [];
   private logsState: LogEntry[] = [];
   private id = 0;
@@ -84,7 +86,7 @@ export class MockDataSource implements DataSource {
     let items = this.articlesState;
     if (filter.feedId) items = items.filter((a) => a.feedId === filter.feedId);
     if (filter.isRead !== undefined) items = items.filter((a) => a.isRead === filter.isRead);
-    if (filter.isStarred !== undefined) items = items.filter((a) => a.isStarred === filter.isRead);
+    if (filter.isStarred !== undefined) items = items.filter((a) => a.isStarred === filter.isStarred);
     // Phase 3.5.x:按 tag 过滤(AND 语义,文章必须同时具备所有 tag)
     if (filter.tagIds && filter.tagIds.length > 0) {
       items = items.filter((a) => {
@@ -375,6 +377,22 @@ export class MockDataSource implements DataSource {
 
   async topicGetArticles(_topicId: string): Promise<DataSourceState<Article[]>> {
     return { kind: 'ready', data: [] };
+  }
+
+  async topicGetGraph(topicId: string): Promise<DataSourceState<TopicGraph>> {
+    const cached = this.topicGraphState.get(topicId);
+    if (cached) return { kind: 'ready', data: cached };
+    return {
+      kind: 'ready',
+      data: {
+        topicId,
+        directions: [],
+        nodes: [],
+        edges: [],
+        generatedAt: new Date().toISOString(),
+        sourceSignature: 'mock-empty'
+      }
+    };
   }
 
   async topicGetTimeline(_topicId: string): Promise<DataSourceState<TimelineEntry[]>> {

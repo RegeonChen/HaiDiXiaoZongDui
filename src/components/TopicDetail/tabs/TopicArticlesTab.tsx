@@ -12,9 +12,10 @@ export interface TopicArticlesTabProps {
   articles: Article[] | null;
   feeds: Feed[];
   onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
+  onOpenArticle: (article: Article) => void;
 }
 
-export function TopicArticlesTab({ articles, feeds, onToast: _onToast }: TopicArticlesTabProps) {
+export function TopicArticlesTab({ articles, feeds, onToast: _onToast, onOpenArticle }: TopicArticlesTabProps) {
   if (articles === null) {
     return <LoadingView message="正在加载文章…" />;
   }
@@ -33,9 +34,9 @@ export function TopicArticlesTab({ articles, feeds, onToast: _onToast }: TopicAr
       feeds={feeds}
       articles={articles}
       selectedArticleId={null}
-      onSelect={() => {
-        // 跳转到 reader；这里只做点击事件占位（由 Layout 父级处理 routing）
-        // 实际项目里应该跳到 reader page
+      onSelect={(id) => {
+        const article = articles.find((item) => item.id === id);
+        if (article) onOpenArticle(article);
       }}
       filterLabel={`专题文章（${articles.length}）`}
       filterHint="该专题还没有匹配文章"

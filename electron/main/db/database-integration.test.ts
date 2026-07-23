@@ -26,6 +26,7 @@ import {
 } from './connection';
 import { SqliteContentPipelineStore } from './content-pipeline-store';
 import { FeedRepository } from './feed-repository';
+import { TopicRepository } from './topic-repository';
 import { runMigrations } from './migration';
 
 describe('database integrity', () => {
@@ -104,6 +105,69 @@ describe('database integrity', () => {
     expect(result.items[0].id).toBe('search-0');
     expect(result.items[1].id).toBe('search-1');
     expect(ArticleRepository.list({ search: 'not present' })).toEqual({ items: [], total: 0 });
+  });
+
+  it('persists topics, auto-associates related articles and caches a traceable graph', async () => {
+    const feed = FeedRepository.create({
+      url: 'https://topic.example/feed.xml',
+      title: 'Topic source'
+    });
+    const sharedReport = 'GPT-5.6 benchmark capabilities and evaluation details. '.repeat(4);
+    expect(ArticleRepository.insertBatch([
+      article({
+        id: 'gpt-release', feedId: feed.id, guid: 'gpt-release',
+        url: 'https://topic.example/gpt-release',
+        title: 'GPT-5.6 model released',
+        publishedAt: '2026-07-09T00:00:00.000Z',
+        cleanedMarkdown: 'OpenAI released the GPT-5.6 model with new capabilities.'
+      }),
+      article({
+        id: 'gpt-benchmark', feedId: feed.id, guid: 'gpt-benchmark',
+        url: 'https://topic.example/gpt-benchmark',
+        title: 'GPT-5.6 benchmark results',
+        publishedAt: '2026-07-10T00:00:00.000Z',
+        cleanedMarkdown: sharedReport
+      }),
+      article({
+        id: 'gpt-api', feedId: feed.id, guid: 'gpt-api',
+        url: 'https://topic.example/gpt-api',
+        title: 'Developers adopt the GPT-5.6 API',
+        publishedAt: '2026-07-12T00:00:00.000Z',
+        cleanedMarkdown: 'Developer SDK integration and coding agents use the GPT-5.6 API.'
+      }),
+      article({
+        id: 'unrelated', feedId: feed.id, guid: 'unrelated',
+        url: 'https://topic.example/sqlite',
+        title: 'SQLite migration guide',
+        cleanedMarkdown: 'A database schema migration article.'
+      })
+    ])).toBe(4);
+
+    const topic = TopicRepository.create({
+      name: 'GPT-5.6',
+      description: '跟踪模型发展',
+      keywords: ['GPT-5.6'],
+      seedArticleId: 'gpt-release'
+    });
+    expect(TopicRepository.getArticles(topic.id).map((item) => item.id).sort())
+      .toEqual(['gpt-api', 'gpt-benchmark', 'gpt-release']);
+
+    const graph = TopicRepository.getGraph(topic.id);
+    expect(graph.nodes).toHaveLength(3);
+    expect(graph.directions.map((direction) => direction.name))
+      .toEqual(expect.arrayContaining(['发布与能力', '产品与应用']));
+    expect(graph.edges).toHaveLength(2);
+    expect(TopicRepository.getGraph(topic.id).generatedAt).toBe(graph.generatedAt);
+
+    const briefing = TopicRepository.generateBriefing(topic.id);
+    expect(briefing.sourceArticleIds).toHaveLength(3);
+    expect(briefing.content).toContain('[来源：GPT-5.6 model released]');
+
+    closeDatabase();
+    await initDatabase();
+    runMigrations();
+    expect(TopicRepository.getById(topic.id)?.name).toBe('GPT-5.6');
+    expect(TopicRepository.getGraph(topic.id).sourceSignature).toBe(graph.sourceSignature);
   });
 
   it('persists pending in-memory changes when the connection closes', async () => {

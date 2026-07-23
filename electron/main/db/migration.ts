@@ -217,6 +217,53 @@ const migrations: Migration[] = [
         WHERE cleaned_html IS NOT NULL OR cleaned_markdown IS NOT NULL
       `);
     }
+  },
+  {
+    version: 7,
+    up(db) {
+      // Phase 4：专题、自动关联文章、演化图缓存与来源可追溯简报。
+      db.run(`
+        CREATE TABLE IF NOT EXISTS topics (
+          id          TEXT PRIMARY KEY,
+          name        TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          keywords    TEXT NOT NULL DEFAULT '[]',
+          created_at  TEXT NOT NULL,
+          updated_at  TEXT NOT NULL
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS topic_articles (
+          topic_id    TEXT NOT NULL,
+          article_id  TEXT NOT NULL,
+          match_score REAL NOT NULL DEFAULT 0,
+          match_reason TEXT NOT NULL DEFAULT '',
+          match_source TEXT NOT NULL DEFAULT 'auto',
+          created_at  TEXT NOT NULL,
+          PRIMARY KEY (topic_id, article_id),
+          FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE,
+          FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_topic_articles_article ON topic_articles(article_id)`);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS topic_graph_cache (
+          topic_id        TEXT PRIMARY KEY,
+          source_signature TEXT NOT NULL,
+          graph_json      TEXT NOT NULL,
+          generated_at    TEXT NOT NULL,
+          FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS topic_briefings (
+          topic_id      TEXT PRIMARY KEY,
+          briefing_json TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE
+        )
+      `);
+    }
   }
 ];
 

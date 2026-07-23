@@ -1,5 +1,5 @@
 /**
- * TopicBriefingTab — AI 简报展示 + 生成 + 导出
+ * TopicBriefingTab — 来源可追溯简报展示 + 生成 + 导出
  *  - 内容：renderMarkdown 渲染简报
  *  - 结论列表：每条 [N] + 支撑文章 ID 链接 + viewpointDiff
  *  - 操作：生成 / 保存编辑 / 导出 Markdown / 导出 HTML
@@ -40,7 +40,7 @@ export function TopicBriefingTab({
       <div className="topic-briefing__empty-state">
         <EmptyView
           title="还没有简报"
-          hint="点击下方「生成简报」按钮触发 AI 生成多源带引用简报。"
+          hint="点击下方「生成简报」，系统会根据已缓存的专题脉络整理多源引用，不会额外调用模型。"
         />
         <button
           type="button"
@@ -48,7 +48,7 @@ export function TopicBriefingTab({
           onClick={() => void onGenerate()}
           disabled={busy}
         >
-          {busy ? '生成中…' : '✨ 生成简报'}
+          {busy ? '生成中…' : '生成简报'}
         </button>
       </div>
     );

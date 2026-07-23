@@ -20,6 +20,7 @@ export interface TopicFormValue {
 export interface TopicFormDialogProps {
   mode: 'create' | 'edit';
   initial?: Topic;
+  initialValue?: Partial<TopicFormValue>;
   onSubmit: (value: TopicFormValue) => void | Promise<void>;
   onClose: () => void;
 }
@@ -28,7 +29,7 @@ function parseKeywords(input: string): string[] {
   return Array.from(
     new Set(
       input
-        .split(/[,,]/) // 中英文逗号
+        .split(/[,，]/) // 中英文逗号
         .map((s) => s.trim().toLowerCase())
         .filter((s) => s.length > 0)
     )
@@ -39,10 +40,12 @@ function stringifyKeywords(keywords: string[]): string {
   return keywords.join(', ');
 }
 
-export function TopicFormDialog({ mode, initial, onSubmit, onClose }: TopicFormDialogProps) {
-  const [name, setName] = useState(initial?.name ?? '');
-  const [description, setDescription] = useState(initial?.description ?? '');
-  const [keywordsRaw, setKeywordsRaw] = useState(stringifyKeywords(initial?.keywords ?? []));
+export function TopicFormDialog({ mode, initial, initialValue, onSubmit, onClose }: TopicFormDialogProps) {
+  const [name, setName] = useState(initial?.name ?? initialValue?.name ?? '');
+  const [description, setDescription] = useState(initial?.description ?? initialValue?.description ?? '');
+  const [keywordsRaw, setKeywordsRaw] = useState(
+    stringifyKeywords(initial?.keywords ?? initialValue?.keywords ?? [])
+  );
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -101,7 +104,7 @@ export function TopicFormDialog({ mode, initial, onSubmit, onClose }: TopicFormD
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="如：AI 安全 / 加密货币 / 课程作业"
+              placeholder="如：GPT-5.6 / AI 安全 / 开源模型"
               required
               autoFocus
             />
@@ -123,10 +126,10 @@ export function TopicFormDialog({ mode, initial, onSubmit, onClose }: TopicFormD
               type="text"
               value={keywordsRaw}
               onChange={(e) => setKeywordsRaw(e.target.value)}
-              placeholder="逗号分隔，如：llm, agent, rag"
+              placeholder="逗号分隔，如：GPT-5.6, OpenAI, benchmark"
             />
             <span className="topic-form-dialog__hint">
-              关键词用于文章匹配，匹配时对文章标题和正文做模糊匹配（全部小写）。
+              系统先在本地匹配标题、摘要和清洗正文；反复打开专题不会重复消耗 Token。
             </span>
           </div>
         </div>

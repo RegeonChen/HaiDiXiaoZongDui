@@ -1,12 +1,11 @@
 /**
- * Task 4.1 端到端 smoke — 专题 UI 完整化
+ * Phase 4 端到端 smoke — 专题演化图 MVP
  *
  * 验证项：
- *  - TopicsPage 列表：渲染 + "+ 新建专题" 按钮 + 创建/编辑对话框（不验证后端写入）
- *  - TopicDetail 4 tab 切换：Articles / Timeline / EventGroups / Briefing
- *  - 4 tab 都有 loading/empty/error 三态
- *  - 后端 stub 状态下显示"等待 4.3 接入"提示
- *  - IPC 层 topic:list / create / get / update / delete 都正常（即使返回 NOT_IMPLEMENTED）
+ *  - TopicsPage 列表：渲染 + "+ 新建专题" 按钮 + 空态
+ *  - IPC 层 topic:list / create / get / update / delete 真实持久化
+ *  - topic:getGraph 返回结构化方向、节点和边
+ *  - 空专题的文章关联与脉络图可正常返回空数组
  *
  * 运行：npm run smoke:topic
  */
@@ -51,8 +50,8 @@ child.on('exit', (code) => {
   console.log(`[smoke-4.1] electron 退出 code=${code}`);
   console[passed ? 'log' : 'error'](
     passed
-      ? '[smoke-4.1] ✓ Phase 4.1 专题 UI（列表 + 4 tab 详情）全部通过'
-      : '[smoke-4.1] ✗ Phase 4.1 专题 UI 验证失败'
+      ? '[smoke-4.1] ✓ Phase 4 专题持久化与演化图全部通过'
+      : '[smoke-4.1] ✗ Phase 4 专题演化图验证失败'
   );
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   process.exit(passed ? 0 : 1);

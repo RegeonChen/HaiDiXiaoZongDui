@@ -1,40 +1,39 @@
 /**
- * TopicDetail — 专题详情（4 tab）
+ * TopicDetail — 专题详情（脉络图 / 文章 / 简报）
  *
  * 4 tab 内部 sub-state 切换，不污染 Layout.AppPage。
  * 4 tab 复用同一个 Article 列表 / 简报组件，差异化展示。
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { Article, Briefing, EventGroup, Feed, Topic, TimelineEntry } from '@shared/types';
+import type { Article, Briefing, Feed, Topic, TopicGraph } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../StatusView/LoadingView';
 import { ErrorView } from '../StatusView/ErrorView';
 import { TopicArticlesTab } from './tabs/TopicArticlesTab';
-import { TopicTimelineTab } from './tabs/TopicTimelineTab';
-import { TopicEventGroupsTab } from './tabs/TopicEventGroupsTab';
 import { TopicBriefingTab } from './tabs/TopicBriefingTab';
 import { TopicFormDialog } from '../TopicFormDialog/TopicFormDialog';
+import { TopicGraphView } from '../TopicGraph/TopicGraphView';
 import './TopicDetail.css';
 
-export type TopicTab = 'articles' | 'timeline' | 'events' | 'briefing';
+export type TopicTab = 'graph' | 'articles' | 'briefing';
 
 export interface TopicDetailProps {
   topicId: string;
   onBack: () => void;
   onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
+  onOpenArticle: (article: Article) => void;
 }
 
 const TAB_ITEMS: Array<{ id: TopicTab; label: string; icon: string; description: string }> = [
+  { id: 'graph', label: '脉络图', icon: '⌁', description: '按时间与发展方向展示事件演化' },
   { id: 'articles', label: '文章', icon: '📰', description: '该专题关联的所有文章' },
-  { id: 'timeline', label: '时间线', icon: '⏱', description: '多源合并时间线，标出每篇新增信息' },
-  { id: 'events', label: '事件分组', icon: '◐', description: '按事件聚类，呈现报道脉络' },
-  { id: 'briefing', label: '简报', icon: '📋', description: 'AI 生成的多源带引用简报' }
+  { id: 'briefing', label: '简报', icon: '📋', description: '从演化图生成带原文引用的专题简报' }
 ];
 
-export function TopicDetail({ topicId, onBack, onToast }: TopicDetailProps) {
+export function TopicDetail({ topicId, onBack, onToast, onOpenArticle }: TopicDetailProps) {
   const ds = useDataSource();
   const [topic, setTopic] = useState<Topic | null | undefined>(undefined);
-  const [tab, setTab] = useState<TopicTab>('articles');
+  const [tab, setTab] = useState<TopicTab>('graph');
   const [editing, setEditing] = useState(false);
 
   // 缓存 feeds（用于 Articles tab 显示订阅源名）
@@ -62,27 +61,38 @@ export function TopicDetail({ topicId, onBack, onToast }: TopicDetailProps) {
 
   // 详情 tab 共享数据（按需 lazy load）
   const [articles, setArticles] = useState<Article[] | null>(null);
-  const [timeline, setTimeline] = useState<TimelineEntry[] | null>(null);
-  const [eventGroups, setEventGroups] = useState<EventGroup[] | null>(null);
+  const [graph, setGraph] = useState<TopicGraph | null | undefined>(undefined);
+  const [graphRefreshing, setGraphRefreshing] = useState(false);
   const [briefing, setBriefing] = useState<Briefing | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
+  const loadGraph = useCallback(async () => {
+    setGraphRefreshing(true);
+    try {
+      const [graphResult, articleResult] = await Promise.all([
+        ds.topicGetGraph(topicId),
+        ds.topicGetArticles(topicId)
+      ]);
+      if (graphResult.kind === 'ready') {
+        setGraph(graphResult.data);
+      } else {
+        setGraph(null);
+        onToast(`脉络图生成失败：${graphResult.kind === 'error' ? graphResult.error : '尚未就绪'}`, 'error');
+      }
+      if (articleResult.kind === 'ready') setArticles(articleResult.data);
+    } finally {
+      setGraphRefreshing(false);
+    }
+  }, [ds, onToast, topicId]);
+
   // 切到 tab 时按需加载
   useEffect(() => {
-    if (tab === 'articles' && articles === null) {
+    if (tab === 'graph' && graph === undefined && !graphRefreshing) {
+      void loadGraph();
+    } else if (tab === 'articles' && articles === null) {
       void (async () => {
         const r = await ds.topicGetArticles(topicId);
         setArticles(r.kind === 'ready' ? r.data : []);
-      })();
-    } else if (tab === 'timeline' && timeline === null) {
-      void (async () => {
-        const r = await ds.topicGetTimeline(topicId);
-        setTimeline(r.kind === 'ready' ? r.data : []);
-      })();
-    } else if (tab === 'events' && eventGroups === null) {
-      void (async () => {
-        const r = await ds.topicGetEventGroups(topicId);
-        setEventGroups(r.kind === 'ready' ? r.data : []);
       })();
     } else if (tab === 'briefing' && briefing === undefined) {
       void (async () => {
@@ -90,7 +100,7 @@ export function TopicDetail({ topicId, onBack, onToast }: TopicDetailProps) {
         setBriefing(r.kind === 'ready' ? r.data : null);
       })();
     }
-  }, [tab, topicId, articles, timeline, eventGroups, briefing, ds]);
+  }, [tab, topicId, articles, graph, graphRefreshing, briefing, ds, loadGraph]);
 
   if (topic === undefined) {
     return <LoadingView message="正在加载专题…" />;
@@ -177,24 +187,28 @@ export function TopicDetail({ topicId, onBack, onToast }: TopicDetailProps) {
       </nav>
 
       <section className="topic-detail__content" data-active-tab={tab}>
+        {tab === 'graph' && (
+          graph === undefined ? (
+            <LoadingView message="正在关联文章并生成专题脉络…" />
+          ) : graph === null ? (
+            <ErrorView message="专题脉络生成失败" onRetry={() => void loadGraph()} />
+          ) : (
+            <TopicGraphView
+              graph={graph}
+              articles={articles ?? []}
+              feeds={feeds}
+              refreshing={graphRefreshing}
+              onRefresh={() => void loadGraph()}
+              onOpenArticle={onOpenArticle}
+            />
+          )
+        )}
         {tab === 'articles' && (
           <TopicArticlesTab
             articles={articles}
             feeds={feeds}
             onToast={onToast}
-          />
-        )}
-        {tab === 'timeline' && (
-          <TopicTimelineTab
-            timeline={timeline}
-            onToast={onToast}
-          />
-        )}
-        {tab === 'events' && (
-          <TopicEventGroupsTab
-            eventGroups={eventGroups}
-            feeds={feeds}
-            onToast={onToast}
+            onOpenArticle={onOpenArticle}
           />
         )}
         {tab === 'briefing' && (

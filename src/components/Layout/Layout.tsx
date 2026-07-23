@@ -111,7 +111,7 @@ export function Layout({
     { id: 'tags', label: '标签', icon: '#', title: '标签管理' },
     { id: 'notes', label: '笔记', icon: '✎', title: '笔记' },
     { id: 'digests', label: '文摘', icon: '☷', title: '文摘导出' },
-    { id: 'topics', label: '专题', icon: '★', title: '专题追踪（Phase 4 接入）' },
+    { id: 'topics', label: '专题', icon: '★', title: '专题演化图（时间 / 发展方向 / 来源文章）' },
     { id: 'logs', label: '日志', icon: '☰', title: '本地日志' }
   ];
 

@@ -366,9 +366,11 @@
 
 ### Task 4.1 - Topic Page (张晨阳)
 
+- **Status:** Completed (2026-07-23, Topic Evolution Graph MVP).
 - **Task Detail:** 实现专题创建、专题文章列表、事件分组、时间线、来源对比和简报展示界面。
 - **Affected Areas:** 专题页面、时间线组件、简报编辑与导出交互。
 - **Verification:** 用户可以创建专题，并清楚看到相关文章、来源和简报引用关系。
+- **Implementation:** 默认入口升级为“专题演化图”：横向按时间、纵向按发展方向排列事件节点；节点可合并重复报道，展开后列出全部来源并可返回阅读器原文。
 
 ### Task 4.2 - Topic-ready Content (张宇凡)
 
@@ -380,14 +382,17 @@
 
 ### Task 4.3 - Topic Analysis (陈冠中)
 
+- **Status:** MVP Completed (2026-07-23); optional AI semantic refinement remains.
 - **Task Detail:** 保存专题及文章关联，实现文章匹配、相似报道分组、时间线数据和带来源引用的多源简报生成。
 - **Affected Areas:** Topic 数据模型、匹配与分组服务、Briefing Agent、结果缓存。
 - **Verification:** 新文章能够加入相关专题；相似报道可以被分组；简报中的每条结论可以返回支持它的原文。
+- **Implementation:** Schema v7 持久化专题与文章关联；先用本地标题/摘要/清洗正文发现候选文章，再按规范 URL、内容指纹和标题相似度聚合事件，生成“发布与能力 / 产品与应用 / 安全与治理 / 成本与部署 / 观点与解读”方向图。结果按内容签名缓存，仅新增或修改文章时重建；本地简报逐条引用来源文章，不额外消耗 Token。
 
 ### Phase 4 Integration (张晨阳 + 张宇凡 + 陈冠中)
 
 - 三人共同完成专题页面的端到端连接和演示数据准备。
 - **Verification:** 从同步多篇真实文章开始，可以生成一个包含事件分组、时间线、观点差异和来源引用的专题简报。
+- **MVP Result (2026-07-23):** 专题 CRUD、自动关联、事件聚合、发展方向、点线图、原文回跳、缓存和来源简报已端到端接通。后续若启用模型，仅用于优化语义关系与观点差异，不参与第一轮候选发现。
 
 ## Phase 5: Cross-platform Acceptance
 

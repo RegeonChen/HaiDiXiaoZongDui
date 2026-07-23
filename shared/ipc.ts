@@ -18,7 +18,7 @@ import type {
   Note, NoteCreateInput, NoteUpdateInput,
   Digest, DigestCreateInput, ExportFormat,
   Topic, TopicCreateInput, TopicUpdateInput,
-  EventGroup, Briefing, TimelineEntry,
+  EventGroup, Briefing, TimelineEntry, TopicGraph,
   AIProvider, AIProviderCreateInput, AIProviderUpdateInput,
   AISummary, AITranslation, AITagSuggestion, SummaryDetailLevel,
   SyncResult, SyncProgress,
@@ -135,6 +135,7 @@ export const IPC_CHANNELS = {
   TOPIC_UPDATE:        'topic:update',
   TOPIC_DELETE:        'topic:delete',
   TOPIC_GET_ARTICLES:  'topic:getArticles',
+  TOPIC_GET_GRAPH:     'topic:getGraph',
   TOPIC_GET_TIMELINE:  'topic:getTimeline',
   TOPIC_GET_EVENT_GROUPS: 'topic:getEventGroups',
   TOPIC_GENERATE_BRIEFING: 'topic:generateBriefing',
@@ -253,6 +254,7 @@ export interface IpcRequestMap {
   [IPC_CHANNELS.TOPIC_UPDATE]:            { args: { id: string; input: TopicUpdateInput };             result: Topic };
   [IPC_CHANNELS.TOPIC_DELETE]:            { args: { id: string };                                      result: void };
   [IPC_CHANNELS.TOPIC_GET_ARTICLES]:      { args: { topicId: string };                                 result: Article[] };
+  [IPC_CHANNELS.TOPIC_GET_GRAPH]:         { args: { topicId: string };                                 result: TopicGraph };
   [IPC_CHANNELS.TOPIC_GET_TIMELINE]:      { args: { topicId: string };                                 result: TimelineEntry[] };
   [IPC_CHANNELS.TOPIC_GET_EVENT_GROUPS]:  { args: { topicId: string };                                 result: EventGroup[] };
   [IPC_CHANNELS.TOPIC_GENERATE_BRIEFING]: { args: { topicId: string };                                 result: Briefing };

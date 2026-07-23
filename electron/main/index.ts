@@ -29,6 +29,7 @@ import { AiProviderRepository } from './db/ai-provider-repository.js';
 import { TagRepository } from './db/tag-repository.js';
 import { NoteRepository } from './db/note-repository.js';
 import { DigestRepository } from './db/digest-repository.js';
+import { TopicRepository } from './db/topic-repository.js';
 import { AiResultCache } from './db/ai-result-cache.js';
 import { FeedRepository } from './db/feed-repository.js';
 import { ArticleRepository } from './db/article-repository.js';
@@ -72,7 +73,10 @@ import {
   type TagCreateInput,
   type TagUpdateInput,
   type TimelineEntry,
-  type Topic
+  type Topic,
+  type TopicCreateInput,
+  type TopicGraph,
+  type TopicUpdateInput
 } from '../../shared/types.js';
 
 import { generateSummary } from './services/ai/summary-agent.js';
@@ -117,7 +121,8 @@ const SMOKE_FLAGS = {
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
   feedUrl: process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? '',
   aiBaseUrl: process.env['JUHE_SHIVI_SMOKE_AI_BASE_URL'] ?? '',
-  aiKey: process.env['JUHE_SHIVI_SMOKE_AI_KEY'] ?? ''
+  aiKey: process.env['JUHE_SHIVI_SMOKE_AI_KEY'] ?? '',
+  screenshotPath: process.env['JUHE_SHIVI_SMOKE_SCREENSHOT']?.trim() || null
 };
 // Debug: 任何 smoke 模式都 dump 实际生效的 userData 路径
 const dumpUserData = (): void => {
@@ -1037,7 +1042,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       })()
     `;
   } else if (smokeTopic) {
-    // Phase 4.1 smoke: 专题 UI 完整化（list + 4 tab 详情）+ IPC stub 调用
+    // Phase 4 smoke: 专题 CRUD + 自动关联/脉络图 IPC + UI 空态
     probe = `
       (async () => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1060,38 +1065,51 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           await waitFor(() => !!document.querySelector('.topics-page'), { timeout: 3000 });
           report.topic.checks.topicsPageRendered = !!document.querySelector('.topics-page');
 
-          // 2) TopicsPage 应该有标题 + 新建按钮（即使后端 stub 也会渲染）
+          // 2) TopicsPage 应该有标题 + 新建按钮
           await waitFor(() => !!document.querySelector('.topics-page__title'), { timeout: 2000 });
           const titleEl = document.querySelector('.topics-page__title');
           report.topic.checks.titleText = titleEl?.textContent?.includes('专题') ?? false;
           const newBtn = document.querySelector('.topics-page__new-btn');
           report.topic.checks.newBtnVisible = !!newBtn;
 
-          // 3) stub 状态下应该显示 "等待 4.3 接入" 提示 OR "还没有专题" empty
-          //    EmptyView 渲染为 .status-view；自定义 placeholder 是 .topics-page__placeholder
+          // 3) 空数据库应显示“还没有专题”空态
           const placeholder = document.querySelector('.topics-page__placeholder, .status-view, .status-title');
           report.topic.checks.placeholderOrEmptyVisible = !!placeholder;
 
-          // 4) IPC topicList 调用（应该不抛错，返回 NOT_IMPLEMENTED error）
+          // 4) IPC 专题 CRUD + 演化图均走真实实现
           const listR = await window.api.topic.list();
-          report.topic.checks.ipcTopicListOk = listR !== undefined;
-          // 验证 5 个 topic IPC 都能调到（即使返回 NOT_IMPLEMENTED）
-          const createR = await window.api.topic.create({ name: 'smoke-topic', description: 'x' });
-          const getR = await window.api.topic.get('non-existent');
-          const updateR = await window.api.topic.update('non-existent', { name: 'y' });
-          const deleteR = await window.api.topic.delete('non-existent');
-          const getArticlesR = await window.api.topic.getArticles('non-existent');
-          report.topic.checks.ipcAllReachable = [
-            createR, getR, updateR, deleteR, getArticlesR
-          ].every((r) => r !== undefined);
-          const allStubbed = [createR, getR, updateR, deleteR, getArticlesR].every(
-            (r) => !r || !r.success
-          );
-          report.topic.checks.allStubbed = allStubbed;
+          report.topic.checks.ipcTopicListOk = listR.success && Array.isArray(listR.data);
+          const createR = await window.api.topic.create({ name: 'GPT-5.6', description: 'smoke', keywords: ['GPT-5.6'] });
+          const topicId = createR.success ? createR.data.id : '';
+          const getR = await window.api.topic.get(topicId);
+          const updateR = await window.api.topic.update(topicId, { description: 'updated' });
+          const graphR = await window.api.topic.getGraph(topicId);
+          const getArticlesR = await window.api.topic.getArticles(topicId);
+
+          // 让 TopicsPage 重新挂载并进入新建专题，验证真实点线图 DOM。
+          document.querySelector('.app-header__logo-btn')?.click();
+          await sleep(50);
+          topicsNavBtn?.click();
+          await waitFor(() => !!document.querySelector('.topics-page__item-main'), { timeout: 2500 });
+          document.querySelector('.topics-page__item-main')?.click();
+          await waitFor(() => document.querySelectorAll('.topic-graph__node').length >= 3, { timeout: 3000 });
+          report.topic.checks.graphUiRendered =
+            document.querySelectorAll('.topic-graph__node').length >= 3 &&
+            document.querySelectorAll('.topic-graph__lane').length >= 3 &&
+            document.querySelectorAll('.topic-graph__edge').length >= 2 &&
+            !!document.querySelector('.topic-graph-detail__sources button');
+
+          const deleteR = await window.api.topic.delete(topicId);
+          const deletedGetR = await window.api.topic.get(topicId);
+          report.topic.checks.crudWorks = createR.success && getR.success && updateR.success &&
+            updateR.data.description === 'updated' && deleteR.success && !deletedGetR.success;
+          report.topic.checks.graphWorks = graphR.success && Array.isArray(graphR.data.nodes) &&
+            Array.isArray(graphR.data.directions) && Array.isArray(graphR.data.edges);
+          report.topic.checks.articlesWorks = getArticlesR.success && Array.isArray(getArticlesR.data);
 
           report.topic.ok = [
             'topicsPageRendered', 'titleText', 'newBtnVisible', 'placeholderOrEmptyVisible',
-            'ipcTopicListOk', 'ipcAllReachable', 'allStubbed'
+            'ipcTopicListOk', 'crudWorks', 'graphWorks', 'articlesWorks', 'graphUiRendered'
           ].every((k) => report.topic.checks[k] === true);
         } catch (e) {
           report.topic.error = String(e);
@@ -1667,12 +1685,12 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             await sleep(120);
             integrationReport.checks.digestPageRendered = !!document.querySelector('.digests-page');
 
-            // 9) TopicsPage：占位
+            // 9) TopicsPage：真实后端的空数据库状态
             const navBtn4 = navBtns[5]; // topics（Phase 3.4.4.4 后索引 +1）
             navBtn4?.click();
             await sleep(120);
             integrationReport.checks.topicsPageRendered = !!document.querySelector('.topics-page');
-            integrationReport.checks.topicsPlaceholder = !!document.querySelector('.topics-page__placeholder, .topics-page .status-view');
+            integrationReport.checks.topicsEmptyState = !!document.querySelector('.topics-page .status-view');
 
             // 10) LogsPage：占位
             const navBtn5 = navBtns[6]; // logs（Phase 3.4.4.4 后索引 +1）
@@ -1701,6 +1719,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               aiBtnLabels.some((t) => t.includes('笔记')) &&
               aiBtnLabels.some((t) => t.includes('专题'));
 
+            // Electron 不支持 window.prompt。专题按钮必须打开应用内表单，
+            // 防止出现“按钮能获得焦点，但点击后没有任何反应”的回归。
+            const topicBtn = document.querySelector('[data-tool="topic"]');
+            topicBtn?.click();
+            await waitFor(() => !!document.querySelector('.topic-form-dialog'), { timeout: 2000 });
+            integrationReport.checks.topicDialogOpens = !!document.querySelector('.topic-form-dialog');
+            document.querySelector('.topic-form-dialog__close')?.click();
+
             // OK 判定
             // Phase 3.4.4.4：page_settingsRendered 改名 page_aiRendered（settings → ai 拆分）
             const integrationChecks = [
@@ -1708,8 +1734,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               'page_digestsRendered', 'page_topicsRendered', 'page_logsRendered',
               'fontThemesOk', 'visualThemesOk', 'fontToggled', 'visualToggled',
               'tagCreated', 'tagDeleted', 'noteCreated', 'digestPageRendered',
-              'topicsPageRendered', 'topicsPlaceholder', 'logsPageRendered', 'logsPlaceholder',
-              'backToReader', 'aiBtnsOk'
+              'topicsPageRendered', 'topicsEmptyState', 'logsPageRendered', 'logsPlaceholder',
+              'backToReader', 'aiBtnsOk', 'topicDialogOpens'
             ];
             integrationReport.ok = integrationChecks.every((k) => integrationReport.checks[k] === true);
           } catch (e) {
@@ -2120,6 +2146,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
   try {
     const raw = await win.webContents.executeJavaScript(probe);
+    if (smokeTopic && SMOKE_FLAGS.screenshotPath) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+      const { writeFileSync } = await import('node:fs');
+      const screenshot = await win.webContents.capturePage();
+      writeFileSync(SMOKE_FLAGS.screenshotPath, screenshot.toPNG());
+      console.log(`[smoke] screenshot ${SMOKE_FLAGS.screenshotPath}`);
+    }
     console.log(`SMOKE_REPORT_JSON ${raw}`);
 
     let pass: boolean;
@@ -2717,57 +2750,102 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
     }
   });
 
-  // ============= Topic（Phase 4 占位 stub，陈冠中会在 Phase 4 接入真实实现） =============
-
-  const topicNotImplemented = (op: string): IpcResult<never> =>
-    fail('NOT_IMPLEMENTED', `专题功能 ${op} 等待 Phase 4 接入，当前请先在 Phase 3 Integration 中使用其他功能`);
-
+  // ============= Topic（专题自动关联 + 时间/方向演化图） =============
   trustedIpcMain.handle(IPC_CHANNELS.TOPIC_LIST, async (): Promise<IpcResult<Topic[]>> => {
-    return topicNotImplemented('list');
+    try { return ok(TopicRepository.list()); }
+    catch (e) { return fail('TOPIC_LIST_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET, async (): Promise<IpcResult<Topic>> => {
-    return topicNotImplemented('get');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET, async (_, args): Promise<IpcResult<Topic>> => {
+    try {
+      if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
+      const topic = TopicRepository.getById(args.id);
+      return topic ? ok(topic) : fail('NOT_FOUND', '专题不存在');
+    } catch (e) { return fail('TOPIC_GET_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_CREATE, async (): Promise<IpcResult<Topic>> => {
-    return topicNotImplemented('create');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_CREATE, async (_, args): Promise<IpcResult<Topic>> => {
+    try {
+      const input = args?.input as TopicCreateInput | undefined;
+      if (!input?.name?.trim()) return fail('INVALID_PARAMS', '专题名称不能为空');
+      return ok(TopicRepository.create(input));
+    } catch (e) { return fail('TOPIC_CREATE_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_UPDATE, async (): Promise<IpcResult<Topic>> => {
-    return topicNotImplemented('update');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_UPDATE, async (_, args): Promise<IpcResult<Topic>> => {
+    try {
+      if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
+      const topic = TopicRepository.update(args.id, (args.input ?? {}) as TopicUpdateInput);
+      return topic ? ok(topic) : fail('NOT_FOUND', '专题不存在');
+    } catch (e) { return fail('TOPIC_UPDATE_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_DELETE, async (): Promise<IpcResult<void>> => {
-    return topicNotImplemented('delete');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_DELETE, async (_, args): Promise<IpcResult<void>> => {
+    try {
+      if (!args?.id) return fail('INVALID_PARAMS', '缺少 id');
+      return TopicRepository.delete(args.id) ? ok(undefined) : fail('NOT_FOUND', '专题不存在');
+    } catch (e) { return fail('TOPIC_DELETE_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET_ARTICLES, async (): Promise<IpcResult<Article[]>> => {
-    return topicNotImplemented('getArticles');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET_ARTICLES, async (_, args): Promise<IpcResult<Article[]>> => {
+    try {
+      if (!args?.topicId) return fail('INVALID_PARAMS', '缺少 topicId');
+      if (!TopicRepository.getById(args.topicId)) return fail('NOT_FOUND', '专题不存在');
+      TopicRepository.refreshAssociations(args.topicId);
+      return ok(TopicRepository.getArticles(args.topicId));
+    } catch (e) { return fail('TOPIC_ARTICLES_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET_TIMELINE, async (): Promise<IpcResult<TimelineEntry[]>> => {
-    return topicNotImplemented('getTimeline');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET_GRAPH, async (_, args): Promise<IpcResult<TopicGraph>> => {
+    try {
+      if (!args?.topicId) return fail('INVALID_PARAMS', '缺少 topicId');
+      return ok(TopicRepository.getGraph(args.topicId));
+    } catch (e) { return fail('TOPIC_GRAPH_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET_EVENT_GROUPS, async (): Promise<IpcResult<EventGroup[]>> => {
-    return topicNotImplemented('getEventGroups');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET_TIMELINE, async (_, args): Promise<IpcResult<TimelineEntry[]>> => {
+    try {
+      if (!args?.topicId) return fail('INVALID_PARAMS', '缺少 topicId');
+      return ok(TopicRepository.getTimeline(args.topicId));
+    } catch (e) { return fail('TOPIC_TIMELINE_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GENERATE_BRIEFING, async (): Promise<IpcResult<Briefing>> => {
-    return topicNotImplemented('generateBriefing');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET_EVENT_GROUPS, async (_, args): Promise<IpcResult<EventGroup[]>> => {
+    try {
+      if (!args?.topicId) return fail('INVALID_PARAMS', '缺少 topicId');
+      return ok(TopicRepository.getEventGroups(args.topicId));
+    } catch (e) { return fail('TOPIC_EVENTS_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET_BRIEFING, async (): Promise<IpcResult<Briefing | null>> => {
-    return topicNotImplemented('getBriefing');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GENERATE_BRIEFING, async (_, args): Promise<IpcResult<Briefing>> => {
+    try {
+      if (!args?.topicId) return fail('INVALID_PARAMS', '缺少 topicId');
+      return ok(TopicRepository.generateBriefing(args.topicId));
+    } catch (e) { return fail('TOPIC_BRIEFING_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_UPDATE_BRIEFING, async (): Promise<IpcResult<Briefing>> => {
-    return topicNotImplemented('updateBriefing');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_GET_BRIEFING, async (_, args): Promise<IpcResult<Briefing | null>> => {
+    try {
+      if (!args?.topicId) return fail('INVALID_PARAMS', '缺少 topicId');
+      if (!TopicRepository.getById(args.topicId)) return fail('NOT_FOUND', '专题不存在');
+      return ok(TopicRepository.getBriefing(args.topicId));
+    } catch (e) { return fail('TOPIC_BRIEFING_GET_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_EXPORT_BRIEFING, async (): Promise<IpcResult<string>> => {
-    return topicNotImplemented('exportBriefing');
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_UPDATE_BRIEFING, async (_, args): Promise<IpcResult<Briefing>> => {
+    try {
+      if (!args?.topicId || typeof args.editedContent !== 'string') return fail('INVALID_PARAMS', '缺少专题或简报内容');
+      const briefing = TopicRepository.updateBriefing(args.topicId, args.editedContent);
+      return briefing ? ok(briefing) : fail('NOT_FOUND', '请先生成专题简报');
+    } catch (e) { return fail('TOPIC_BRIEFING_UPDATE_FAILED', e instanceof Error ? e.message : String(e)); }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.TOPIC_EXPORT_BRIEFING, async (_, args): Promise<IpcResult<string>> => {
+    try {
+      if (!args?.topicId || !args.format) return fail('INVALID_PARAMS', '缺少专题或导出格式');
+      const result = TopicRepository.exportBriefing(args.topicId, args.format as ExportFormat);
+      return result === null ? fail('NOT_FOUND', '请先生成专题简报') : ok(result);
+    } catch (e) { return fail('TOPIC_BRIEFING_EXPORT_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
   // ============= Log（Phase 4 占位 stub，陈冠中会在 Phase 4 接入真实实现） =============
@@ -2827,6 +2905,45 @@ async function selectOpmlExportPath(event: IpcMainInvokeEvent): Promise<string |
   return result.canceled ? null : result.filePath ?? null;
 }
 
+/** 为专题演化图 smoke 准备完全离线、可重复的多方向文章。 */
+function seedTopicSmokeData(): void {
+  const feed = FeedRepository.create({
+    url: 'https://topic-smoke.example/feed.xml',
+    title: 'Topic Smoke Source'
+  });
+  const timestamp = '2026-07-09T00:00:00.000Z';
+  const fixtures: Article[] = [
+    {
+      id: 'topic-smoke-release', feedId: feed.id, title: 'GPT-5.6 model released',
+      url: 'https://topic-smoke.example/release', author: null, publishedAt: timestamp,
+      fetchedAt: timestamp, rawHtml: '<p>GPT-5.6 release</p>', rawText: 'GPT-5.6 release',
+      cleanedHtml: '<p>OpenAI released GPT-5.6 with new model capabilities.</p>',
+      cleanedMarkdown: 'OpenAI released GPT-5.6 with new model capabilities.', cleaningStatus: 'done',
+      isRead: false, isStarred: false, summary: null, translatedParagraphs: null,
+      guid: 'topic-smoke-release', createdAt: timestamp, updatedAt: timestamp
+    },
+    {
+      id: 'topic-smoke-api', feedId: feed.id, title: 'Developers adopt the GPT-5.6 API',
+      url: 'https://topic-smoke.example/api', author: null, publishedAt: '2026-07-12T00:00:00.000Z',
+      fetchedAt: timestamp, rawHtml: '<p>GPT-5.6 API</p>', rawText: 'GPT-5.6 API',
+      cleanedHtml: '<p>Developer SDK integration and coding agents use the GPT-5.6 API.</p>',
+      cleanedMarkdown: 'Developer SDK integration and coding agents use the GPT-5.6 API.', cleaningStatus: 'done',
+      isRead: false, isStarred: false, summary: null, translatedParagraphs: null,
+      guid: 'topic-smoke-api', createdAt: timestamp, updatedAt: timestamp
+    },
+    {
+      id: 'topic-smoke-safety', feedId: feed.id, title: 'GPT-5.6 safety debate',
+      url: 'https://topic-smoke.example/safety', author: null, publishedAt: '2026-07-13T00:00:00.000Z',
+      fetchedAt: timestamp, rawHtml: '<p>GPT-5.6 safety</p>', rawText: 'GPT-5.6 safety',
+      cleanedHtml: '<p>Researchers discuss model safety, risk and regulation.</p>',
+      cleanedMarkdown: 'Researchers discuss GPT-5.6 model safety, risk and regulation.', cleaningStatus: 'done',
+      isRead: false, isStarred: false, summary: null, translatedParagraphs: null,
+      guid: 'topic-smoke-safety', createdAt: timestamp, updatedAt: timestamp
+    }
+  ];
+  ArticleRepository.insertBatch(fixtures);
+}
+
 // ============================================================
 // App 生命周期
 // ============================================================
@@ -2845,6 +2962,7 @@ app.whenReady().then(async () => {
   }
   await initDatabase();
   runMigrations();
+  if (SMOKE_FLAGS.smokeTopic) seedTopicSmokeData();
 
   const trustedRendererUrl = getTrustedRendererUrl();
   registerIpcHandlers(trustedRendererUrl);

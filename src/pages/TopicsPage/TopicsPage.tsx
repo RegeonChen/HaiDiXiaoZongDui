@@ -8,10 +8,10 @@
  * 设计决策：
  *   - 列表/详情切换在 TopicsPage 内部用 state 管理，不污染 Layout.AppPage 类型
  *   - 4 tab 数据均通过 DataSource 拉取，loading/empty/error 三态统一
- *   - 后端仍是 stub（topic:* handler 返回 NOT_IMPLEMENTED），UI 端会显示"等待 4.3 接入"
+ *   - 专题后端会在本地自动关联文章并缓存演化图；空专题仍显示正常空态
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { Topic, TopicCreateInput, TopicUpdateInput } from '@shared/types';
+import type { Article, Topic, TopicCreateInput, TopicUpdateInput } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
@@ -22,9 +22,10 @@ import './TopicsPage.css';
 
 export interface TopicsPageProps {
   onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
+  onOpenArticle: (article: Article) => void;
 }
 
-export function TopicsPage({ onToast }: TopicsPageProps) {
+export function TopicsPage({ onToast, onOpenArticle }: TopicsPageProps) {
   const ds = useDataSource();
   const [topics, setTopics] = useState<Topic[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,14 +62,13 @@ export function TopicsPage({ onToast }: TopicsPageProps) {
           void refresh();
         }}
         onToast={onToast}
+        onOpenArticle={onOpenArticle}
       />
     );
   }
 
   // 列表视图
   if (error) {
-    // 区分"后端 stub"和真实错误
-    const isStub = /NOT_IMPLEMENTED|Phase 4|专题/i.test(error);
     return (
       <div className="topics-page">
         <header className="topics-page__header">
@@ -76,7 +76,6 @@ export function TopicsPage({ onToast }: TopicsPageProps) {
           <p className="topics-page__hint">
             创建专题并匹配文章，按事件分组生成多源简报。
           </p>
-          {/* stub 状态下也允许用户尝试创建（IPC 会返回 NOT_IMPLEMENTED） */}
           <button
             type="button"
             className="topics-page__new-btn"
@@ -85,14 +84,7 @@ export function TopicsPage({ onToast }: TopicsPageProps) {
             + 新建专题
           </button>
         </header>
-        {isStub ? (
-          <EmptyView
-            title="专题追踪等待 4.3 接入"
-            hint="专题后端（Topic 仓储、匹配算法、Briefing Agent）由陈冠中在 Task 4.3 落地。UI 已就绪（列表 + 4 tab 详情），后端就绪后即可联调。"
-          />
-        ) : (
-          <ErrorView message={error} onRetry={refresh} />
-        )}
+        <ErrorView message={error} onRetry={refresh} />
       </div>
     );
   }

@@ -22,6 +22,7 @@ import type {
   Briefing,
   TimelineEntry,
   EventGroup,
+  TopicGraph,
   HtmlBlock,
   AIProvider,
   AIProviderCreateInput,
@@ -93,6 +94,8 @@ export interface FullDataSource extends DataSource {
   topicUpdate(id: string, input: TopicUpdateInput): Promise<DataSourceState<Topic>>;
   topicDelete(id: string): Promise<void>;
   topicGetArticles(topicId: string): Promise<DataSourceState<Article[]>>;
+  /** 时间 × 发展方向的专题演化图。 */
+  topicGetGraph(topicId: string): Promise<DataSourceState<TopicGraph>>;
   /** 合并多源时间线（Phase 4.1 Timeline tab） */
   topicGetTimeline(topicId: string): Promise<DataSourceState<TimelineEntry[]>>;
   /** 事件分组（Phase 4.1 EventGroups tab） */
@@ -305,6 +308,10 @@ export class IpcDataSource implements FullDataSource {
 
   async topicGetArticles(topicId: string): Promise<DataSourceState<Article[]>> {
     return unwrap(await window.api.topic.getArticles(topicId));
+  }
+
+  async topicGetGraph(topicId: string): Promise<DataSourceState<TopicGraph>> {
+    return unwrap(await window.api.topic.getGraph(topicId));
   }
 
   async topicGetTimeline(topicId: string): Promise<DataSourceState<TimelineEntry[]>> {

@@ -319,6 +319,11 @@ export interface TopicCreateInput {
   name: string;
   description: string;
   keywords?: string[];
+  /**
+   * 从阅读器内创建专题时用于固定关联当前文章。
+   * 其余候选文章仍由本地关键词匹配补充，避免为了发现候选项调用模型。
+   */
+  seedArticleId?: string;
 }
 
 export interface TopicUpdateInput {
@@ -401,6 +406,57 @@ export interface TimelineEntry {
    * null 表示无新增信息（首篇报道或无法判断）。
    */
   newInformation: string | null;
+}
+
+/** 专题演化图中的发展方向。 */
+export interface TopicGraphDirection {
+  id: string;
+  name: string;
+  color: string;
+  /** 该方向最早出现的时间，用于稳定排列泳道。 */
+  firstSeenAt: IsoTimestamp;
+}
+
+/**
+ * 专题演化图节点。一个节点代表一个事件/阶段，可能合并多篇重复或高度相似的报道。
+ */
+export interface TopicGraphNode {
+  id: string;
+  topicId: string;
+  eventGroupId: string;
+  title: string;
+  date: IsoTimestamp;
+  directionId: string;
+  directionName: string;
+  summary: string;
+  /** 相对上一阶段最值得关注的新增信息。 */
+  newInformation: string | null;
+  articleIds: string[];
+  sourceTitles: string[];
+}
+
+export type TopicGraphRelation = 'develops' | 'branches';
+
+/** 专题演化图中的有向关系。 */
+export interface TopicGraphEdge {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  relation: TopicGraphRelation;
+  label: string;
+}
+
+/**
+ * 按时间和发展方向组织的专题演化图。
+ * 分析结果按 sourceSignature 缓存；只有专题或关联文章变化时才重建。
+ */
+export interface TopicGraph {
+  topicId: string;
+  directions: TopicGraphDirection[];
+  nodes: TopicGraphNode[];
+  edges: TopicGraphEdge[];
+  generatedAt: IsoTimestamp;
+  sourceSignature: string;
 }
 
 // ---- AI Provider（AI 模型配置） ----

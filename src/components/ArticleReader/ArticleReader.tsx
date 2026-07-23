@@ -13,7 +13,7 @@
  *  - 标签管理:tagList + tagAddToArticle / tagRemoveFromArticle 手动分类
  *  - 标签建议:aiSuggestTags + aiGetTagSuggestions,可一键应用
  *  - 笔记:noteCreate 写入 notes 表
- *  - 专题:topicCreate 占位(Phase 4 接入后真正生效)
+ *  - 专题:打开专题表单，以当前文章作为种子创建关联图
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Article, Feed, NoteCreateInput, Tag } from '@shared/types';
@@ -26,6 +26,7 @@ import { SummaryFloatingPanel } from '../SummaryFloatingPanel/SummaryFloatingPan
 import { TranslatedArticleView } from '../TranslatedArticleView/TranslatedArticleView';
 import { StickyBottomPanel } from '../StickyBottomPanel/StickyBottomPanel';
 import { WebArticleView } from '../WebArticleView/WebArticleView';
+import { TopicFormDialog, type TopicFormValue } from '../TopicFormDialog/TopicFormDialog';
 import { useReaderMode, type ReaderMode } from '../../hooks/useReaderMode';
 import './ArticleReader.css';
 
@@ -87,6 +88,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   const [translationParagraphs, setTranslationParagraphs] = useState<TranslationDisplayParagraph[]>([]);
   const [tagSuggestions, setTagSuggestions] = useState<Array<{ name: string; confidence: number; reason: string }>>([]);
   const [noteMarkdown, setNoteMarkdown] = useState('');
+  const [topicDialogOpen, setTopicDialogOpen] = useState(false);
   // Phase 3.5.x 落地标签管理:当前文章已应用 tag + 全局 tag 列表
   const [articleTags, setArticleTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -138,6 +140,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       setNoteMarkdown('');
       setArticleTags([]);
       setStickyTab(null);
+      setTopicDialogOpen(false);
       return;
     }
     // Phase 3.5.3:检查文章是否已有缓存的 AI 结果,有则自动加载
@@ -145,6 +148,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
     setBusy(false);
     setTagSuggestions([]);
     setNoteMarkdown('');
+    setTopicDialogOpen(false);
 
     if (article.summary) {
       setSummary(article.summary);
@@ -505,14 +509,17 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
     setStickyTab((prev) => (prev === tab ? null : tab));
   }, []);
 
-  const handleAddToTopic = useCallback(async () => {
+  const handleCreateTopic = useCallback(async (value: TopicFormValue) => {
     if (!article) return;
-    // Phase 4 接入前的占位行为
-    const name = window.prompt('输入专题名称(创建新专题)', article.title.slice(0, 30));
-    if (!name) return;
-    const r = await ds.topicCreate({ name, description: `由「${article.title}」触发创建`, keywords: [] });
+    const r = await ds.topicCreate({
+      name: value.name,
+      description: value.description,
+      keywords: value.keywords,
+      seedArticleId: article.id
+    });
     if (r.kind === 'ready') {
-      onToast(`专题「${name}」已创建(Phase 4 接入后可关联文章)`, 'success');
+      setTopicDialogOpen(false);
+      onToast(`专题「${value.name}」已创建，相关文章会在脉络图中自动关联`, 'success');
     } else {
       onToast(`创建失败:${r.kind === 'error' ? r.error : '未知'}`, 'error');
     }
@@ -691,8 +698,9 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
             <button
               type="button"
               className="article-reader__btn"
-              onClick={() => void handleAddToTopic()}
-              title="加入专题(Phase 4 接入)"
+              onClick={() => setTopicDialogOpen(true)}
+              title="以当前文章新建专题"
+              data-tool="topic"
             >
               ★ 专题
             </button>
@@ -818,6 +826,18 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
           <WebArticleView articleId={article.id} sourceUrl={articleUrl} />
         )}
       </div>
+      {topicDialogOpen && (
+        <TopicFormDialog
+          mode="create"
+          initialValue={{
+            name: article.title.slice(0, 30),
+            description: `由「${article.title}」触发创建`,
+            keywords: []
+          }}
+          onSubmit={handleCreateTopic}
+          onClose={() => setTopicDialogOpen(false)}
+        />
+      )}
     </div>
   );
 }

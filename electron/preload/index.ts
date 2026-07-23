@@ -231,7 +231,7 @@ const api = {
       invoke(IPC_CHANNELS.DIGEST_EXPORT, { id, format })
   },
 
-  // —— Topic (Phase 4 接入：stub handler 现在返回 NOT_IMPLEMENTED) ——
+  // —— Topic（专题关联 + 演化图）——
   topic: {
     list: (): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_LIST>> =>
       invokeVoid(IPC_CHANNELS.TOPIC_LIST),
@@ -250,6 +250,9 @@ const api = {
 
     getArticles: (topicId: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_GET_ARTICLES>> =>
       invoke(IPC_CHANNELS.TOPIC_GET_ARTICLES, { topicId }),
+
+    getGraph: (topicId: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_GET_GRAPH>> =>
+      invoke(IPC_CHANNELS.TOPIC_GET_GRAPH, { topicId }),
 
     getTimeline: (topicId: string): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_GET_TIMELINE>> =>
       invoke(IPC_CHANNELS.TOPIC_GET_TIMELINE, { topicId }),

@@ -58,6 +58,8 @@ export function App() {
   const [feedsState, setFeedsState] = useState<FeedsState>({ kind: 'loading' });
   const [articlesState, setArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   const [allArticlesState, setAllArticlesState] = useState<ArticlesState>({ kind: 'loading' });
+  // 从专题图打开的文章可能不在当前分页的前 50 条，用独立快照保证阅读器仍能立即显示。
+  const [externalSelectedArticle, setExternalSelectedArticle] = useState<Article | null>(null);
   // Phase 3.5.x：标签管理（侧栏 tag 列表 + 各 tag 下文章数）
   const [tags, setTags] = useState<Tag[]>([]);
   // Phase 3.5.x：每个 tag 名下的真实文章数（来自 article_tags SQL 聚合）
@@ -206,8 +208,9 @@ export function App() {
 
   const selectedArticle = useMemo<Article | null>(() => {
     if (!selection.articleId) return null;
-    return articles.find((a) => a.id === selection.articleId) ?? null;
-  }, [articles, selection.articleId]);
+    return articles.find((a) => a.id === selection.articleId) ??
+      (externalSelectedArticle?.id === selection.articleId ? externalSelectedArticle : null);
+  }, [articles, externalSelectedArticle, selection.articleId]);
 
   const selectedFeed = useMemo<Feed | null>(() => {
     if (!selectedArticle) return null;
@@ -229,6 +232,7 @@ export function App() {
 
   const handleSelectArticle = useCallback(
     (id: string) => {
+      setExternalSelectedArticle(null);
       selectArticle(id);
       const a = articles.find((x) => x.id === id);
       if (a && !a.isRead) {
@@ -572,6 +576,14 @@ export function App() {
     [articles, allArticles, selectArticle, selectFeed, pushToast]
   );
 
+  // 专题脉络图 / 专题文章列表点击来源后回到阅读器并定位原文。
+  const handleTopicOpenArticle = useCallback((article: Article) => {
+    setExternalSelectedArticle(article);
+    selectFeed(article.feedId);
+    selectArticle(article.id);
+    setCurrentPage('reader');
+  }, [selectArticle, selectFeed]);
+
   // ----- 渲染页面（reader 之外的页面） -----
   // Phase 3.4.4.4：nav 7 项 — general 弹窗 / ai 子页面 / 5 个原 page
   let pageSlot: JSX.Element;
@@ -589,7 +601,7 @@ export function App() {
       pageSlot = <DigestsPage onToast={pushToast} />;
       break;
     case 'topics':
-      pageSlot = <TopicsPage onToast={pushToast} />;
+      pageSlot = <TopicsPage onToast={pushToast} onOpenArticle={handleTopicOpenArticle} />;
       break;
     case 'logs':
       pageSlot = <LogsPage />;
