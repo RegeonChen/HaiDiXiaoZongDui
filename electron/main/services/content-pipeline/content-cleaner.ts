@@ -125,6 +125,11 @@ export function cleanArticleContent(sourceHtml: string, articleUrl: string): Cle
   removeKnownNoise(document);
   absolutizeContentUrls(document, articleUrl);
 
+  // Phase fix: 少数派等站点 JS 懒加载图片 — src 为空/占位，真实 URL 在 data-src 中。
+  // JSDOM 不执行 JS，必须先迁移到 src，否则后续管线看不到这些图片。
+  unwrapLazyImages(document);
+  absolutizeContentUrls(document, articleUrl);
+
   // Phase 3.6 fix：Readability 在复杂 DOM 中容易丢弃图片。
   // 在提取前将 <img> / <figure> 平铺为 <p><img></p>，显著提高图片保留率。
   promoteImagesToParagraphs(document);
@@ -174,6 +179,53 @@ function removeKnownNoise(document: Document): void {
   for (const selector of NOISE_SELECTORS) {
     for (const element of document.querySelectorAll(selector)) {
       element.remove();
+    }
+  }
+}
+
+/** JS 懒加载图片的真实 URL 可能藏在的属性名 */
+const LAZY_SRC_ATTRS = ['data-src', 'data-original', 'data-lazy-src', 'data-url', 'data-img'];
+
+/**
+ * Phase fix: 将 JS 懒加载图片的真实 URL 迁移到 src。
+ *
+ * 现代网站（少数派等）广泛使用 JS 懒加载：
+ *   <img src="" data-src="https://cdn.example.com/img.jpg" />
+ * JSDOM 不执行 JS，所以 src 始终为空。promoteImagesToParagraphs 使用
+ * `img[src]` 选择器会漏掉这些图片。
+ *
+ * 修复：遍历所有 <img>，若 src 为空/过短/占位图，从 data-* 中取真实 URL。
+ */
+function unwrapLazyImages(document: Document): void {
+  // 1. 处理 <noscript><img src="..."></noscript> 回退图片
+  for (const noscript of Array.from(document.querySelectorAll('noscript'))) {
+    const imgs = noscript.querySelectorAll('img[src]');
+    for (const img of imgs) {
+      const src = img.getAttribute('src')?.trim();
+      if (src) {
+        // 将 <noscript> 替换为其中的 <img>
+        const p = document.createElement('p');
+        p.appendChild(img.cloneNode(true));
+        noscript.replaceWith(p);
+        break; // 一个 noscript 只取第一张
+      }
+    }
+  }
+
+  // 2. 遍历所有 <img>，从懒加载属性迁移 URL 到 src
+  for (const img of Array.from(document.querySelectorAll('img'))) {
+    const src = img.getAttribute('src')?.trim() ?? '';
+    // 已有有效 src（非空、非过短、非占位图）→ 跳过
+    if (src.length > 10 && !/placeholder|loading|spacer|1x1|blank|transparent/i.test(src)) {
+      continue;
+    }
+    // 检查已知的懒加载属性
+    for (const attr of LAZY_SRC_ATTRS) {
+      const lazy = img.getAttribute(attr)?.trim();
+      if (lazy && lazy.length > 10) {
+        img.setAttribute('src', lazy);
+        break;
+      }
     }
   }
 }
