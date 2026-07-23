@@ -264,6 +264,28 @@ const migrations: Migration[] = [
         )
       `);
     }
+  },
+  {
+    version: 8,
+    up(db) {
+      // Cleaner v3 normalizes lazy/srcset/picture images and preserves multi-
+      // image figures. Invalidate derived content once so existing users get
+      // the same image behavior as newly synchronized users. Persisted source
+      // HTML remains available, so rebuilding does not require deleting feeds.
+      db.run(`
+        UPDATE articles
+        SET content_title = NULL,
+            content_byline = NULL,
+            content_excerpt = NULL,
+            cleaned_html = NULL,
+            cleaned_markdown = NULL,
+            cleaning_status = 'pending',
+            cleaning_error = NULL
+        WHERE source_kind = 'article_page'
+          AND source_html IS NOT NULL
+          AND (cleaned_html IS NOT NULL OR cleaned_markdown IS NOT NULL)
+      `);
+    }
   }
 ];
 

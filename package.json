@@ -32,6 +32,7 @@
     "smoke:coexist": "npm run build && node scripts/smoke-3.5.3-coexist.cjs",
     "smoke:tagmanage": "npm run build && node scripts/smoke-3.5.4-tagmanage.cjs",
     "smoke:reader-modes": "npm run build && node scripts/smoke-reader-modes.cjs",
+    "smoke:images": "npm run build && node scripts/smoke-article-images.cjs",
     "smoke:taglist": "npm run build && node scripts/smoke-taglist.cjs",
     "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",

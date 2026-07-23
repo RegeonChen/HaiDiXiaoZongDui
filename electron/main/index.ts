@@ -13,6 +13,8 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  net,
+  protocol,
   session,
   shell,
   type IpcMainInvokeEvent,
@@ -41,10 +43,15 @@ import {
   registerContentPipelineIpc
 } from './services/content-pipeline/ipc-handlers.js';
 import { installArticleWebviewSecurity } from './services/content-pipeline/article-webview-security.js';
+import { registerArticleImageProtocol } from './services/content-pipeline/article-image-proxy.js';
 import { OpmlApplicationService } from './services/content-pipeline/opml-service.js';
 import { SyncService } from './services/content-pipeline/sync-service.js';
 import { IPC_CHANNELS, IPC_EVENTS, type IpcResult } from '../../shared/ipc.js';
 import { ARTICLE_WEBVIEW_PARTITION } from '../../shared/article-webview.js';
+import {
+  ARTICLE_IMAGE_SCHEME,
+  buildArticleImageUrl
+} from '../../shared/article-image.js';
 import {
   DEFAULT_SETTINGS,
   type AIProvider,
@@ -88,6 +95,20 @@ import { suggestTags } from './services/ai/tag-agent.js';
 import { testConnection } from './services/ai/openai-client.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// The scheme must be registered before app.ready. It is intentionally not
+// fetch/CORS enabled: Renderer may display proxied images but cannot use this as
+// a general-purpose cross-origin network API.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: ARTICLE_IMAGE_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true
+    }
+  }
+]);
 let disposeContentPipelineIpc: (() => void) | null = null;
 
 // Electron 31 在 app.whenReady() 之后会清掉 process.env 里的部分变量。
@@ -110,6 +131,8 @@ const SMOKE_FLAGS = {
   smokeTagManage: process.env['JUHE_SHIVI_SMOKE_TAGMANAGE'] === '1',
   // 阅读区 Markdown / 原站网页 / 左右分栏三模式切换
   smokeReaderModes: process.env['JUHE_SHIVI_SMOKE_READER_MODES'] === '1',
+  // 通用正文图片协议：Renderer custom scheme → Main fetch → image response
+  smokeArticleImages: process.env['JUHE_SHIVI_SMOKE_ARTICLE_IMAGES'] === '1',
   // Phase 3.5.x 修复:侧栏 tab=tags 真按 tag 分类 + AI 标签建议 toggle 修复
   smokeTagList: process.env['JUHE_SHIVI_SMOKE_TAGLIST'] === '1',
   // smokeInlineTrans: Phase 3.5.2 UI 段落内翻译插槽（沿用 4.1 commit 时的命名）
@@ -122,6 +145,8 @@ const SMOKE_FLAGS = {
   feedUrl: process.env['JUHE_SHIVI_SMOKE_FEED_URL'] ?? '',
   aiBaseUrl: process.env['JUHE_SHIVI_SMOKE_AI_BASE_URL'] ?? '',
   aiKey: process.env['JUHE_SHIVI_SMOKE_AI_KEY'] ?? '',
+  imageSourceUrl: process.env['JUHE_SHIVI_SMOKE_IMAGE_SOURCE_URL'] ?? '',
+  imageArticleUrl: process.env['JUHE_SHIVI_SMOKE_IMAGE_ARTICLE_URL'] ?? '',
   screenshotPath: process.env['JUHE_SHIVI_SMOKE_SCREENSHOT']?.trim() || null
 };
 // Debug: 任何 smoke 模式都 dump 实际生效的 userData 路径
@@ -219,6 +244,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeCoexist = SMOKE_FLAGS.smokeCoexist;
   const smokeTagManage = SMOKE_FLAGS.smokeTagManage;
   const smokeReaderModes = SMOKE_FLAGS.smokeReaderModes;
+  const smokeArticleImages = SMOKE_FLAGS.smokeArticleImages;
   const smokeTagList = SMOKE_FLAGS.smokeTagList;
   const smokeInlineTrans = SMOKE_FLAGS.smokeInlineTrans;
   const smokeInlineTransSplitError = SMOKE_FLAGS.smokeInlineTransSplitError;
@@ -227,8 +253,42 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const aiKey = SMOKE_FLAGS.aiKey;
   let probe: string;
 
+  // 通用图片加载 smoke：验证打包 Renderer 的 CSP、自定义协议、Main 网络
+  // 请求和 Referer 策略能共同返回一张真实可解码图片。
+  if (smokeArticleImages) {
+    const proxiedImageUrl = buildArticleImageUrl(
+      SMOKE_FLAGS.imageSourceUrl,
+      SMOKE_FLAGS.imageArticleUrl
+    );
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const report = { articleImages: { ok: false, error: null, checks: {} } };
+        try {
+          const image = document.createElement('img');
+          image.id = 'article-image-smoke-probe';
+          image.src = ${JSON.stringify(proxiedImageUrl ?? '')};
+          document.body.appendChild(image);
+
+          const deadline = Date.now() + 8000;
+          while (!image.complete && Date.now() < deadline) await sleep(50);
+          report.articleImages.checks.usesInternalProtocol =
+            image.src.startsWith('juhe-image:');
+          report.articleImages.checks.decoded =
+            image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+          report.articleImages.width = image.naturalWidth;
+          report.articleImages.height = image.naturalHeight;
+          report.articleImages.ok = Object.values(report.articleImages.checks)
+            .every((value) => value === true);
+          image.remove();
+        } catch (error) {
+          report.articleImages.error = String(error);
+        }
+        return JSON.stringify(report);
+      })()
+    `;
   // 阅读模式 smoke：验证 Markdown / 网页 / 分栏切换、分栏宽度和持久化。
-  if (smokeReaderModes) {
+  } else if (smokeReaderModes) {
     probe = `
       (async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -2194,7 +2254,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     console.log(`SMOKE_REPORT_JSON ${raw}`);
 
     let pass: boolean;
-    if (smokeReaderModes) {
+    if (smokeArticleImages) {
+      pass = raw.includes('"articleImages":{"ok":true');
+    } else if (smokeReaderModes) {
       pass = raw.includes('"readerModes":{"ok":true');
     } else if (smokeTagList) {
       pass = raw.includes('"tagList":{"ok":true');
@@ -2999,21 +3061,13 @@ app.whenReady().then(async () => {
     process.stdout.write(`[main] WARN JUHE_SHIVE_USER_DATA not set, smoke data will leak\n`);
   }
 
-  // Phase fix: Electron 从 file:// 加载时不发 Referer，部分 CDN（少数派 doubaocdn 等）
-  // 会因此拒绝返回图片（防盗链）。对所有缺失 Referer 的图片请求，使用图片 URL 自身
-  // 的 origin 作为 Referer，兼容绝大部份 CDN 的同源放行规则。
-  session.defaultSession.webRequest.onBeforeSendHeaders(
-    { urls: ['https://*/*', 'http://*/*'], types: ['image'] },
-    (details, callback) => {
-      const hasReferer = details.requestHeaders['Referer'] || details.requestHeaders['referer'];
-      if (!hasReferer) {
-        try {
-          const origin = new URL(details.url).origin;
-          details.requestHeaders['Referer'] = origin;
-        } catch { /* invalid URL, skip */ }
-      }
-      callback({ requestHeaders: details.requestHeaders });
-    }
+  registerArticleImageProtocol(
+    (scheme, handler) => protocol.handle(scheme, handler),
+    [
+      (input, init) => globalThis.fetch(input, init),
+      (input, init) => net.fetch(input, init)
+    ],
+    session.defaultSession.getUserAgent()
   );
 
   await initDatabase();

@@ -40,7 +40,8 @@
 - 三栏阅读界面（订阅源 / 文章列表 / 阅读区）+ 拖拽调整宽度
 - 文章列表、已读/未读、星标、模糊搜索和筛选
 - 正文提取（Readability + JSDOM）、HTML 安全清洗（sanitize-html）、Cleaned HTML + Markdown
-- 图片保留优化（懒加载 unwrap + 段落提升 + Referer 补全）
+- 通用文章图片链路（懒加载/srcset/picture 规范化 + 多图保留 +
+  `juhe-image://` Main 进程代理 + 旧缓存自动重洗）
 - 可配置的 Summary Agent 和 Translation Agent（逐段流式翻译）
 - 手动标签、标签筛选、Tag Agent 和标签管理
 - 文章摘录、Markdown 笔记、多篇文摘导出（Markdown / HTML）
@@ -92,15 +93,17 @@
 
 ## 当前状态
 
-截至 2026-07-21：
+截至 2026-07-23：
 
 - **Phase 1、2、2.5、3、3.4、3.5、3.6 全部完成并通过验收（28 项 PASS）。**
 - **Phase 4.1**（专题 UI）和 **Phase 4.2**（Topic-ready Content）已完成；等陈冠中 **Phase 4.3**（Topic Analysis 后端）接入。
 - `electon-vite build` + `npm run typecheck` 均通过。
-- **图片显示问题**（少数派等 JS 懒加载 + CDN 防盗链站点）已修复：
-  - `content-cleaner.ts` 新增 `unwrapLazyImages()` — data-src → src 迁移
-  - `content-cleaner.ts` 新增 `promoteImagesToParagraphs()` — 防 Readability 丢弃
-  - `electron/main/index.ts` 注册 `ses.webRequest` 拦截器 — 为无 Referer 的图片请求补上 origin
+- **通用文章图片链路**已完成，不再按 Feed 或域名特判：
+  - 清洗器统一处理 `data-src`、`data-original`、`srcset`、`picture`、`noscript` 和多图 `figure`
+  - Renderer 将正文 HTTP(S) 图片统一改写为 `juhe-image://`，不再直接访问第三方图片
+  - Main 进程代理使用原文来源、图片同源、无来源三种通用获取策略，并校验图片类型和 25 MB 上限
+  - 数据库 migration 8 自动使旧 Cleaned HTML 失效，保留 Source HTML 并在下次打开时本地重洗
+  - `npm run smoke:images` 覆盖打包 Renderer → CSP → 自定义协议 → Main fetch → 图片解码全链路
 - **侧栏精确计数**：`ArticleRepository.countAll/countUnread/countStarred` + `article:counts` IPC 全链路。
 - **翻译 UX**：`filterInlineMarkdown`（仅保留粗体/斜体/下划线）+ 翻译框纯中文展示。
 - **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ 失败红点标记。

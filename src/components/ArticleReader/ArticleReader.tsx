@@ -15,7 +15,7 @@
  *  - 笔记:noteCreate 写入 notes 表
  *  - 专题:打开专题表单，以当前文章作为种子创建关联图
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Article, Feed, NoteCreateInput, Tag } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { EmptyView } from '../StatusView/EmptyView';
@@ -28,6 +28,7 @@ import { StickyBottomPanel } from '../StickyBottomPanel/StickyBottomPanel';
 import { WebArticleView } from '../WebArticleView/WebArticleView';
 import { TopicFormDialog, type TopicFormValue } from '../TopicFormDialog/TopicFormDialog';
 import { useReaderMode, type ReaderMode } from '../../hooks/useReaderMode';
+import { prepareArticleHtmlForDisplay } from '../../utils/article-images';
 import './ArticleReader.css';
 
 export interface ArticleReaderProps {
@@ -92,6 +93,12 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   // Phase 3.5.x 落地标签管理:当前文章已应用 tag + 全局 tag 列表
   const [articleTags, setArticleTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
+  const displayHtml = useMemo(
+    () => article && content.html
+      ? prepareArticleHtmlForDisplay(content.html, article.url)
+      : null,
+    [article?.url, content.html]
+  );
   // StickyBottomPanel 当前 tab(null = 完全收起)
   const [stickyTab, setStickyTab] = useState<StickyTabId | null>(null);
   // Phase 3.5.x toggle 修复:用 ref 跟踪最新 stickyTab 值,
@@ -716,14 +723,14 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
             // Phase 3.5.2:段落内翻译(原文 + 翻译插槽交替)。
             // 点完翻译按钮立即切到段渲染,每段挂一个 pending 插槽(不依赖 IPC 返回)。
             <TranslatedArticleView
-              cleanedHtml={content.html ?? ''}
+              cleanedHtml={displayHtml ?? ''}
               paragraphs={translationParagraphs}
               onClose={() => removePanel('translation')}
             />
-          ) : content.html ? (
+          ) : displayHtml ? (
             <div
               className="article-reader__content"
-              dangerouslySetInnerHTML={{ __html: content.html }}
+              dangerouslySetInnerHTML={{ __html: displayHtml }}
             />
           ) : (
             <EmptyView title="此文章暂无正文" hint="可能还没有内容,或者源站返回为空。" />

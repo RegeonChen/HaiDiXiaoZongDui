@@ -38,6 +38,9 @@ The intended lifecycle mirrors Mercury's layered Reader pipeline:
 2. On first Reader/AI request, reuse persisted source HTML or fetch the article page.
 3. Persist source HTML, cleaned HTML, Markdown, and cleaning status.
 4. Later requests return the cached layers without network or Readability work.
+5. Renderer rewrites public image URLs only for display to `juhe-image://`; the
+   Main-process protocol fetches and validates image bytes while persisted HTML
+   and Markdown keep portable original URLs.
 
 ## Verification
 
@@ -45,12 +48,15 @@ The intended lifecycle mirrors Mercury's layered Reader pipeline:
 npm test
 npm run test:real-feeds
 npm run smoke:phase2
+npm run smoke:images
 ```
 
 The default suite is deterministic and offline. The real-feed suite checks live
 RSS, Atom and JSON Feed sources separately because it depends on network access.
 The Phase 2 smoke starts a local HTTP fixture and verifies the complete Electron
 IPC, SQLite, deduplication, lazy cleaning/cache, state, and OPML path.
+The image smoke requires the original article URL as Referer and verifies the
+packaged Renderer CSP, custom protocol, Main fetch fallback, and image decoding.
 
 ## Phase 3.2 reliability baseline
 

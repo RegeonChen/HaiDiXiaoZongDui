@@ -123,15 +123,14 @@ export function cleanArticleContent(sourceHtml: string, articleUrl: string): Cle
   }
 
   removeKnownNoise(document);
-  absolutizeContentUrls(document, articleUrl);
 
-  // Phase fix: 少数派等站点 JS 懒加载图片 — src 为空/占位，真实 URL 在 data-src 中。
-  // JSDOM 不执行 JS，必须先迁移到 src，否则后续管线看不到这些图片。
+  // Normalize common browser-side image formats before Readability. JSDOM does
+  // not run lazy-loading scripts or evaluate <picture> source selection.
   unwrapLazyImages(document);
   absolutizeContentUrls(document, articleUrl);
 
-  // Phase 3.6 fix：Readability 在复杂 DOM 中容易丢弃图片。
-  // 在提取前将 <img> / <figure> 平铺为 <p><img></p>，显著提高图片保留率。
+  // Keep normalized images as semantic content blocks without flattening the
+  // whole page (which would turn avatars/navigation icons into article images).
   promoteImagesToParagraphs(document);
 
   const readable = new Readability(document.cloneNode(true) as Document, {
@@ -183,92 +182,119 @@ function removeKnownNoise(document: Document): void {
   }
 }
 
-/** JS 懒加载图片的真实 URL 可能藏在的属性名 */
-const LAZY_SRC_ATTRS = ['data-src', 'data-original', 'data-lazy-src', 'data-url', 'data-img'];
+/** Common lazy-loader attributes used across CMS and publishing platforms. */
+const LAZY_SRC_ATTRS = [
+  'data-src',
+  'data-original',
+  'data-original-src',
+  'data-lazy-src',
+  'data-url',
+  'data-img'
+];
+const LAZY_SRCSET_ATTRS = ['data-srcset', 'data-lazy-srcset', 'srcset'];
+const PLACEHOLDER_IMAGE = /placeholder|loading|spacer|(?:^|[/_-])1x1(?:[./?_-]|$)|blank|transparent/i;
 
 /**
- * Phase fix: 将 JS 懒加载图片的真实 URL 迁移到 src。
- *
- * 现代网站（少数派等）广泛使用 JS 懒加载：
- *   <img src="" data-src="https://cdn.example.com/img.jpg" />
- * JSDOM 不执行 JS，所以 src 始终为空。promoteImagesToParagraphs 使用
- * `img[src]` 选择器会漏掉这些图片。
- *
- * 修复：遍历所有 <img>，若 src 为空/过短/占位图，从 data-* 中取真实 URL。
+ * Resolve image sources that a browser would normally choose with JavaScript or
+ * responsive-image layout. This is domain-independent and runs before sanitize.
  */
 function unwrapLazyImages(document: Document): void {
-  // 1. 处理 <noscript><img src="..."></noscript> 回退图片
-  for (const noscript of Array.from(document.querySelectorAll('noscript'))) {
-    const imgs = noscript.querySelectorAll('img[src]');
-    for (const img of imgs) {
-      const src = img.getAttribute('src')?.trim();
-      if (src) {
-        // 将 <noscript> 替换为其中的 <img>
-        const p = document.createElement('p');
-        p.appendChild(img.cloneNode(true));
-        noscript.replaceWith(p);
-        break; // 一个 noscript 只取第一张
-      }
-    }
+  for (const image of Array.from(document.querySelectorAll('img'))) {
+    normalizeImageSource(image);
   }
 
-  // 2. 遍历所有 <img>，从懒加载属性迁移 URL 到 src
-  for (const img of Array.from(document.querySelectorAll('img'))) {
-    const src = img.getAttribute('src')?.trim() ?? '';
-    // 已有有效 src（非空、非过短、非占位图）→ 跳过
-    if (src.length > 10 && !/placeholder|loading|spacer|1x1|blank|transparent/i.test(src)) {
-      continue;
+  // A <picture> can contain only <source srcset> plus an empty fallback <img>.
+  for (const picture of Array.from(document.querySelectorAll('picture'))) {
+    let image = picture.querySelector('img');
+    if (!image) {
+      image = document.createElement('img');
+      picture.appendChild(image);
     }
-    // 检查已知的懒加载属性
-    for (const attr of LAZY_SRC_ATTRS) {
-      const lazy = img.getAttribute(attr)?.trim();
-      if (lazy && lazy.length > 10) {
-        img.setAttribute('src', lazy);
+    normalizeImageSource(image);
+    if (isUsableImageSource(image.getAttribute('src'))) continue;
+
+    for (const source of Array.from(picture.querySelectorAll('source'))) {
+      const candidate = bestSrcsetCandidate(
+        source.getAttribute('srcset') ?? source.getAttribute('data-srcset')
+      );
+      if (candidate) {
+        image.setAttribute('src', candidate);
         break;
       }
     }
   }
+
+  // <noscript> is a fallback for the adjacent lazy image. Keep all fallback
+  // images only when there is no usable sibling, otherwise it would duplicate.
+  for (const noscript of Array.from(document.querySelectorAll('noscript'))) {
+    const hasAdjacentImage = [noscript.previousElementSibling, noscript.nextElementSibling]
+      .some((element) => elementContainsUsableImage(element));
+    if (hasAdjacentImage) {
+      noscript.remove();
+      continue;
+    }
+
+    const fallbackImages = Array.from(noscript.querySelectorAll('img'))
+      .map((image) => image.cloneNode(true) as HTMLImageElement);
+    for (const image of fallbackImages) normalizeImageSource(image);
+    const usableImages = fallbackImages.filter((image) =>
+      isUsableImageSource(image.getAttribute('src'))
+    );
+    if (usableImages.length === 0) {
+      noscript.remove();
+      continue;
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const image of usableImages) {
+      const paragraph = document.createElement('p');
+      paragraph.appendChild(image);
+      fragment.appendChild(paragraph);
+    }
+    noscript.replaceWith(fragment);
+  }
 }
 
 /**
- * Phase 3.6 fix：将文档中的 <img> 提升到 <p> 层级，防止被 Readability 丢弃。
- *
- * 处理策略：
- *   - <figure> → 替换为 <p><img src="..."></p>（保留 img，丢弃 figcaption）
- *   - <img> 不在 <p>/<li>/<blockquote> 等块级内容标签内 → 用 <p> 包裹
- *   - <picture> → 提取第一个 <img> 子元素并用 <p> 包裹
+ * Promote images only inside the most likely article-body container. Figures
+ * keep every image plus their caption, and responsive pictures keep the
+ * normalized fallback image selected above.
  */
 function promoteImagesToParagraphs(document: Document): void {
-  // 1. <figure> → <p><img ...></p>
-  for (const figure of Array.from(document.querySelectorAll('figure'))) {
-    const img = figure.querySelector('img[src]');
-    if (img) {
-      const p = document.createElement('p');
-      p.appendChild(img.cloneNode(true));
-      figure.replaceWith(p);
-    } else {
-      figure.remove();
-    }
+  const root = likelyArticleBody(document);
+
+  for (const picture of Array.from(root.querySelectorAll('picture'))) {
+    const image = picture.querySelector('img[src]');
+    if (image) picture.replaceWith(image.cloneNode(true));
   }
 
-  // 2. <picture> → 提取 <img> 并用 <p> 包裹
-  for (const picture of Array.from(document.querySelectorAll('picture'))) {
-    const img = picture.querySelector('img[src]');
-    if (img) {
-      const p = document.createElement('p');
-      p.appendChild(img.cloneNode(true));
-      picture.replaceWith(p);
-    } else {
-      picture.remove();
+  for (const figure of Array.from(root.querySelectorAll('figure'))) {
+    const images = Array.from(figure.querySelectorAll('img[src]'));
+    if (images.length === 0) continue;
+
+    const replacements: Node[] = images.map((image) => {
+      const paragraph = document.createElement('p');
+      paragraph.appendChild(image.cloneNode(true));
+      return paragraph;
+    });
+    const caption = figure.querySelector('figcaption');
+    if (caption?.textContent?.trim()) {
+      const paragraph = document.createElement('p');
+      const emphasis = document.createElement('em');
+      for (const child of Array.from(caption.childNodes)) {
+        emphasis.appendChild(child.cloneNode(true));
+      }
+      paragraph.appendChild(emphasis);
+      replacements.push(paragraph);
     }
+    figure.replaceWith(...replacements);
   }
 
-  // 3. 裸 <img>（不在块级内容标签内）→ 用 <p> 包裹
   const BLOCK_CONTENT = new Set(['P', 'LI', 'BLOCKQUOTE', 'TD', 'TH', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
-  for (const img of Array.from(document.querySelectorAll('img[src]'))) {
+  for (const img of Array.from(root.querySelectorAll('img[src]'))) {
     let parent = img.parentElement;
     let needsWrap = true;
-    while (parent && parent !== document.body) {
+    while (parent && parent !== root) {
       if (BLOCK_CONTENT.has(parent.tagName)) {
         needsWrap = false;
         break;
@@ -281,6 +307,97 @@ function promoteImagesToParagraphs(document: Document): void {
       p.appendChild(img);
     }
   }
+}
+
+function normalizeImageSource(image: Element): void {
+  const current = image.getAttribute('src');
+  if (isUsableImageSource(current)) return;
+
+  for (const attribute of LAZY_SRC_ATTRS) {
+    const candidate = image.getAttribute(attribute);
+    if (isUsableImageSource(candidate)) {
+      image.setAttribute('src', candidate!.trim());
+      return;
+    }
+  }
+
+  for (const attribute of LAZY_SRCSET_ATTRS) {
+    const candidate = bestSrcsetCandidate(image.getAttribute(attribute));
+    if (candidate) {
+      image.setAttribute('src', candidate);
+      return;
+    }
+  }
+}
+
+function isUsableImageSource(value: string | null): boolean {
+  const source = value?.trim() ?? '';
+  return source.length > 0 &&
+    !PLACEHOLDER_IMAGE.test(source) &&
+    !/^(?:about:|javascript:|data:)/i.test(source);
+}
+
+function bestSrcsetCandidate(value: string | null): string | null {
+  if (!value?.trim()) return null;
+
+  let best: { url: string; score: number } | null = null;
+  for (const entry of value.split(',')) {
+    const parts = entry.trim().split(/\s+/);
+    const url = parts[0] ?? '';
+    if (!isUsableImageSource(url)) continue;
+
+    const descriptor = parts[1] ?? '1x';
+    const match = descriptor.match(/^(\d+(?:\.\d+)?)(w|x)$/i);
+    const amount = match ? Number(match[1]) : 1;
+    const score = match?.[2]?.toLowerCase() === 'w' ? amount : amount * 10_000;
+    if (!best || score > best.score) best = { url, score };
+  }
+  return best?.url ?? null;
+}
+
+function elementContainsUsableImage(element: Element | null): boolean {
+  if (!element) return false;
+  if (element.matches('img')) {
+    return isUsableImageSource(element.getAttribute('src'));
+  }
+  return Array.from(element.querySelectorAll('img')).some((image) =>
+    isUsableImageSource(image.getAttribute('src'))
+  );
+}
+
+function likelyArticleBody(document: Document): Element {
+  const preferredSelectors = [
+    '[itemprop="articleBody"]',
+    '[class*="article__main__content"]',
+    '[class*="article-content"]',
+    '[class*="article_content"]',
+    '[class*="post-content"]',
+    '[class*="post_content"]',
+    '[class*="entry-content"]',
+    '[class*="entry_content"]',
+    '[class*="story-body"]',
+    '[class*="post-body"]',
+    '[class*="article-body"]'
+  ];
+
+  for (const selector of preferredSelectors) {
+    const candidates = Array.from(document.querySelectorAll(selector));
+    const best = largestContentCandidate(candidates);
+    if (best) return best;
+  }
+  return largestContentCandidate(Array.from(document.querySelectorAll('article, main, [role="main"]')))
+    ?? document.body;
+}
+
+function largestContentCandidate(candidates: Element[]): Element | null {
+  let best: { element: Element; score: number } | null = null;
+  for (const element of candidates) {
+    const textLength = element.textContent?.replace(/\s+/g, ' ').trim().length ?? 0;
+    const imageCount = element.querySelectorAll('img, picture, figure').length;
+    const score = textLength + imageCount * 500;
+    if (!best || score > best.score) best = { element, score };
+  }
+  return best?.element ?? null;
 }
 
 function htmlToMarkdown(html: string): string {

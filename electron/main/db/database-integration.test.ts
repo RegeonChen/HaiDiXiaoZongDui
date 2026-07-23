@@ -188,6 +188,48 @@ describe('database integrity', () => {
     });
   });
 
+  it('invalidates old cleaned article pages once for the image-pipeline upgrade', async () => {
+    const feed = FeedRepository.create({
+      url: 'https://images.example/feed.xml',
+      title: 'Image migration feed'
+    });
+    const storedArticle = article({
+      id: 'image-migration-article',
+      feedId: feed.id,
+      guid: 'image-migration-guid',
+      url: 'https://images.example/post'
+    });
+    expect(ArticleRepository.insertBatch([storedArticle])).toBe(1);
+
+    const store = new SqliteContentPipelineStore();
+    await store.saveArticleContent({
+      articleId: storedArticle.id,
+      articleUrl: storedArticle.url,
+      sourceHtml: '<article><img data-src="/real.png"></article>',
+      sourceKind: 'article_page',
+      title: 'Old cleaned article',
+      byline: null,
+      excerpt: null,
+      cleanedHtml: '<p>Old content without the image</p>',
+      cleanedMarkdown: 'Old content without the image'
+    });
+
+    getDatabase().run('DELETE FROM db_version WHERE version = 8');
+    saveDatabase();
+    closeDatabase();
+    await initDatabase();
+    runMigrations();
+
+    expect(await store.getArticleContentTarget(storedArticle.id)).toMatchObject({
+      sourceHtml: '<article><img data-src="/real.png"></article>',
+      sourceKind: 'article_page',
+      contentTitle: null,
+      cleanedHtml: null,
+      cleanedMarkdown: null,
+      cleaningStatus: 'pending'
+    });
+  });
+
   it('invalidates cleaned content only when the synchronized source changes', async () => {
     const feed = FeedRepository.create({
       url: 'https://example.test/feed.xml',

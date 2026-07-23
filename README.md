@@ -154,7 +154,9 @@ git push origin v0.2.0
 - `sandbox: true` — OS 级沙盒隔离
 - preload 强制 CJS 输出，只通过 `contextBridge` 暴露 `shared/ipc.ts` 中的白名单通道
 - 外部 HTML 全部经过 sanitize-html 白名单清洗后才渲染
-- 图片请求自动补全 Referer 头（解决 Electron file:// 协议下 CDN 防盗链拦截）
+- 清洗后正文中的公开 HTTP(S) 图片统一通过 `juhe-image://` 内部协议加载：
+  Renderer 不直接请求第三方资源，Main 进程使用原文来源、图片同源和无来源三种
+  通用策略获取图片，并验证响应类型与大小
 
 ## 开发进度
 

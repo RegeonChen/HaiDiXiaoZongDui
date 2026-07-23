@@ -88,6 +88,77 @@ describe('cleanArticleContent', () => {
     expect(result.cleanedHtml).toContain('<h2>基本概念</h2>');
     expect(result.cleanedHtml).toContain('文章真正的正文内容');
   });
+
+  it('normalizes lazy image attributes without keeping placeholders', () => {
+    const result = cleanArticleContent(`
+      <article>
+        <p>${'A sufficiently long article paragraph. '.repeat(12)}</p>
+        <img src="/images/placeholder.png" data-src="/images/real-photo.jpg" alt="photo">
+      </article>
+    `, 'https://news.example.com/posts/1');
+
+    expect(result.cleanedHtml).toContain('https://news.example.com/images/real-photo.jpg');
+    expect(result.cleanedHtml).not.toContain('placeholder.png');
+  });
+
+  it('selects a responsive picture source when the fallback image has no src', () => {
+    const result = cleanArticleContent(`
+      <article>
+        <p>${'A sufficiently long article paragraph. '.repeat(12)}</p>
+        <picture>
+          <source srcset="/images/small.webp 1x, /images/large.webp 2x">
+          <img alt="responsive">
+        </picture>
+      </article>
+    `, 'https://news.example.com/posts/1');
+
+    expect(result.cleanedHtml).toContain('https://news.example.com/images/large.webp');
+    expect(result.cleanedHtml).not.toContain('small.webp');
+  });
+
+  it('keeps every figure image and its caption', () => {
+    const result = cleanArticleContent(`
+      <article>
+        <p>${'A sufficiently long article paragraph. '.repeat(12)}</p>
+        <figure>
+          <img src="/images/one.png" alt="one">
+          <img src="/images/two.png" alt="two">
+          <figcaption>Both screenshots belong to this explanation.</figcaption>
+        </figure>
+      </article>
+    `, 'https://news.example.com/posts/1');
+
+    expect(result.cleanedHtml).toContain('https://news.example.com/images/one.png');
+    expect(result.cleanedHtml).toContain('https://news.example.com/images/two.png');
+    expect(result.cleanedHtml).toContain('Both screenshots belong to this explanation.');
+  });
+
+  it('does not duplicate a lazy image that already has a noscript fallback', () => {
+    const result = cleanArticleContent(`
+      <article>
+        <p>${'A sufficiently long article paragraph. '.repeat(12)}</p>
+        <img src="" data-src="/images/photo.png" alt="photo">
+        <noscript><img src="/images/photo.png" alt="photo fallback"></noscript>
+      </article>
+    `, 'https://news.example.com/posts/1');
+
+    expect(result.cleanedHtml.match(/images\/photo\.png/g)).toHaveLength(1);
+  });
+
+  it('does not promote decorative page chrome into article content', () => {
+    const result = cleanArticleContent(`
+      <header><img src="/images/avatar.png" alt="avatar"></header>
+      <article>
+        <div class="article-content">
+          <p>${'A sufficiently long article paragraph. '.repeat(12)}</p>
+          <img src="/images/body.png" alt="body">
+        </div>
+      </article>
+    `, 'https://news.example.com/posts/1');
+
+    expect(result.cleanedHtml).toContain('https://news.example.com/images/body.png');
+    expect(result.cleanedHtml).not.toContain('avatar.png');
+  });
 });
 
 describe('splitCleanedHtmlIntoBlocks', () => {
