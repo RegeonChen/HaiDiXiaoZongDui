@@ -2958,8 +2958,26 @@ app.whenReady().then(async () => {
   ) {
     app.setPath('userData', configuredUserDataPath);
   } else if (SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) {
-    process.stdout.write(`[main] WARN JUHE_SHIVI_USER_DATA not set, smoke data will leak\n`);
+    process.stdout.write(`[main] WARN JUHE_SHIVE_USER_DATA not set, smoke data will leak\n`);
   }
+
+  // Phase fix: Electron 从 file:// 加载时不发 Referer，部分 CDN（少数派 doubaocdn 等）
+  // 会因此拒绝返回图片（防盗链）。对所有缺失 Referer 的图片请求，使用图片 URL 自身
+  // 的 origin 作为 Referer，兼容绝大部份 CDN 的同源放行规则。
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['https://*/*', 'http://*/*'], types: ['image'] },
+    (details, callback) => {
+      const hasReferer = details.requestHeaders['Referer'] || details.requestHeaders['referer'];
+      if (!hasReferer) {
+        try {
+          const origin = new URL(details.url).origin;
+          details.requestHeaders['Referer'] = origin;
+        } catch { /* invalid URL, skip */ }
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
+
   await initDatabase();
   runMigrations();
   if (SMOKE_FLAGS.smokeTopic) seedTopicSmokeData();
