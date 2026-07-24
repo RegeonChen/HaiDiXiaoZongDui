@@ -53,7 +53,7 @@ export function TopicGraphView({
       <div className="topic-graph-empty">
         <EmptyView
           title="还没有匹配到相关文章"
-          hint="编辑专题名称或关键词后重新分析；系统会先在本地筛选，不会为了发现候选文章调用模型。"
+          hint="编辑专题名称或关键词后重新分析。系统会先在本地筛选，不会为了发现候选文章调用模型。"
         />
         <button type="button" className="topic-graph__refresh" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? '分析中…' : '重新分析'}

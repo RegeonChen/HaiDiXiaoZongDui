@@ -198,7 +198,7 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
           <>
             <div className="settings-page__provider-list">
               {providers.length === 0 && (
-                <p className="settings-page__empty">尚未配置 AI Provider。点击下方按钮添加一个 OpenAI 兼容服务。</p>
+                <p className="settings-page__empty">还没有 AI Provider。点下方「添加 Provider」配置 OpenAI 兼容服务。</p>
               )}
               {providers.map((p) => (
                 <div key={p.id} className="settings-page__provider-card">

@@ -119,7 +119,7 @@ export function TopicsPage({ onToast, onOpenArticle }: TopicsPageProps) {
       {topics.length === 0 ? (
         <EmptyView
           title="还没有专题"
-          hint="点击右上角「新建专题」开始创建。专题可以包含多篇文章的合并视角。"
+          hint="点右上角「新建专题」开始创建。专题可以包含多篇文章的合并视角。"
         />
       ) : (
         <ul className="topics-page__list" role="list">

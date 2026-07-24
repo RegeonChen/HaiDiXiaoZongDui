@@ -216,8 +216,8 @@
 }
 
 .article-reader__btn.is-active {
-  color: #f5b400;
-  border-color: #f5b400;
+  color: var(--warn);
+  border-color: var(--warn);
 }
 
 .article-reader__btn:disabled {
@@ -451,8 +451,8 @@
 }
 
 .article-reader__translation-status--failed {
-  color: #b54747;
-  border-left-color: #b54747;
+  color: var(--err);
+  border-left-color: var(--err);
 }
 
 .article-reader__translation-original > :last-child,
@@ -523,7 +523,7 @@
 
 
 /* ============================================================
- * 粘性底部面板（StickyBottomPanel）内容样�? * ============================================================ */
+ * 粘性底部面板（StickyBottomPanel）内容样�? * ============================================================ */
 
 /* 标签管理 */
 .sticky-tag-manage {
@@ -731,7 +731,7 @@
 
 .sticky-tag-suggest__item .is-applied {
   background: rgba(34, 197, 94, 0.15);
-  color: #15803d;
+  color: var(--ok);
   cursor: not-allowed;
 }
 

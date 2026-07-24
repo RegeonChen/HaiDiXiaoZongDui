@@ -17,6 +17,7 @@
   --accent-soft: #e8f0ff;
   --ok: #16a34a;
   --err: #dc2626;
+  --warn: #d97706;
 }
 
 :root[data-theme='dark'] {
@@ -32,6 +33,7 @@
   --accent-soft: #1f3354;
   --ok: #4ade80;
   --err: #f87171;
+  --warn: #fbbf24;
 }
 
 * { box-sizing: border-box; }

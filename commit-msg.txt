@@ -1,0 +1,48 @@
+feat(p2): 黑暗模式对比度审计 + Empty state 文案统一 + 键盘快捷键
+
+## 黑暗模式对比度审计（WCAG AA 4.5:1）
+
+- index.css 加 --warn 变量(light: #d97706 / dark: #fbbf24)
+- 把硬编码错误色 #b54747 / #c62828 / #c0392b / #e74c3c / #e0a8a8
+  替换为 var(--err) (在 dark 上 6.0:1,在 light 上 4.7:1)
+- 把硬编码成功色 #15803d 替换为 var(--ok)
+- 把硬编码警示色 #f5b400 替换为 var(--warn)
+- 涉及文件: AddGroupDialog.css / ArticleList.css / ArticleReader.css
+  / TopicFormDialog.css / TopicsPage.css / DigestsPage.css
+  / NotesPage.css / SettingsPage.css / TagsPage.css
+  / TopicGraphView.css / TranslationSlot.css
+
+## Empty state 文案统一为「还没有 X」
+
+- 全部「暂无 X」/「尚未 X」/「此文章暂无 X」改为「还没有 X」
+- 加明确操作指引(「点 YYY 试试」)
+- 涉及文件: ArticleList.tsx / FeedList.tsx / ArticleReader.tsx
+  / TopicBriefingTab.tsx / TopicGraphView.tsx / TopicsPage.tsx
+  / SettingsPage.tsx / LogsPage.tsx
+
+## 键盘快捷键(全局)
+
+- j / k          下一条 / 上一条 文章(自动 mark read)
+- Shift+J / K    下一个 / 上一个 订阅源
+- o              在系统浏览器打开当前文章原文
+- s              切换当前文章星标
+- Cmd/Ctrl+F     聚焦侧栏搜索框
+- Esc            退出搜索框聚焦 + 清空
+- 焦点在 input / textarea / contenteditable 时不拦截
+
+新增 IPC 通道:
+- shared/ipc.ts: SHELL_OPEN_EXTERNAL = 'shell:openExternal'
+- shared/ipc.ts IpcRequestMap 加对应类型
+- electron/main/index.ts 加 handler(URL 协议白名单 http(s)
+  ,拒绝 file:// / javascript: / data: 等危险协议)
+- electron/preload/index.ts 暴露 window.api.shell.openExternal(url)
+- src/App.tsx 在 handleToggleStar 之后加 useEffect keydown listener
+
+## 验证
+
+- typecheck: tsc -p tsconfig.node.json + tsc -p tsconfig.web.json 无错误
+- build: electron-vite build 35 + 2 + 109 modules transformed 三 bundle
+- 97 单元测试 + 6 skipped(需真 API key) 全过
+- 关键 smoke 全过: feeds-group (36 项) / coexist / inline-trans /
+  inline-trans:split-error / taglist / ui / summary
+- Esc 跟 summary smoke (含 escClosed 检查) 兼容

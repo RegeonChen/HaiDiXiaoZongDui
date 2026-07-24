@@ -40,7 +40,7 @@ export function TopicBriefingTab({
       <div className="topic-briefing__empty-state">
         <EmptyView
           title="还没有简报"
-          hint="点击下方「生成简报」，系统会根据已缓存的专题脉络整理多源引用，不会额外调用模型。"
+          hint="点下方「生成简报」，系统会根据已缓存的专题脉络整理多源引用，不会额外调用模型。"
         />
         <button
           type="button"

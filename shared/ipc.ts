@@ -97,6 +97,9 @@ export const IPC_CHANNELS = {
   // Phase 3.5.x:按 tag 统计文章数(侧栏 tab=tags 展示用)
   ARTICLE_COUNTS_BY_TAG: 'article:countsByTag',
 
+  // -- Shell（Phase P2 体验打磨：键盘快捷键 'o' 打开原文用） --
+  SHELL_OPEN_EXTERNAL: 'shell:openExternal',
+
   // -- Sync（同步） --
   SYNC_ALL:        'sync:all',
   SYNC_FEED:       'sync:feed',
@@ -291,6 +294,9 @@ export interface IpcRequestMap {
   // -- Log --
   [IPC_CHANNELS.LOG_LIST]:  { args: { limit?: number };  result: LogEntry[] };
   [IPC_CHANNELS.LOG_EXPORT]:{ args: void;                 result: string };
+
+  // -- Shell（P2 体验打磨：键盘快捷键 'o' 在系统浏览器打开原文） --
+  [IPC_CHANNELS.SHELL_OPEN_EXTERNAL]: { args: { url: string }; result: void };
 
   // -- OPML --
   /** Main 进程显示原生文件选择器；Renderer 不得传入任意路径。null 表示用户取消。 */

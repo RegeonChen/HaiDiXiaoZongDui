@@ -19,7 +19,7 @@
 }
 
 .translation-slot--failed {
-  border-left-color: #e0a8a8;
+  border-left-color: var(--err);
 }
 
 .translation-slot__original {
@@ -59,7 +59,7 @@
 }
 
 .translation-slot__status--failed {
-  color: #c0392b;
+  color: var(--err);
   font-style: normal;
 }
 

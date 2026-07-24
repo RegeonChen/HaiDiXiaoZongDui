@@ -408,7 +408,10 @@ export function FeedList({
       {/* 真实订阅源分组 */}
       {tab === 'sources' && showAll && (
         grouped.length === 0 ? (
-          <div className="feed-list__empty">还没有订阅源</div>
+          <div className="feed-list__empty">
+            还没有订阅源。<br />
+            点顶部 + 按钮添加一个 RSS / Atom / JSON Feed 源。
+          </div>
         ) : (
           grouped.map(([group, list]) => {
             // "未分组"是兜底组，不能删除也不能添加（也没意义）
@@ -493,7 +496,7 @@ export function FeedList({
           {(!tags || tags.length === 0) ? (
             <div className="feed-list__empty">
               还没有任何标签。<br />
-              在文章阅读区用 🏷 标签 / 🪄 标签建议 添加。
+              在文章阅读区点 🏷 标签 / 🪄 标签建议 添加。
             </div>
           ) : (
             <div className="feed-list__virtuals" data-section="tags">

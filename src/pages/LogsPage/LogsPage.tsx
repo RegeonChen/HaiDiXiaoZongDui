@@ -50,7 +50,7 @@ export function LogsPage() {
       {logs === null ? (
         <p className="logs-page__empty">正在加载…</p>
       ) : logs.length === 0 ? (
-        <p className="logs-page__empty">暂无日志。</p>
+        <p className="logs-page__empty">还没有日志。同步 / 抓取 / 渲染过程中的事件会出现在这里。</p>
       ) : (
         <table className="logs-page__table">
           <thead>

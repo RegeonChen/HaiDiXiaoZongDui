@@ -47,8 +47,8 @@
 }
 
 .digests-page__btn--danger {
-  border-color: #c62828;
-  color: #c62828;
+  border-color: var(--err);
+  color: var(--err);
 }
 
 .digests-page__list {

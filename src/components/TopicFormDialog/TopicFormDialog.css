@@ -71,7 +71,7 @@
 }
 
 .topic-form-dialog__required {
-  color: #e74c3c;
+  color: var(--err);
   margin-left: 2px;
 }
 

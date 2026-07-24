@@ -293,6 +293,117 @@ export function App() {
     [ds, refreshCounts]
   );
 
+  // P2 体验打磨：全局键盘快捷键
+  //   j / k        下一条 / 上一条 文章（自动 mark read）
+  //   Shift+J/K    下一个 / 上一个 订阅源
+  //   o            在系统浏览器打开当前文章原文
+  //   s            切换当前文章星标
+  //   Cmd/Ctrl+F   聚焦侧栏搜索框
+  //   Esc          退出搜索框聚焦
+  // 焦点在 input / textarea / contenteditable 时不拦截
+  useEffect(() => {
+    const isTextInput = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (el.isContentEditable) return true;
+      return false;
+    };
+
+    const focusSearch = () => {
+      // 侧栏 SearchBar 的 input — 用 placeholder 文本定位
+      const search = document.querySelector<HTMLInputElement>(
+        'input[placeholder*="搜索"], input[placeholder*="Search"]'
+      );
+      if (search) {
+        search.focus();
+        search.select?.();
+        return true;
+      }
+      return false;
+    };
+
+    const handler = (e: KeyboardEvent) => {
+      // Cmd/Ctrl+F 永远生效(允许在 input 内也触发,避免冲突)
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        focusSearch();
+        return;
+      }
+
+      // 其它快捷键在 input 内不拦截
+      if (isTextInput(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+
+      // Esc: 如果搜索框聚焦,清空 + 退出
+      if (key === 'Escape') {
+        const active = document.activeElement;
+        if (active instanceof HTMLInputElement && active.closest('.search-bar, [data-testid*="search"]')) {
+          active.blur();
+          if (active.value) active.value = '';
+        }
+        return;
+      }
+
+      // j / k 切文章;Shift+J/K 切订阅源
+      if (key === 'j' || key === 'k') {
+        if (e.shiftKey) {
+          // Shift+J/K 切订阅源
+          if (feedsState.kind !== 'ready' || feedsState.data.length === 0) return;
+          e.preventDefault();
+          const fid = selection.feedId;
+          const fidx = feedsState.data.findIndex((f) => f.id === fid);
+          const next = key === 'j'
+            ? Math.min(fidx + 1, feedsState.data.length - 1)
+            : Math.max(fidx - 1, 0);
+          const target = feedsState.data[next];
+          if (target) selectFeed(target.id);
+          return;
+        }
+        if (articlesState.kind !== 'ready' || articlesState.data.length === 0) return;
+        e.preventDefault();
+        const cur = selection.articleId;
+        const idx = cur ? articlesState.data.findIndex((a) => a.id === cur) : -1;
+        const next = key === 'j'
+          ? Math.min(idx + 1, articlesState.data.length - 1)
+          : Math.max(idx - 1, 0);
+        const target = articlesState.data[next];
+        if (target && target.id !== cur) {
+          handleSelectArticle(target.id);
+        }
+        return;
+      }
+
+      // o: 打开原文
+      if (key === 'o' && selection.articleId) {
+        e.preventDefault();
+        const a = articlesState.kind === 'ready'
+          ? articlesState.data.find((x) => x.id === selection.articleId)
+          : null;
+        if (a?.url) {
+          void window.api.shell.openExternal(a.url);
+        }
+        return;
+      }
+
+      // s: 切换星标
+      if (key === 's' && selection.articleId) {
+        e.preventDefault();
+        const a = articlesState.kind === 'ready'
+          ? articlesState.data.find((x) => x.id === selection.articleId)
+          : null;
+        if (a) {
+          handleToggleStar(a.id, !a.isStarred);
+        }
+        return;
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [articlesState, feedsState, selection.articleId, selection.feedId, handleSelectArticle, handleToggleStar, selectFeed]);
+
   // 添加订阅源
   const handleAddFeed = useCallback(
     async (url: string) => {
@@ -686,10 +797,10 @@ export function App() {
         onSelect={handleSelectArticle}
         filterLabel={filterLabel}
         filterHint={
-          // Phase 3.4.4.5：给空态一个明确提示
-          selection.feedId === 'starred' ? '暂无星标文章' :
+          // P2 体验打磨：统一空态 title 为"还没有 X"格式
+          selection.feedId === 'starred' ? '还没有星标文章' :
           selection.feedId === 'unread' ? '所有文章都已读完' :
-          '暂无匹配文章'
+          '还没有匹配的文章'
         }
       />
     );

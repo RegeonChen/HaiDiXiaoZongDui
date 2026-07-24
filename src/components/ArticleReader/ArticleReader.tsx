@@ -733,7 +733,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
               dangerouslySetInnerHTML={{ __html: displayHtml }}
             />
           ) : (
-            <EmptyView title="此文章暂无正文" hint="可能还没有内容,或者源站返回为空。" />
+            <EmptyView title="这篇文章还没有正文" hint="可能还没有内容,或者源站返回为空。点 ↗ 打开原文试试。" />
           )}
         </div>
 
@@ -879,7 +879,7 @@ function TagManagePanel({ articleTags, allTags, onAdd, onRemove, onCreate }: Tag
       <div className="sticky-tag-manage__section">
         <h4 className="sticky-tag-manage__heading">已应用({articleTags.length})</h4>
         {articleTags.length === 0 ? (
-          <p className="sticky-tag-manage__empty">尚未给此文章添加标签。</p>
+          <p className="sticky-tag-manage__empty">还没有标签。点上方 ✏ 添加。</p>
         ) : (
           <ul className="sticky-tag-manage__chips" data-sticky-section="applied">
             {articleTags.map((t) => (

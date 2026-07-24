@@ -116,7 +116,7 @@
 }
 
 .article-list__star {
-  color: #f5b400;
+  color: var(--warn);
   font-size: 12px;
   flex-shrink: 0;
 }

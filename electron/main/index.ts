@@ -3265,6 +3265,26 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
   trustedIpcMain.handle(IPC_CHANNELS.LOG_EXPORT, async (): Promise<IpcResult<string>> => {
     return fail('NOT_IMPLEMENTED', '日志导出功能等待 Phase 4 接入');
   });
+
+  // P2 体验打磨：键盘快捷键 'o' 在系统浏览器打开原文
+  // 安全：白名单 http(s) 协议,拒绝 file:// / javascript: / data: 等
+  trustedIpcMain.handle(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, async (_, args): Promise<IpcResult<void>> => {
+    const url = args?.url;
+    if (typeof url !== 'string' || !url) {
+      return fail('INVALID_URL', 'url 必须是非空字符串');
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return fail('INVALID_URL', 'url 解析失败');
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return fail('UNSAFE_PROTOCOL', `禁止 ${parsed.protocol} 协议,只允许 http(s)`);
+    }
+    await shell.openExternal(parsed.toString());
+    return ok(undefined);
+  });
 }
 
 function smokeOpmlPath(): string | null {

@@ -148,8 +148,8 @@
   background: var(--bg-elev-hover);
 }
 .topics-page__item-btn--danger {
-  color: #c0392b;
-  border-color: #e0a8a8;
+  color: var(--err);
+  border-color: var(--err);
 }
 .topics-page__item-btn--danger:hover {
   background: #fbeae8;
