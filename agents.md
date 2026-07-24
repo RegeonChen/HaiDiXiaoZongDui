@@ -93,22 +93,20 @@
 
 ## 当前状态
 
-截至 2026-07-23：
+截至 2026-07-24：
 
-- **Phase 1、2、2.5、3、3.4、3.5、3.6 全部完成并通过验收（28 项 PASS）。**
-- **Phase 4.1**（专题 UI）和 **Phase 4.2**（Topic-ready Content）已完成；等陈冠中 **Phase 4.3**（Topic Analysis 后端）接入。
-- `electon-vite build` + `npm run typecheck` 均通过。
-- **通用文章图片链路**已完成，不再按 Feed 或域名特判：
-  - 清洗器统一处理 `data-src`、`data-original`、`srcset`、`picture`、`noscript` 和多图 `figure`
-  - Renderer 将正文 HTTP(S) 图片统一改写为 `juhe-image://`，不再直接访问第三方图片
-  - Main 进程代理使用原文来源、图片同源、无来源三种通用获取策略，并校验图片类型和 25 MB 上限
-  - 数据库 migration 8 自动使旧 Cleaned HTML 失效，保留 Source HTML 并在下次打开时本地重洗
-  - `npm run smoke:images` 覆盖打包 Renderer → CSP → 自定义协议 → Main fetch → 图片解码全链路
-- **侧栏精确计数**：`ArticleRepository.countAll/countUnread/countStarred` + `article:counts` IPC 全链路。
-- **翻译 UX**：`filterInlineMarkdown`（仅保留粗体/斜体/下划线）+ 翻译框纯中文展示。
-- **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ 失败红点标记。
-- **已读文章样式**：仅灰色文字，无删除线。
-- **GitHub Release 自动化**：推送 `v*` tag → GitHub Actions 自动构建 macOS DMG + Windows NSIS。
+- **Phase 1–3.6、4.1、4.2、4.3 全部完成并通过验收**。`electron-vite build` + `npm run typecheck` 双端通过。
+- **侧栏三件套落地**（`e1aee96`）：`...` 菜单（tab=sources 展开/折叠、tab=tags 删除未使用标签）、标签 `×` 单删 / 批量删未用、组别 `▸/▾` 折叠（localStorage 持久化）、**tab 状态 localStorage 持久化**（修复 `refreshFeeds` 触发 unmount/remount 后 tab 被踢回 sources 的隐藏 bug）。
+- **订阅源侧栏真分组**（`c1325df`）：添加组 / 移动到组 / 删组（组内移到"未分组"） + ContextMenu `submenu` 字段。
+- **专题演化图 + 端到端接入**（`c428688` 张宇凡）：v7 migration 增 `topics` / `topic_articles` / `topic_graph_cache`；5 方向泳道（发布与能力 / 产品与应用 / 安全与治理 / 成本与部署 / 观点与解读）；TopicDetail 4 tab → 3 tab（graph / articles / briefing）；MVP 不消耗 AI token（候选发现阶段用 `source_signature` 缓存）。
+- **通用文章图片链路**（`399d3c8` 张宇凡 + `bb57450` 陈冠中 + `f1eeb48` 陈冠中）：清洗器统一处理 `data-src` / `data-original` / `srcset` / `picture` / `noscript` / 多图 `figure`；Renderer 将正文 HTTP(S) 图片改写为 `juhe-image://`；Main 代理三策略（原文来源 / 图片同源 / 无来源）+ 25 MB 上限 + 图片类型校验；`file://` 协议不发 Referer 修少数派 CDN 防盗链；migration 8 自动重洗旧 Cleaned HTML。
+- **侧栏精确计数**：`ArticleRepository.countAll/countUnread/countStarred` + `article:counts` IPC。
+- **侧栏按 tag 分类**（`ec0c49e`）：`ARTICLE_COUNTS_BY_TAG` IPC + `tag:${string}` 模板字面量类型 FeedSelector + `parseTagSelector`；`useSelection` 闭包陈旧 bug 修复（用 `stickyTabRef` 替代 `useCallback` 闭包）。
+- **翻译 UX**：`filterInlineMarkdown` 仅保留粗体/斜体/下划线；逐段流式翻译 + 翻译/摘要并存（`activePanel: Set<AiPanel>`）；`SplitController` token 计数修 React 18 StrictMode dev 双调永远卡 loading。
+- **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ done 态 3 秒延迟 + 失败红点。
+- **三种阅读模式**（`e25343a` 张宇凡 + `9aef239` 张宇凡）：精简阅读 / 网页 / 分栏（左右各半），通过 `useReaderMode` hook + `shared/article-webview.ts` + 主进程 `installArticleWebviewSecurity`。
+- **GitHub Release 自动化**：`.github/workflows/release.yml` 推 `v*` tag → build-mac (DMG) + build-win (NSIS) + release job。
+- **18 个 smoke + 97 单元测试全过**：smoke-1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes / taglist / feeds-group。
 - `shared/types.ts` + `shared/ipc.ts` 作为权威协议源；跨模块接口变更需同步更新并通知。
 
 ## 设计决策
@@ -126,18 +124,30 @@
 
 ## 路线图
 
-1. Phase 1–3.6：✅ 全部完成
-2. Phase 4：专题追踪端到端集成（张晨阳 4.1 + 张宇凡 4.2 已就绪，陈冠中 4.3 待接入）
-3. Phase 5：三平台验证、问题修复、课程交付准备
+1. Phase 1–4.3：✅ 全部完成
+2. Phase 5：v0.3.0 release 准备 / 三平台 UI 验证 / 课程交付资料准备（进行中）
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
+## 近期记录（按 commit 倒序）
+
+- **`e1aee96`（张晨阳）**：侧栏 3 个 bug — `...` 菜单（展开/折叠 / 删未用标签）/ 标签 `×` 单删 + 批量删 / 组别 `▸/▾` 折叠 + tab state localStorage 持久化。**真根因是 `refreshFeeds` 第一行 `setFeedsState({kind:'loading'})` 触发 FeedList unmount/remount，tab state 丢失**。`smoke:feeds-group` 17 → 36 项。
+- **`c1325df`（张晨阳）**：订阅源侧栏真分组（添加组 / 移动到组 / 删组）+ `ContextMenu` `submenu` 字段 + `AddGroupDialog`。
+- **`ff4b9a8`（张晨阳）**：AGENTS.md 同步 4.3 + 侧栏 tag 修复；`smoke:topic` 9 → 13 项。
+- **`ec0c49e`（张晨阳）**：侧栏按 tag 真分类 + `ARTICLE_COUNTS_BY_TAG` IPC + `tag:${string}` 模板字面量类型 FeedSelector + 修 `handleSuggestTags` 闭包陈旧。
+- **`ff54505`（张晨阳）**：单添加入口（删 FeedList 内联表单）+ 落地标签管理（5 handlers 接 IPC）+ 粘性底部面板（mousemove 全局 + 高度 localStorage 持久化）。
+- **`996b322`（张晨阳）**：摘要 toggle + 摘要/翻译并存（`activePanel: Set<AiPanel>` + 4 辅助函数）。
+- **`7fce48c`（张晨阳）**：split 永远卡 loading 真根因 — `SplitController` token ref 跨 mount 共享 + 8 单元测试覆盖 StrictMode 双调。
+- **`c428688`（张宇凡）**：专题演化图 + 文章关联（v7 migration + `topics`/`topic_articles`/`topic_graph_cache` + 5 方向泳道 + `topicGetGraph` IPC + `TopicGraphView` 组件 + `smoke-4.1` 升级）。
+- **`399d3c8`（张宇凡）**：统一代理文章图片并兼容跨站显示。
+- **`e25343a`（张宇凡）**：网页与分栏阅读模式（`useReaderMode` + `installArticleWebviewSecurity`）。
+- **`d834b59`（张宇凡）**：v0.2.2 release tag。
+
 ## 已知问题
 
-- **API Key 明文存储**：`ai_providers.api_key` 以明文写入 SQLite。计划 Phase 5 改用 `safeStorage` 加密。
-- **Topic / Log stub**：12 个 Topic + 2 个 Log IPC handler 仍返回 `NOT_IMPLEMENTED`，等陈冠中 Phase 4.3 接入。
-- **部分数据库仓储缺少单元测试**：Tag/Note/Digest/AIProvider/AiResultCache 的测试覆盖不足。
-- **AI 真实生成未被自动化测试覆盖**：smoke 探针中 AI section 允许 skipped。
-- **跨平台行为测试**：尚未在 macOS 和 Linux 上进行完整验证。
+- **API Key 明文存储**：`ai_providers.api_key` 以明文写入 SQLite。计划 Phase 5 用 `safeStorage.encryptString/decryptString` 加密（Linux 降级到 libsecret）。A 写主进程集成 + smoke 探针；陈冠中 review + 同步 migration。
+- **部分数据库仓储缺少单元测试**：Tag / Note / Digest / AIProvider / AiResultCache 的测试覆盖不足（Phase 5 增量补齐）。
+- **AI 真实生成未被自动化测试覆盖**：smoke 探针中 AI section 允许 skipped（需真 API key）。
+- **跨平台行为测试**：仅在 Windows 跑过完整 smoke + dist:win；macOS / Linux 待张宇凡、陈冠中验证（`npm run dist:mac` / Linux build）。
 - **npm audit**：Electron 31、Vite 5/electron-vite 2 存在 4 组工具链公告（2 moderate、2 high），需在发布前升级。
-- **不同 OpenAI-compatible Provider 兼容性**：需要在多 Provider 上进行兼容性测试。
+- **不同 OpenAI-compatible Provider 兼容性**：当前默认测过 1 家 Provider，需在多 Provider 上兼容性测试。
