@@ -54,6 +54,10 @@ export interface FeedListProps {
   onDeleteTag?: (tagId: string, tagName: string) => void;
   /** Phase 3.5.x：删除未使用标签（count === 0） */
   onDeleteUnusedTags?: () => void;
+  /** Bug 2 修复：批量删除（多选 feed + 一次删） */
+  onBatchDeleteFeeds?: (feedIds: string[]) => void;
+  /** Bug 2 修复：批量删除（多选 tag + 一次删） */
+  onBatchDeleteTags?: (tagIds: string[]) => void;
 }
 
 type Tab = 'sources' | 'tags';
@@ -86,7 +90,8 @@ export function FeedList({
   onMoveFeedToGroup,
   onDeleteGroup,
   onDeleteTag,
-  onDeleteUnusedTags
+  onBatchDeleteFeeds,
+  onBatchDeleteTags
 }: FeedListProps) {
   const [tab, setTabRaw] = useState<Tab>(() => {
     // Phase 3.5.x：tab 也持久化,避免 refreshFeeds setState loading 导致 FeedList
@@ -122,6 +127,9 @@ export function FeedList({
   });
   // "更多" 菜单开关
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  // Bug 2 修复：批量管理模式( ... 改为批量删除入口)
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedForBatch, setSelectedForBatch] = useState<Set<string>>(new Set());
   // 同步折叠状态到 localStorage
   useEffect(() => {
     try {
@@ -143,8 +151,6 @@ export function FeedList({
     });
   }, []);
 
-  const expandAll = useCallback(() => setCollapsedGroups(new Set()), []);
-
   // "更多" 按钮点外面关闭
   useEffect(() => {
     if (!moreMenuOpen) return;
@@ -156,6 +162,48 @@ export function FeedList({
     window.addEventListener('mousedown', onClick);
     return () => window.removeEventListener('mousedown', onClick);
   }, [moreMenuOpen]);
+
+  // Bug 2 修复:批量选择辅助
+  const enterBatchMode = useCallback(() => {
+    setBatchMode(true);
+    setSelectedForBatch(new Set());
+    setMoreMenuOpen(false);
+  }, []);
+  const exitBatchMode = useCallback(() => {
+    setBatchMode(false);
+    setSelectedForBatch(new Set());
+  }, []);
+  const toggleBatchSelect = useCallback((id: string) => {
+    setSelectedForBatch((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const selectAllBatch = useCallback(() => {
+    if (tab === 'sources') {
+      // 选所有 feeds(简化版:全选,不区分是否折叠;折叠组里的也会被选中,
+      // 用户点删除时能意识到组里也有 — 反正删除就是删除)
+      setSelectedForBatch(new Set(feeds.map((f) => f.id)));
+    } else if (tab === 'tags' && tags) {
+      setSelectedForBatch(new Set(tags.map((t) => t.id)));
+    }
+  }, [tab, feeds, tags]);
+  const clearBatchSelect = useCallback(() => {
+    setSelectedForBatch(new Set());
+  }, []);
+  const onBatchDelete = useCallback(() => {
+    if (selectedForBatch.size === 0) return;
+    const ids = Array.from(selectedForBatch);
+    if (tab === 'sources' && onBatchDeleteFeeds) {
+      onBatchDeleteFeeds(ids);
+    } else if (tab === 'tags' && onBatchDeleteTags) {
+      onBatchDeleteTags(ids);
+    }
+    // 退出批量模式 + 清空(失败/部分成功的情况由 App.tsx 决定,这里保守不清)
+  }, [selectedForBatch, tab, onBatchDeleteFeeds, onBatchDeleteTags]);
+
 
   // Phase 3.6.3：优先使用数据库精确计数（顶层三个虚拟分组），未提供时 fallback 到本地计算
   // PLAN 3.6.3 仅要求"所有订阅源/未读/星标文章"三个虚拟分类使用数据库精确计数；
@@ -203,13 +251,8 @@ export function FeedList({
   }, [feeds, groups]);
 
   // Phase 3.5.x：折叠所有（点击"..." 菜单时用，需要在 grouped 之后定义）
-  const collapseAll = useCallback(() => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      for (const [g] of grouped) next.add(g);
-      return next;
-    });
-  }, [grouped]);
+  // Bug 2 修复后 ... 菜单不再直接触发,collapseAll 不再需要暴露
+  // （保留内部折叠 toggle per-group 已经够用）
 
   const handleContextMenu = (e: React.MouseEvent, feed: Feed) => {
     e.preventDefault();
@@ -274,7 +317,7 @@ export function FeedList({
   };
 
   return (
-    <div className="feed-list">
+    <div className={`feed-list ${batchMode ? 'is-batch' : ''}`}>
       {/* 顶部 tab + 操作行 */}
       <div className="feed-list__topbar">
         <div className="feed-list__tabs" role="tablist">
@@ -326,50 +369,16 @@ export function FeedList({
               role="menu"
               data-testid="feed-list__more-menu"
             >
-              {tab === 'sources' && (
-                <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="feed-list__more-item"
-                    onClick={() => {
-                      expandAll();
-                      setMoreMenuOpen(false);
-                    }}
-                    data-testid="feed-list__expand-all"
-                  >
-                    ▾ 全部展开
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="feed-list__more-item"
-                    onClick={() => {
-                      collapseAll();
-                      setMoreMenuOpen(false);
-                    }}
-                    data-testid="feed-list__collapse-all"
-                  >
-                    ▸ 全部折叠
-                  </button>
-                </>
-              )}
-              {tab === 'tags' && (
-                <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="feed-list__more-item"
-                    onClick={() => {
-                      onDeleteUnusedTags?.();
-                      setMoreMenuOpen(false);
-                    }}
-                    data-testid="feed-list__delete-unused-tags"
-                  >
-                    🧹 删除未使用标签
-                  </button>
-                </>
-              )}
+              {/* Bug 2 修复:... 菜单只留"批量管理"入口(替代之前的展开/折叠/删未用) */}
+              <button
+                type="button"
+                role="menuitem"
+                className="feed-list__more-item"
+                onClick={enterBatchMode}
+                data-testid="feed-list__enter-batch"
+              >
+                ☑ 批量管理
+              </button>
             </div>
           )}
           {/* Phase 3.5.x：tab=sources 时显示"添加组"按钮；tab=tags 不显示 */}
@@ -387,6 +396,51 @@ export function FeedList({
         </div>
       </div>
 
+      {/* Bug 2 修复:批量管理工具条(覆盖在 topbar 下方,固定不滚动) */}
+      {batchMode && (
+        <div className="feed-list__batch-toolbar" data-testid="feed-list__batch-toolbar">
+          <span className="feed-list__batch-toolbar-label">
+            已选 {selectedForBatch.size} 个
+          </span>
+          <button
+            type="button"
+            className="feed-list__batch-btn"
+            onClick={selectAllBatch}
+            data-testid="feed-list__batch-select-all"
+          >
+            全选
+          </button>
+          <button
+            type="button"
+            className="feed-list__batch-btn"
+            onClick={clearBatchSelect}
+            disabled={selectedForBatch.size === 0}
+            data-testid="feed-list__batch-clear"
+          >
+            清空
+          </button>
+          <button
+            type="button"
+            className="feed-list__batch-btn feed-list__batch-btn--danger"
+            onClick={onBatchDelete}
+            disabled={selectedForBatch.size === 0}
+            data-testid="feed-list__batch-delete"
+          >
+            删除选中
+          </button>
+          <button
+            type="button"
+            className="feed-list__batch-btn feed-list__batch-btn--primary"
+            onClick={exitBatchMode}
+            data-testid="feed-list__batch-exit"
+          >
+            完成
+          </button>
+        </div>
+      )}
+
+      {/* Bug 1 修复:中间内容包一个可滚动 body,顶栏 + 底栏 + 工具条固定,中间一起滚 */}
+      <div className="feed-list__body">
       {/* 虚拟分组（所有 / 未读 / 星标）—— tab=sources 才显示 */}
       {tab === 'sources' && (
         <div className="feed-list__virtuals">
@@ -457,30 +511,55 @@ export function FeedList({
                   list.map((f) => {
                     const unread = unreadByFeed.get(f.id) ?? 0;
                     const isSelected = selected === f.id;
+                    const isBatchChecked = selectedForBatch.has(f.id);
                     return (
-                      <button
+                      <div
                         key={f.id}
-                        type="button"
-                        className={`feed-list__item ${isSelected ? 'is-active' : ''} ${
-                          f.lastSyncSuccess ? '' : 'is-failed'
-                        }`}
-                        onClick={() => onSelect(f.id)}
-                        onContextMenu={(e) => handleContextMenu(e, f)}
-                        title={`${f.siteTitle || f.title}\n${f.url}\n右键：移动到组 / 同步 / 删除`}
+                        className={`feed-list__item-wrap ${isBatchChecked ? 'is-selected' : ''}`}
+                        data-feed-id={f.id}
                       >
-                        <span className="feed-list__icon" aria-hidden="true">
-                          {f.feedType === 'atom' ? 'Ⓐ' : f.feedType === 'jsonfeed' ? '⌘' : '☰'}
-                        </span>
-                        <span className="feed-list__label">{f.siteTitle || f.title}</span>
-                        {unread > 0 && <span className="feed-list__count">{unread}</span>}
-                        {(failedFeedIds?.includes(f.id) || !f.lastSyncSuccess) && (
-                          <span
-                            className="feed-list__status-dot"
-                            title={f.lastSyncError ?? '同步失败'}
-                            aria-label="同步失败"
+                        {batchMode && (
+                          <input
+                            type="checkbox"
+                            className="feed-list__checkbox"
+                            checked={isBatchChecked}
+                            onChange={() => toggleBatchSelect(f.id)}
+                            aria-label={`选择订阅源 ${f.siteTitle || f.title}`}
+                            data-testid={`feed-list__batch-checkbox-${f.id}`}
                           />
                         )}
-                      </button>
+                        <button
+                          type="button"
+                          className={`feed-list__item ${isSelected ? 'is-active' : ''} ${
+                            f.lastSyncSuccess ? '' : 'is-failed'
+                          }`}
+                          onClick={() => {
+                            if (batchMode) {
+                              toggleBatchSelect(f.id);
+                            } else {
+                              onSelect(f.id);
+                            }
+                          }}
+                          onContextMenu={(e) => {
+                            if (batchMode) return;
+                            handleContextMenu(e, f);
+                          }}
+                          title={`${f.siteTitle || f.title}\n${f.url}\n右键：移动到组 / 同步 / 删除`}
+                        >
+                          <span className="feed-list__icon" aria-hidden="true">
+                            {f.feedType === 'atom' ? 'Ⓐ' : f.feedType === 'jsonfeed' ? '⌘' : '☰'}
+                          </span>
+                          <span className="feed-list__label">{f.siteTitle || f.title}</span>
+                          {unread > 0 && <span className="feed-list__count">{unread}</span>}
+                          {(failedFeedIds?.includes(f.id) || !f.lastSyncSuccess) && (
+                            <span
+                              className="feed-list__status-dot"
+                              title={f.lastSyncError ?? '同步失败'}
+                              aria-label="同步失败"
+                            />
+                          )}
+                        </button>
+                      </div>
                     );
                   })
                 ))}
@@ -503,17 +582,36 @@ export function FeedList({
               {tags.map((t) => {
                 const count = tagCounts?.[t.id] ?? 0;
                 const isSelected = selected === `tag:${t.id}`;
+                const isBatchChecked = selectedForBatch.has(t.id);
                 return (
                   <div
                     key={t.id}
-                    className={`feed-list__tag-row ${isSelected ? 'is-active' : ''}`}
+                    className={`feed-list__tag-row ${isSelected ? 'is-active' : ''} ${
+                      isBatchChecked ? 'is-selected' : ''
+                    }`}
                     data-tag-id={t.id}
                     data-tag-count={count}
                   >
+                    {batchMode && (
+                      <input
+                        type="checkbox"
+                        className="feed-list__checkbox"
+                        checked={isBatchChecked}
+                        onChange={() => toggleBatchSelect(t.id)}
+                        aria-label={`选择标签 ${t.name}`}
+                        data-testid={`feed-list__batch-checkbox-${t.id}`}
+                      />
+                    )}
                     <button
                       type="button"
                       className="feed-list__item"
-                      onClick={() => onSelect(`tag:${t.id}`)}
+                      onClick={() => {
+                        if (batchMode) {
+                          toggleBatchSelect(t.id);
+                        } else {
+                          onSelect(`tag:${t.id}`);
+                        }
+                      }}
                       title={`${t.name} · ${count} 篇文章`}
                     >
                       <span
@@ -526,7 +624,7 @@ export function FeedList({
                       <span className="feed-list__label">{t.name}</span>
                       <span className="feed-list__count">{count}</span>
                     </button>
-                    {onDeleteTag && (
+                    {!batchMode && onDeleteTag && (
                       <button
                         type="button"
                         className="feed-list__tag-delete"
@@ -548,6 +646,8 @@ export function FeedList({
           )}
         </>
       )}
+      </div>
+      {/* Bug 1 修复:body 结束 */}
 
       {/* 底部状态栏 */}
       <div className="feed-list__statusbar">

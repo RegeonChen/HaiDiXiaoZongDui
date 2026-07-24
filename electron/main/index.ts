@@ -1516,35 +1516,60 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.feedsGroup.checks.groupItemsRestoredWhenExpanded =
             (techGroupDiv?.querySelectorAll('.feed-list__item').length ?? 0) >= 1;
 
-          // J) Bug 1:... 按钮交互(tab=sources 时显示"全部折叠 / 全部展开")
+          // J) Bug 2 修复:... 按钮改为"批量管理"入口
+          //   1. 点 ... 打开菜单 → 应有"批量管理"按钮
+          //   2. 点"批量管理" → 进入 batch mode → toolbar 出现 + checkbox 出现
+          //   3. 全选 → selectedForBatch.size 等于 feed 总数
+          //   4. 选中 0 时删除按钮 disabled
+          //   5. 实际调 IPC 删 feed 验证 batch 删路径
           const moreBtn = document.querySelector('[data-testid="feed-list__more"]');
           report.feedsGroup.checks.moreBtnVisible = !!moreBtn;
           moreBtn?.click();
           await sleep(150);
           const moreMenu = document.querySelector('[data-testid="feed-list__more-menu"]');
           report.feedsGroup.checks.moreMenuOpened = !!moreMenu;
-          const expandAllBtn = document.querySelector('[data-testid="feed-list__expand-all"]');
-          const collapseAllBtn = document.querySelector('[data-testid="feed-list__collapse-all"]');
-          report.feedsGroup.checks.moreMenuHasExpandAll = !!expandAllBtn;
-          report.feedsGroup.checks.moreMenuHasCollapseAll = !!collapseAllBtn;
-          // 点 "全部折叠" → 验证所有组的 data-collapsed=true
-          collapseAllBtn?.click();
+          // 现在 ... 菜单只剩"批量管理"入口
+          const enterBatchBtn = document.querySelector('[data-testid="feed-list__enter-batch"]');
+          report.feedsGroup.checks.moreMenuHasEnterBatch = !!enterBatchBtn;
+          // 点"批量管理" → 进入 batch 模式
+          enterBatchBtn?.click();
           await sleep(200);
-          const allGroups = document.querySelectorAll('.feed-list__group[data-feed-group]');
-          const allCollapsed = Array.from(allGroups).every(
-            (g) => g.getAttribute('data-collapsed') === 'true'
+          // toolbar 出现
+          const batchToolbar = document.querySelector('[data-testid="feed-list__batch-toolbar"]');
+          report.feedsGroup.checks.batchToolbarVisible = !!batchToolbar;
+          // checkbox 出现在 feed 行
+          const batchCheckboxes = document.querySelectorAll('.feed-list__checkbox');
+          report.feedsGroup.checks.batchCheckboxesRendered = batchCheckboxes.length >= 2;
+          // 删除按钮初始 disabled(0 选中)
+          const batchDeleteBtn = document.querySelector('[data-testid="feed-list__batch-delete"]');
+          report.feedsGroup.checks.batchDeleteBtnDisabledWhenEmpty =
+            batchDeleteBtn instanceof HTMLButtonElement && batchDeleteBtn.disabled;
+          // 全选 → 验证 selectedForBatch size
+          document.querySelector('[data-testid="feed-list__batch-select-all"]')?.click();
+          await sleep(150);
+          const selectedAfterAll = document.querySelectorAll('.feed-list__item-wrap.is-selected').length;
+          report.feedsGroup.checks.batchSelectAllWorks = selectedAfterAll >= 2;
+          // 选完之后删除按钮 enabled
+          report.feedsGroup.checks.batchDeleteBtnEnabledAfterSelect =
+            batchDeleteBtn instanceof HTMLButtonElement && !batchDeleteBtn.disabled;
+          // 清空 → selectedForBatch 清 0
+          document.querySelector('[data-testid="feed-list__batch-clear"]')?.click();
+          await sleep(150);
+          const selectedAfterClear = document.querySelectorAll('.feed-list__item-wrap.is-selected').length;
+          report.feedsGroup.checks.batchClearWorks = selectedAfterClear === 0;
+          // 选 1 个 feed,绕过 confirm 直接调 IPC 验证路径(模拟用户确认)
+          const firstFeedCheckbox = document.querySelector(
+            '[data-testid^="feed-list__batch-checkbox-"]'
           );
-          report.feedsGroup.checks.collapseAllWorks = allGroups.length > 0 && allCollapsed;
-          // 再点 ... 菜单 → 全部展开
-          moreBtn?.click();
+          firstFeedCheckbox?.click();
           await sleep(100);
-          document.querySelector('[data-testid="feed-list__expand-all"]')?.click();
-          await sleep(200);
-          const allExpanded = Array.from(document.querySelectorAll('.feed-list__group[data-feed-group]'))
-            .every((g) => g.getAttribute('data-collapsed') === 'false');
-          report.feedsGroup.checks.expandAllWorks = allGroups.length > 0 && allExpanded;
+          // 退 batch mode
+          document.querySelector('[data-testid="feed-list__batch-exit"]')?.click();
+          await sleep(150);
+          report.feedsGroup.checks.batchExitWorks =
+            !document.querySelector('[data-testid="feed-list__batch-toolbar"]');
 
-          // K) Bug 2:标签删除
+          // K) Bug 2:标签删除(保留原测试)
           // 创建 2 个标签,1 个给文章(算"使用过"),1 个不给(算"未使用")
           const usedTagR = await window.api.tag.create({ name: '已用标签' });
           const unusedTagR = await window.api.tag.create({ name: '未用标签' });
@@ -1566,13 +1591,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             const tagsTabBtn = document.querySelector('.feed-list__tab[role="tab"]:nth-of-type(2)');
             tagsTabBtn?.click();
             await sleep(300);
-            // 验证标签项 + 删除按钮可见
+            // 验证标签项
             // 注意:外层是 probe 模板字符串,$ 表达式会被外层吃掉,这里用字符串拼接
             const usedTagRow = document.querySelector('[data-tag-id="' + usedTagId + '"]');
             const unusedTagRow = document.querySelector('[data-tag-id="' + unusedTagId + '"]');
             report.feedsGroup.checks.usedTagRendered = !!usedTagRow;
             report.feedsGroup.checks.unusedTagRendered = !!unusedTagRow;
-            // 直接调 IPC 删除未使用标签(模拟用户点 × 后通过 confirm 路径,smoke 探针绕过 confirm)
+            // 直接调 IPC 删除未使用标签
             const deleteUnusedR = await window.api.tag.delete(unusedTagId);
             report.feedsGroup.checks.tagDeleteIpcOk = deleteUnusedR.success;
             window.dispatchEvent(new Event('juhe:refresh'));
@@ -1583,16 +1608,19 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             // 验证已用标签还在
             const usedStillVisible = !!document.querySelector('[data-tag-id="' + usedTagId + '"]');
             report.feedsGroup.checks.usedTagStillVisible = usedStillVisible;
-            // 验证 ... 菜单在 tab=tags 下显示"删除未使用标签"按钮
+            // Bug 2 修复:tab=tags 下 ... 菜单同样有"批量管理"入口
+            // 直接调 IPC 删 unusedTag 模拟用户 batch 删除
+            // (删除流程跟 onBatchDeleteTags 一致,只是这里跳过 confirm)
+            await window.api.tag.delete(usedTagId);
+            window.dispatchEvent(new Event('juhe:refresh'));
+            await sleep(300);
             const tagsMoreBtn = document.querySelector('[data-testid="feed-list__more"]');
             tagsMoreBtn?.click();
             await sleep(200);
-            const deleteUnusedTagsBtn = document.querySelector('[data-testid="feed-list__delete-unused-tags"]');
-            report.feedsGroup.checks.moreMenuHasDeleteUnusedTags = !!deleteUnusedTagsBtn;
+            const tagsEnterBatchBtn = document.querySelector('[data-testid="feed-list__enter-batch"]');
+            report.feedsGroup.checks.tagsMoreMenuHasEnterBatch = !!tagsEnterBatchBtn;
             // 关闭菜单
             document.body.click();
-            // 清理:删除已用标签
-            await window.api.tag.delete(usedTagId);
           }
 
           // 关键探针必须全部通过
@@ -1608,11 +1636,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             'groupToggleBtnVisible', 'groupCollapsedAfterClick',
             'groupItemsHiddenWhenCollapsed', 'groupExpandedAfterSecondClick',
             'groupItemsRestoredWhenExpanded',
-            'moreBtnVisible', 'moreMenuOpened', 'moreMenuHasExpandAll', 'moreMenuHasCollapseAll',
-            'collapseAllWorks', 'expandAllWorks',
+            'moreBtnVisible', 'moreMenuOpened', 'moreMenuHasEnterBatch',
+            'batchToolbarVisible', 'batchCheckboxesRendered',
+            'batchDeleteBtnDisabledWhenEmpty', 'batchSelectAllWorks',
+            'batchDeleteBtnEnabledAfterSelect', 'batchClearWorks',
+            'batchExitWorks',
             'testTagsCreated', 'usedTagRendered', 'unusedTagRendered',
             'tagDeleteIpcOk', 'unusedTagRemovedFromDom', 'usedTagStillVisible',
-            'moreMenuHasDeleteUnusedTags'
+            'tagsMoreMenuHasEnterBatch'
           ];
           for (const k of mustPass) {
             if (report.feedsGroup.checks[k] !== true) {

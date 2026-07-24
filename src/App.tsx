@@ -546,6 +546,103 @@ export function App() {
     [articles, ds, pushToast, refreshFeeds, refreshCounts, selectFeed, selection.feedId]
   );
 
+  // Bug 2 修复:批量删除订阅源(用户要求 ... 改为批量删除)
+  const handleBatchDeleteFeeds = useCallback(
+    async (feedIds: string[]) => {
+      if (feedIds.length === 0) return;
+      const articleCount = allArticles.filter((a) => feedIds.includes(a.feedId)).length;
+      const names = feeds
+        .filter((f) => feedIds.includes(f.id))
+        .map((f) => f.siteTitle || f.title)
+        .slice(0, 5)
+        .join('、');
+      const ok = await confirmRef.current?.open({
+        title: '批量删除订阅源',
+        message: `将删除 ${feedIds.length} 个订阅源${names ? `(${names}${feedIds.length > 5 ? '…' : ''})` : ''},同时删除其全部 ${articleCount} 篇文章,无法撤销。`,
+        confirmLabel: `删除 ${feedIds.length} 个`,
+        cancelLabel: '取消',
+        danger: true
+      });
+      if (!ok) return;
+      const api = (window as unknown as {
+        api?: { feed?: { delete: (id: string) => Promise<{ success: boolean; error?: { message: string } }> } }
+      }).api;
+      if (!api?.feed?.delete) {
+        pushToast('当前模式不支持删除', 'error');
+        return;
+      }
+      let ok2 = 0;
+      let fail2 = 0;
+      for (const id of feedIds) {
+        try {
+          const r = await api.feed.delete(id);
+          if (r.success) ok2 += 1;
+          else fail2 += 1;
+        } catch {
+          fail2 += 1;
+        }
+      }
+      // 如果当前选中在被删列表里,回退到 'all'
+      if (typeof selection.feedId === 'string' && feedIds.includes(selection.feedId)) {
+        selectFeed('all');
+      }
+      await refreshFeeds();
+      await refreshGroups();
+      const result = await ds.articles({});
+      if (result.kind === 'ready') {
+        setAllArticlesState({ kind: 'ready', data: result.data });
+      }
+      void refreshCounts();
+      pushToast(
+        `已删除 ${ok2} 个订阅源${fail2 > 0 ? `,${fail2} 个失败` : ''}`,
+        fail2 > 0 ? 'info' : 'success'
+      );
+    },
+    [allArticles, feeds, ds, pushToast, refreshFeeds, refreshGroups, refreshCounts, selectFeed, selection.feedId]
+  );
+
+  // Bug 2 修复:批量删除标签
+  const handleBatchDeleteTags = useCallback(
+    async (tagIds: string[]) => {
+      if (tagIds.length === 0) return;
+      const names = (tags ?? [])
+        .filter((t) => tagIds.includes(t.id))
+        .map((t) => t.name)
+        .slice(0, 5)
+        .join('、');
+      const ok = await confirmRef.current?.open({
+        title: '批量删除标签',
+        message: `将删除 ${tagIds.length} 个标签${names ? `(${names}${tagIds.length > 5 ? '…' : ''})` : ''},所有文章上的该标签关联会一并清除。`,
+        confirmLabel: `删除 ${tagIds.length} 个`,
+        cancelLabel: '取消',
+        danger: true
+      });
+      if (!ok) return;
+      let ok2 = 0;
+      let fail2 = 0;
+      for (const id of tagIds) {
+        try {
+          await ds.tagDelete(id);
+          ok2 += 1;
+        } catch {
+          fail2 += 1;
+        }
+      }
+      // 如果当前选中是被删的 tag,回退到 'all'
+      if (typeof selection.feedId === 'string' && selection.feedId.startsWith('tag:')) {
+        const tid = selection.feedId.slice(4);
+        if (tagIds.includes(tid)) selectFeed('all');
+      }
+      await refreshTags();
+      await refreshTagCounts();
+      pushToast(
+        `已删除 ${ok2} 个标签${fail2 > 0 ? `,${fail2} 个失败` : ''}`,
+        fail2 > 0 ? 'info' : 'success'
+      );
+    },
+    [tags, ds, pushToast, refreshTags, refreshTagCounts, selectFeed, selection.feedId]
+  );
+
   // Phase 3.5.x：添加组（仅本地缓存 + 立即渲染；用户还需把订阅源移动到新组来"激活"组）
   const handleAddGroup = useCallback(
     (name: string) => {
@@ -762,6 +859,8 @@ export function App() {
         onDeleteGroup={handleDeleteGroup}
         onDeleteTag={handleDeleteTag}
         onDeleteUnusedTags={handleDeleteUnusedTags}
+        onBatchDeleteFeeds={handleBatchDeleteFeeds}
+        onBatchDeleteTags={handleBatchDeleteTags}
         onSyncFeed={async (feed: Feed) => {
           pushToast(`正在同步「${feed.siteTitle || feed.title}」…`, 'info');
           const r = await ds.syncFeed(feed.id);

@@ -7,6 +7,17 @@
   overflow: hidden;
 }
 
+/* Bug 1 修复：中间内容包一个可滚动 body,防止侧栏被裁没滚动条
+   .feed-list 是 flex column,顶栏 flex-shrink:0 + 底栏 flex-shrink:0,
+   中间 body flex:1 1 0 + overflow-y:auto,剩余空间里所有内容一起滚 */
+.feed-list__body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 滚动条已经在 index.css 全局定义(::-webkit-scrollbar),无需重复 */
+}
+
 /* 内联添加订阅源表单 */
 .feed-list__add-form {
   display: flex;
@@ -407,4 +418,122 @@
   color: var(--muted);
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   批量管理模式(用户要求把 ... 改为批量删除)
+   tab=sources:多选 feed + 批量删
+   tab=tags:多选 tag + 批量删
+   ============================================================ */
+
+/* 批量模式工具条(覆盖在 topbar 下方) */
+.feed-list__batch-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 6px 16px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.feed-list__batch-toolbar-label {
+  flex: 1;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.feed-list__batch-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--fg);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.feed-list__batch-btn:hover {
+  background: var(--bg);
+}
+
+.feed-list__batch-btn--danger {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+.feed-list__batch-btn--danger:hover:not(:disabled) {
+  background: var(--err);
+  color: #ffffff;
+}
+
+.feed-list__batch-btn--danger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.feed-list__batch-btn--primary {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.feed-list__batch-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+/* 多选 checkbox(覆盖在行最左侧) */
+.feed-list__item-wrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.feed-list__checkbox {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+  z-index: 2;
+  display: none;
+}
+
+.feed-list.is-batch .feed-list__checkbox {
+  display: block;
+}
+
+/* 批量模式下,行内 checkbox 占位,padding-left 留出空间 */
+.feed-list.is-batch .feed-list__item,
+.feed-list.is-batch .feed-list__group-toggle {
+  padding-left: 28px;
+}
+
+/* 批量模式下,行 hover 高亮 + 选中行更明显 */
+.feed-list.is-batch .feed-list__item-wrap.is-selected > .feed-list__item {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.feed-list.is-batch .feed-list__item-wrap.is-selected > .feed-list__item .feed-list__icon,
+.feed-list.is-batch .feed-list__item-wrap.is-selected > .feed-list__item .feed-list__count {
+  color: var(--accent);
+}
+
+/* 批量模式下,标签行选中态 */
+.feed-list.is-batch .feed-list__tag-row.is-selected {
+  background: var(--accent-soft);
+}
+
+.feed-list.is-batch .feed-list__tag-row.is-selected > .feed-list__item {
+  color: var(--accent);
 }
