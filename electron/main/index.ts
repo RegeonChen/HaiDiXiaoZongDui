@@ -1518,16 +1518,38 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
           // J) Bug 2 修复:... 按钮改为"批量管理"入口
           //   1. 点 ... 打开菜单 → 应有"批量管理"按钮
-          //   2. 点"批量管理" → 进入 batch mode → toolbar 出现 + checkbox 出现
-          //   3. 全选 → selectedForBatch.size 等于 feed 总数
-          //   4. 选中 0 时删除按钮 disabled
-          //   5. 实际调 IPC 删 feed 验证 batch 删路径
+          //   2. 视觉检查:菜单 boundingRect 必须在 feed-list 内 + width/height > 0
+          //      (根因:.feed-list__more-menu position:absolute 但无 positioned 祖先,会逃到 body 级别)
+          //   3. 点"批量管理" → 进入 batch mode → toolbar 出现 + checkbox 出现
+          //   4. 全选 → selectedForBatch.size 等于 feed 总数
+          //   5. 选中 0 时删除按钮 disabled
+          //   6. 实际调 IPC 删 feed 验证 batch 删路径
           const moreBtn = document.querySelector('[data-testid="feed-list__more"]');
           report.feedsGroup.checks.moreBtnVisible = !!moreBtn;
           moreBtn?.click();
-          await sleep(150);
+          await sleep(200);
           const moreMenu = document.querySelector('[data-testid="feed-list__more-menu"]');
           report.feedsGroup.checks.moreMenuOpened = !!moreMenu;
+          // 视觉定位检查:菜单必须在视口内 + 实际渲染尺寸 > 0
+          if (moreMenu) {
+            const rect = moreMenu.getBoundingClientRect();
+            report.feedsGroup.checks.moreMenuHasSize = rect.width > 0 && rect.height > 0;
+            report.feedsGroup.checks.moreMenuInViewport =
+              rect.top >= 0 && rect.left >= 0 &&
+              rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
+            // 菜单的右边界必须在 feed-list 右边界内(否则说明逃出侧栏)
+            const feedListEl = document.querySelector('.feed-list');
+            if (feedListEl) {
+              const flRect = feedListEl.getBoundingClientRect();
+              report.feedsGroup.checks.moreMenuInsideFeedList =
+                rect.left >= flRect.left && rect.right <= flRect.right;
+            }
+            // 元素层叠:点击菜单中心应该命中菜单本身(不被 feed-list__body 等兄弟遮挡)
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const topEl = document.elementFromPoint(cx, cy);
+            report.feedsGroup.checks.moreMenuHitTest = topEl === moreMenu || moreMenu.contains(topEl);
+          }
           // 现在 ... 菜单只剩"批量管理"入口
           const enterBatchBtn = document.querySelector('[data-testid="feed-list__enter-batch"]');
           report.feedsGroup.checks.moreMenuHasEnterBatch = !!enterBatchBtn;
@@ -1636,7 +1658,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             'groupToggleBtnVisible', 'groupCollapsedAfterClick',
             'groupItemsHiddenWhenCollapsed', 'groupExpandedAfterSecondClick',
             'groupItemsRestoredWhenExpanded',
-            'moreBtnVisible', 'moreMenuOpened', 'moreMenuHasEnterBatch',
+            'moreBtnVisible', 'moreMenuOpened', 'moreMenuHasSize',
+            'moreMenuInViewport', 'moreMenuInsideFeedList', 'moreMenuHitTest',
+            'moreMenuHasEnterBatch',
             'batchToolbarVisible', 'batchCheckboxesRendered',
             'batchDeleteBtnDisabledWhenEmpty', 'batchSelectAllWorks',
             'batchDeleteBtnEnabledAfterSelect', 'batchClearWorks',

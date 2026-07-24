@@ -1,0 +1,55 @@
+fix(ui): 修 ... 菜单 escape 定位(根因:无 positioned 祖先)
+
+## 用户反馈
+
+"现在 ... 仍然无功能,先找到根本原因,要把 ... 改为批量管理(多选删除)"
+
+## 真正的根因(commit 01e4e0a 漏的)
+
+`.feed-list__more-menu` 用了 `position: absolute; right: 0; top: 100%;`
+但最近的 positioned 祖先 `.feed-list` / `.feed-list__topbar` / 
+`.feed-list__topbar-actions` **都没设 `position: relative`**。
+
+按 CSS 规范,`position: absolute` 元素会相对最近的 positioned 祖先定位;
+如果链上都没有,就相对 initial containing block (html/body) 定位。
+
+结果:
+- 菜单 right: 0 相对 body 右边 → 菜单出现在屏幕右下角,远离侧栏
+- top: 100% 相对 body 高度(100vh) → top ≈ 100vh,菜单被推到屏幕外
+- 即使 z-index 50,在视口外的元素用户也看不到
+- smoke 探针 `querySelector` 能查到 DOM 元素(DOM 存在 ≠ 视觉可见)
+  所以之前的 `moreMenuOpened: true` 误导性通过
+
+## 修复
+
+`.feed-list__topbar-actions` 加 `position: relative` —
+让 `.feed-list__more-menu` 相对它定位,
+菜单出现在 actions 容器的正下方(顶栏下方 2px)。
+
+```css
+.feed-list__topbar-actions {
+  display: inline-flex;
+  gap: 2px;
+  /* 根因修复:更多菜单用 position:absolute,需要最近的 positioned 祖先 */
+  position: relative;
+}
+```
+
+## smoke 探针加强 — 视觉检查 4 项
+
+旧的 `moreMenuOpened` 只检查 DOM 存在(查不到 = false 误判)。
+新加 4 个真正验证视觉/层叠的探针:
+
+1. `moreMenuHasSize` - `getBoundingClientRect` width/height > 0
+2. `moreMenuInViewport` - rect 在 window.innerWidth/Height 内
+3. `moreMenuInsideFeedList` - 菜单左右边界在 .feed-list 内
+4. `moreMenuHitTest` - 菜单中心 `elementFromPoint` 命中菜单本身
+   (不被 feed-list__body 等 sibling 遮挡)
+
+## 验证
+
+- typecheck: 双端无错误
+- build: 35 + 2 + 109 modules 三 bundle
+- 97 单元测试 + 6 skipped 全过
+- smoke:feeds-group 39 → 43 项全过(加 4 个视觉检查)
+- 关键 smoke 全过: coexist (16) / ui (12) / taglist (13) / ui-ipc (50+)

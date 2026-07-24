@@ -102,6 +102,9 @@
 .feed-list__topbar-actions {
   display: inline-flex;
   gap: 2px;
+  /* 根因修复:更多菜单用 position:absolute,需要最近的 positioned 祖先
+     否则会逃到 body 级别定位,被 .feed-list 的 overflow:hidden 裁掉或定位到屏幕外 */
+  position: relative;
 }
 
 .feed-list__icon-btn {
