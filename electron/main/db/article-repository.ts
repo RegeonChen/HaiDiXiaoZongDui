@@ -83,9 +83,9 @@ export const ArticleRepository = {
       params.push(filter.isStarred ? 1 : 0);
     }
     if (filter.search) {
-      conditions.push('(title LIKE ? OR raw_text LIKE ?)');
+      conditions.push('(title LIKE ? OR raw_text LIKE ? OR cleaned_markdown LIKE ?)');
       const q = `%${filter.search}%`;
-      params.push(q, q);
+      params.push(q, q, q);
     }
     // Phase 3.5.x:按 tag 过滤文章(侧栏 tab=tags 接入)。
     // 用 EXISTS 子查询命中 article_tags, 多 tagId 走 AND(文章必须同时具备所有 tag)。
@@ -107,7 +107,7 @@ export const ArticleRepository = {
 
     // 搜索模式：全量查询所有匹配文章，JS 端打分排序，返回 top N
     if (filter.search) {
-      const searchLimit = filter.limit || 20;
+      const searchLimit = filter.limit || 50;
       const allRows = db.exec(
         `SELECT ${ARTICLE_SELECT} FROM articles ${where}
          ORDER BY published_at DESC`,
@@ -403,11 +403,11 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
-/** 根据文章 title / raw_text 与搜索词的匹配程度计算相关性得分 */
+/** 根据文章 title / raw_text / cleaned_markdown 与搜索词的匹配程度计算相关性得分 */
 function computeSearchScore(article: Article, searchLower: string): number {
   let score = 0;
   const title = (article.title ?? '').toLowerCase();
-  const body = (article.rawText ?? '').toLowerCase();
+  const body = ((article.rawText ?? '') + ' ' + (article.cleanedMarkdown ?? '')).toLowerCase();
 
   // 标题完全一致
   if (title === searchLower) score += SCORE_TITLE_EXACT;

@@ -19,6 +19,12 @@ export interface DataSource {
   feeds(): Promise<DataSourceState<Feed[]>>;
   /** 按筛选条件拉取文章 */
   articles(filter: ArticleFilter): Promise<DataSourceState<Article[]>>;
+  /**
+   * Phase 3.7.3：按 ID 获取单篇文章。
+   * 用于搜索跳转等场景——搜索结果文章可能不在当前分页列表中，
+   * 通过此方法直接按 ID 获取完整 Article，作为搜索解耦的保底手段。
+   */
+  getArticle(id: string): Promise<DataSourceState<Article>>;
   /** 标记已读/未读 */
   markRead(articleId: string, isRead: boolean): Promise<void>;
   /** 标记星标/取消 */

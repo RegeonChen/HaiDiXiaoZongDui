@@ -162,6 +162,11 @@ export class IpcDataSource implements FullDataSource {
     return { kind: 'ready', data: r.data.items };
   }
 
+  // Phase 3.7.3：按 ID 获取单篇文章（搜索跳转保底）
+  async getArticle(id: string): Promise<DataSourceState<Article>> {
+    return unwrap(await window.api.article.get(id));
+  }
+
   async markRead(articleId: string, isRead: boolean): Promise<void> {
     const r = await window.api.article.markRead(articleId, isRead);
     throwOnError(r, 'markRead');

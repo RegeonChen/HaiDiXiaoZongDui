@@ -112,6 +112,14 @@ export class MockDataSource implements DataSource {
     return { kind: 'ready', data: items };
   }
 
+  // Phase 3.7.3：按 ID 获取单篇文章（搜索跳转保底）
+  async getArticle(id: string): Promise<DataSourceState<Article>> {
+    await delay(20);
+    const article = this.articlesState.find((a) => a.id === id);
+    if (!article) return { kind: 'error', error: `文章 ${id} 不存在` };
+    return { kind: 'ready', data: article };
+  }
+
   async markRead(articleId: string, isRead: boolean): Promise<void> {
     this.articlesState = this.articlesState.map((a) =>
       a.id === articleId ? { ...a, isRead } : a
