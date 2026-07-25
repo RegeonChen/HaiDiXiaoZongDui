@@ -95,13 +95,13 @@ export class MockDataSource implements DataSource {
         return filter.tagIds!.every((tagId) => applied.has(tagId));
       });
     }
-    // Phase 3.4.3.3：mock 模式简易搜索
+    // Phase 3.7.2：与生产搜索范围保持一致（标题 + Feed 原文 + 清洗正文）
     if (filter.search && filter.search.trim()) {
       const q = filter.search.toLowerCase();
       items = items.filter((a) =>
         a.title.toLowerCase().includes(q) ||
-        (a.cleanedMarkdown ?? '').toLowerCase().includes(q) ||
-        (a.summary ?? '').toLowerCase().includes(q)
+        (a.rawText ?? '').toLowerCase().includes(q) ||
+        (a.cleanedMarkdown ?? '').toLowerCase().includes(q)
       );
     }
     items = [...items].sort((a, b) => {

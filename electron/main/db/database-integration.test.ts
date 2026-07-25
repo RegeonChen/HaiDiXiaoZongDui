@@ -88,7 +88,7 @@ describe('database integrity', () => {
       url: 'https://search.example/feed.xml',
       title: 'Search feed'
     });
-    const articles = Array.from({ length: 23 }, (_, index) => article({
+    const articles = Array.from({ length: 53 }, (_, index) => article({
       id: `search-${index}`,
       feedId: feed.id,
       guid: `search-guid-${index}`,
@@ -96,15 +96,56 @@ describe('database integrity', () => {
       rawText: index >= 2 ? 'A body about machine learning.' : 'Other content',
       publishedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString()
     }));
-    expect(ArticleRepository.insertBatch(articles)).toBe(23);
+    expect(ArticleRepository.insertBatch(articles)).toBe(53);
 
     const result = ArticleRepository.list({ search: 'machine learning' });
 
-    expect(result.total).toBe(23);
-    expect(result.items).toHaveLength(20);
+    expect(result.total).toBe(53);
+    expect(result.items).toHaveLength(50);
     expect(result.items[0].id).toBe('search-0');
     expect(result.items[1].id).toBe('search-1');
+    expect(ArticleRepository.list({ search: 'machine learning', limit: 8 }).items).toHaveLength(8);
     expect(ArticleRepository.list({ search: 'not present' })).toEqual({ items: [], total: 0 });
+  });
+
+  it('finds and retrieves the 51st historical article across the documented search scope', () => {
+    const feed = FeedRepository.create({
+      url: 'https://history.example/feed.xml',
+      title: 'History feed'
+    });
+    const articles = Array.from({ length: 60 }, (_, index) => {
+      const position = index + 1;
+      const isTarget = position === 51;
+      return article({
+        id: `history-${position}`,
+        feedId: feed.id,
+        guid: `history-guid-${position}`,
+        url: `https://history.example/articles/${position}`,
+        title: isTarget ? 'Happy iCal Day' : `Historical article ${position}`,
+        rawText: isTarget ? 'A feed excerpt with the raw-scope-marker.' : 'Ordinary feed excerpt.',
+        cleanedMarkdown: isTarget
+          ? 'The cleaned article contains the cleaned-scope-marker.'
+          : 'Ordinary cleaned article.',
+        publishedAt: new Date(Date.UTC(2026, 0, 1) + (60 - position) * 86_400_000).toISOString()
+      });
+    });
+    expect(ArticleRepository.insertBatch(articles)).toBe(60);
+
+    const firstPage = ArticleRepository.list({ feedId: feed.id, limit: 50 });
+    expect(firstPage.items).toHaveLength(50);
+    expect(firstPage.items.some((item) => item.id === 'history-51')).toBe(false);
+
+    const byTitle = ArticleRepository.list({ search: 'Happy iCal Day' });
+    const byRawText = ArticleRepository.list({ search: 'raw-scope-marker' });
+    const byCleanedMarkdown = ArticleRepository.list({ search: 'cleaned-scope-marker' });
+
+    expect(byTitle).toMatchObject({ total: 1, items: [{ id: 'history-51' }] });
+    expect(byRawText).toMatchObject({ total: 1, items: [{ id: 'history-51' }] });
+    expect(byCleanedMarkdown).toMatchObject({ total: 1, items: [{ id: 'history-51' }] });
+    expect(ArticleRepository.getById('history-51')).toMatchObject({
+      id: 'history-51',
+      title: 'Happy iCal Day'
+    });
   });
 
   it('persists topics, auto-associates related articles and caches a traceable graph', async () => {

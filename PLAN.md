@@ -399,6 +399,7 @@
 
 ### Task 3.7.2 - Content Pipeline: Search Scope Alignment (张宇凡)
 
+- **Status:** Content-side completed (2026-07-25); end-to-end click-through remains part of Phase 3.7 Integration after Task 3.7.1 lands.
 - **Task Detail:**
   1. 确认 `SearchBar` 输入框文案与实际搜索字段匹配。当前数据库搜索字段为 `title` + `raw_text`；`raw_text` 是 Feed 原文的 `textContent`，不是 `cleaned_markdown`。
   2. 评估 `cleaned_markdown` 加入搜索字段的可行性（该字段在 `articles` 表中，清洗后的正文，更贴近用户的"正文"概念）。
@@ -408,6 +409,7 @@
 - **Verification:**
   - 搜索框文案与实际命中字段一致，用户不会因"搜了但命中的是 raw_text 而非 cleaned_markdown"而产生困惑。
   - 超过 50 篇的 seed 数据中搜索第 51 篇标题，搜索结果可见且可跳转。
+- **Implementation:** 保留“搜索文章标题或正文”文案；生产与 Mock 搜索范围统一为 `title` + `raw_text` + `cleaned_markdown`。数据库集成测试增加 60 篇历史文章样本，证明默认前 50 篇之外的第 51 篇可分别由标题、Feed 原文和清洗正文命中，并可通过 `getById` 取回完整文章。
 
 ### Task 3.7.3 - Database: Search Field Expansion & getById IPC (陈冠中)
 

@@ -7,7 +7,7 @@
  *  - 批量插入（INSERT OR IGNORE 基于 feed_id + guid 唯一索引去重）
  *  - 已读/星标状态更新
  *  - 按筛选条件分页查询
- *  - Phase 3.4：文章模糊搜索（相关性打分排序，上限 20 篇）
+ *  - Phase 3.4/3.7：文章模糊搜索（相关性打分排序，默认上限 50 篇）
  */
 
 import crypto from 'node:crypto';
@@ -63,7 +63,7 @@ export const ArticleRepository = {
   /**
    * 按筛选条件分页查询文章。
    * 当 filter.search 非空时进入搜索模式：全量 LIKE 匹配 + JS 相关性打分排序，
-   * 返回 top N 结果（上限 filter.limit 或默认 20）。
+   * 返回 top N 结果（上限 filter.limit 或默认 50）。
    */
   list(filter: ArticleFilter = {}): { items: Article[]; total: number } {
     const db = getDatabase();
