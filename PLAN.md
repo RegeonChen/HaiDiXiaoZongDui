@@ -360,6 +360,77 @@
   - 侧栏三个数字始终与数据库实际状态一致 → 标记已读/星标/同步后数字即时变化。
   - 已读文章标题为灰色、无删除线 → 未读文章保持正常颜色。
 
+## Phase 3.7: Search Decouple & Pagination
+
+**Overall Goal:** 修复搜索结果无法跳转到前 50 篇之外文章的问题，为"所有订阅源"增加分页加载能力，统一搜索范围与用户预期一致。
+
+### 问题根因分析
+
+当前文章列表存在以下结构性缺陷：
+
+1. **搜索与文章列表耦合过紧**：
+   - `SearchBar.onSelect(articleId)` 只传 ID，`App.handleSearchSelect` 在内存数组 `articles` 和 `allArticles` 中查找文章对象。
+   - `allArticles` 来自 `ds.articles({})` → `ArticleRepository.list` 默认 `limit = 50`，仅返回最新 50 篇。
+   - 数据库中搜索命中但排名在 51 名之后的文章，点击结果会提示"该文章已不在当前列表中"，无法打开。
+   - 验证用例：本地 433 篇文章，第 51 篇 `Happy iCal Day` 搜索命中但点击无法跳转。
+
+2. **"所有订阅源"无分页/加载更多**：
+   - 非搜索查询默认 `limit = 50`，无 `offset` 控制，用户看不到第 51 篇及之后的历史文章。
+   - 切换订阅源、未读、星标等筛选时没有重置分页的机制。
+
+3. **搜索范围与实际不一致**：
+   - 搜索框文案："搜索文章标题或正文"
+   - 数据库搜索字段：`title` + `raw_text`（只包含 Feed 自带原始文本）
+   - 缺失字段：`cleaned_markdown`（清洗后的正文，用户阅读的正文主体）
+
+### Task 3.7.1 - UI: Search Decouple & Article List Pagination (张晨阳)
+
+- **Task Detail:**
+  1. **搜索解耦**：`SearchBar.onSelect` 从传递 `articleId: string` 改为传递完整的 `Article` 对象；`App.handleSearchSelect` 复用 `handleTopicOpenArticle` 的 `externalSelectedArticle` 模式，将搜索结果文章快照存入 `externalSelectedArticle`，再走 `selectFeed → selectArticle → setCurrentPage('reader')` 流程。不再依赖内存数组查找。
+  2. **文章列表分页**：为 `ArticleList` 添加"加载更多"按钮或滚动阈值触发。`App` 层维护 `articleOffset` state，首次加载 `limit = 50, offset = 0`，加载更多时 `offset += 50`。`ds.articles()` 调用透传 `limit` 和 `offset`。
+  3. **分页重置**：切换订阅源（feedId）、标签筛选、未读/星标筛选、全文搜索时重置 `offset` 为 0 并清空已加载的文章列表。
+  4. **AI 设置入口可见性**：确认顶栏"AI"按钮（`navItems` 中的 `ai` 入口）在 Layout 中已正确渲染并可点击跳转。`npm run smoke:integration` 已验证 `navBtnCount = 7`，AI 设置页可通过顶栏 nav 进入。
+- **Affected Areas:** `src/components/SearchBar/SearchBar.tsx`（props 接口 + onSelect 签名）、`src/App.tsx`（handleSearchSelect 逻辑 + articleOffset state + refreshArticles 分页参数）、`src/components/ArticleList/ArticleList.tsx`（加载更多 UI + props）、`src/components/Layout/Layout.tsx`（确认 AI 入口可见）。
+- **Verification:**
+  - 搜索历史文章标题 → 搜索结果出现 → 点击 → 直接打开该文章，不提示"已不在当前列表"。
+  - "所有订阅源"底部出现"加载更多"按钮 → 点击 → 追加第 51-100 篇文章。
+  - 切换订阅源 → 文章列表重置为前 50 篇 → 可再次加载更多。
+  - 顶栏"AI"按钮可见且可点击 → 跳转到 AI Provider 设置页。
+
+### Task 3.7.2 - Content Pipeline: Search Scope Alignment (张宇凡)
+
+- **Task Detail:**
+  1. 确认 `SearchBar` 输入框文案与实际搜索字段匹配。当前数据库搜索字段为 `title` + `raw_text`；`raw_text` 是 Feed 原文的 `textContent`，不是 `cleaned_markdown`。
+  2. 评估 `cleaned_markdown` 加入搜索字段的可行性（该字段在 `articles` 表中，清洗后的正文，更贴近用户的"正文"概念）。
+  3. 协同陈冠中更新搜索 SQL 字段列表，确保 Database 层新增字段后内容管线侧无副作用。
+  4. 补充搜索回归测试样本（`content-cleaner.test.ts` 或独立 smoke 探针）：使用 seed 数据中第 51 篇历史文章搜索命中 + 跳转。
+- **Affected Areas:** `SearchBar` placeholder 文案、搜索测试样本。
+- **Verification:**
+  - 搜索框文案与实际命中字段一致，用户不会因"搜了但命中的是 raw_text 而非 cleaned_markdown"而产生困惑。
+  - 超过 50 篇的 seed 数据中搜索第 51 篇标题，搜索结果可见且可跳转。
+
+### Task 3.7.3 - Database: Search Field Expansion & getById IPC (陈冠中)
+
+- **Task Detail:**
+  1. **搜索字段扩展**：在 `ArticleRepository.list` 的搜索条件中，将 `(title LIKE ? OR raw_text LIKE ?)` 扩展为 `(title LIKE ? OR raw_text LIKE ? OR cleaned_markdown LIKE ?)`，覆盖清洗后的正文主体。
+  2. **搜索上限放宽**：将搜索模式的 `limit` 从默认 20 提高到 `filter.limit` 的上限（建议 50），与前端 MAX_RESULTS 对齐或允许前端按需指定。
+  3. **IPC `article:getById` 补全**：确认 DataSource 已有 `getArticle(id)` 或等效 IPC；若不存在则新增，作为搜索跳转的最后保底手段——当搜索结果文章不在任何缓存列表中时，通过 IPC 按 ID 直接获取完整 Article 对象。
+  4. **搜索一致性验证**：确保同一关键词在 `raw_text` 和 `cleaned_markdown` 两个字段上的搜索结果一致且不重复（DISTINCT 或 JS 端合并去重）。
+- **Affected Areas:** `electron/main/db/article-repository.ts`（list 方法搜索 SQL）、`shared/ipc.ts`（article:getById 通道）、`src/data/ipcDataSource.ts`（getArticle 实现）、`src/data/mockDataSource.ts`（getArticle mock）。
+- **Verification:**
+  - 数据库中 `cleaned_markdown` 含关键词 → 搜索命中 → 出现在搜索结果列表中。
+  - 搜索返回命中总条数（total），与数据库中实际匹配行数一致。
+  - `article:getById` IPC 可通过任意文章 ID 返回完整 Article 对象。
+
+### Phase 3.7 Integration (张晨阳 + 张宇凡 + 陈冠中)
+
+- 张晨阳完成搜索 UI 解耦 + 文章列表分页 → 接通陈冠中的搜索范围扩展 + getById IPC → 张宇凡验证搜索范围与文案一致 + 补充测试样本。
+- **Verification:**
+  - 搜索一篇排名 51 之后的历史文章 → 搜索结果展示 → 点击 → 阅读器正常打开该文章内容。
+  - "所有订阅源"底部可加载更多 → 第 51 篇文章可见 → 该文章也可搜索命中。
+  - 切换筛选条件后分页重置，不会出现重复文章或空列表。
+  - 搜索框文案与数据库实际搜索字段一致，`cleaned_markdown` 中的关键词可被搜索到。
+
 ## Phase 4: Topic Tracking
 
 **Overall Goal:** 汇合三条主线，实现项目的特色功能“专题追踪与多源简报”。
