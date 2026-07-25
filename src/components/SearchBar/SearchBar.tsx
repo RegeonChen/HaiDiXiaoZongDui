@@ -1,9 +1,10 @@
 /**
- * 顶栏搜索框（Phase 3.4.4.3）
+ * 顶栏搜索框（Phase 3.4.4.3 / 3.7.1）
  *
  * - 300ms 防抖触发 ds.articles({ search })
  * - 下拉显示最多 8 条匹配结果（标题 + 订阅源 + 时间）
- * - 点击结果 → onSelect(articleId) 跳转到阅读
+ * - 点击结果 → onSelect(article) 跳转到阅读（Phase 3.7.1:传完整 Article 对象而非 ID,
+ *   避免 App 在内存数组查找时"已不在当前列表"的根因 bug）
  * - 失焦/按 Esc 关闭下拉
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -13,7 +14,8 @@ import './SearchBar.css';
 
 export interface SearchBarProps {
   feeds: Feed[];
-  onSelect: (articleId: string) => void;
+  /** Phase 3.7.1:传完整 Article 对象,调用方通过 externalSelectedArticle 打开阅读器 */
+  onSelect: (article: Article) => void;
   onClear?: () => void;
 }
 
@@ -99,11 +101,11 @@ export function SearchBar({ feeds, onSelect, onClear }: SearchBarProps) {
   }, []);
 
   const handleSelect = useCallback(
-    (id: string) => {
+    (article: Article) => {
       setOpen(false);
       setQuery('');
       setResults([]);
-      onSelect(id);
+      onSelect(article);
       onClear?.();
     },
     [onSelect, onClear]
@@ -152,7 +154,7 @@ export function SearchBar({ feeds, onSelect, onClear }: SearchBarProps) {
                   type="button"
                   role="option"
                   className="search-bar__item"
-                  onClick={() => handleSelect(a.id)}
+                  onClick={() => handleSelect(a)}
                 >
                   <span className="search-bar__item-title">{a.title}</span>
                   <span className="search-bar__item-meta">

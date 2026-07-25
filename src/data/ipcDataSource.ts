@@ -146,6 +146,9 @@ export interface FullDataSource extends DataSource {
 }
 
 export class IpcDataSource implements FullDataSource {
+  // Phase 3.7.1:上次 articles 查询的 total(IPC 已经返回,缓存到这里供 UI 同步读)
+  private _lastArticleTotal = 0;
+
   async feeds(): Promise<DataSourceState<Feed[]>> {
     return unwrap(await window.api.feed.list());
   }
@@ -159,12 +162,18 @@ export class IpcDataSource implements FullDataSource {
   }): Promise<DataSourceState<Article[]>> {
     const r = await window.api.article.list(filter);
     if (!r.success) return toError(r);
+    this._lastArticleTotal = r.data.total;
     return { kind: 'ready', data: r.data.items };
   }
 
   // Phase 3.7.3：按 ID 获取单篇文章（搜索跳转保底）
   async getArticle(id: string): Promise<DataSourceState<Article>> {
     return unwrap(await window.api.article.get(id));
+  }
+
+  // Phase 3.7.1:上次 articles 查询的 total(供"加载更多"判断 hasMore)
+  lastArticleTotal(): number {
+    return this._lastArticleTotal;
   }
 
   async markRead(articleId: string, isRead: boolean): Promise<void> {

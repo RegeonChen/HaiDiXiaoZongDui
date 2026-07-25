@@ -35,6 +35,7 @@
     "smoke:images": "npm run build && node scripts/smoke-article-images.cjs",
     "smoke:taglist": "npm run build && node scripts/smoke-taglist.cjs",
     "smoke:feeds-group": "npm run build && node scripts/smoke-feeds-group.cjs",
+    "smoke:search-pagination": "npm run build && node scripts/smoke-3.7.1-search-pagination.cjs",
     "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "dist": "npm run build && electron-builder --mac dmg --win nsis --publish never"

@@ -141,6 +141,8 @@ const SMOKE_FLAGS = {
   smokeInlineTrans: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS'] === '1',
   // Phase 3.5.2 split error fallback 探针：注入 mock split 抛错，验证 useEffect try/catch
   smokeInlineTransSplitError: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS_SPLIT_ERROR'] === '1',
+  // Phase 3.7.1：搜索解耦（onSelect 传 Article 完整对象）+ 文章列表分页（hasMore 按钮）
+  smokeSearchPagination: process.env['JUHE_SHIVI_SMOKE_SEARCH_PAGINATION'] === '1',
   seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
   seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
@@ -187,6 +189,10 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
       // will-attach-webview 中被主进程重新校验和收紧。
       webviewTag: true
     }
+  });
+  // 临时 debug:转发 renderer console.log 到主进程 stdout
+  win.webContents.on('console-message', (_event, _level, message) => {
+    process.stdout.write(`[renderer] ${message}\n`);
   });
 
   win.once('ready-to-show', () => {
@@ -251,6 +257,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeFeedsGroup = SMOKE_FLAGS.smokeFeedsGroup;
   const smokeInlineTrans = SMOKE_FLAGS.smokeInlineTrans;
   const smokeInlineTransSplitError = SMOKE_FLAGS.smokeInlineTransSplitError;
+  const smokeSearchPagination = SMOKE_FLAGS.smokeSearchPagination;
   const feedUrl = SMOKE_FLAGS.feedUrl;
   const aiBaseUrl = SMOKE_FLAGS.aiBaseUrl;
   const aiKey = SMOKE_FLAGS.aiKey;
@@ -842,10 +849,26 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         try {
           // 等 reader 视图
           await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          // Phase 3.7.1:等文章列表加载完(useEffect 触发的 refreshArticles 是 async)
+          await waitFor(() => document.querySelectorAll('.article-list__item').length > 0, { timeout: 5000 });
           // 选第一篇文章
           const articles = document.querySelectorAll('.article-list__item');
           if (articles.length === 0) {
-            report.coexist.error = 'mock 模式没有文章';
+            // 调试:打印 renderer 端能拿到的所有信息
+            const emptyViewEl = document.querySelector('.article-list__empty-wrap');
+            const articleListEl = document.querySelector('.article-list__items');
+            const articleListParent = document.querySelector('.article-list');
+            const paneList = document.querySelector('.pane-list');
+            const debugInfo = {
+              appMain: !!document.querySelector('.app-main'),
+              articleListEl: !!articleListEl,
+              articleListParent: !!articleListParent,
+              paneList: !!paneList,
+              paneListHtml: paneList ? paneList.innerHTML.slice(0, 400) : '',
+              emptyViewVisible: !!emptyViewEl,
+              bodyChildCount: document.body.children.length
+            };
+            report.coexist.error = 'mock 模式没有文章 — debug=' + JSON.stringify(debugInfo);
             return JSON.stringify(report);
           }
           articles[0].click();
@@ -1680,6 +1703,155 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.feedsGroup.error = String(e);
           report.feedsGroup.stack = (e instanceof Error) ? e.stack : null;
         }
+        return JSON.stringify(report);
+      })()
+    `;
+  } else if (smokeSearchPagination) {
+    // Phase 3.7.1 smoke: 搜索解耦（onSelect 传 Article）+ 文章列表分页（hasMore 按钮 + 计数 testid）
+    // 走 mock 模式（MOCK_ARTICLES 10 篇）：
+    //   - 验证 article-list__count testid 存在 + 显示数字
+    //   - 验证 hasMore=false 时"加载更多"按钮不显示（mock 模式 total=10, PAGE_SIZE=50）
+    //   - 切到 starred tab → count = 3（mock 数据 3 篇已加星标）
+    //   - 切回 all tab → count = 10（验证 articleOffsetRef 重置 + refreshArticles offset=0）
+    //   - 搜索解耦：SearchBar 输入"Rust" → 下拉 → 点第一项 → reader 打开
+    //     验证 reader 标题 === 下拉项标题（Phase 3.7.1 核心修复：传 Article 完整对象
+    //     而不是 articleId 字符串，避免 App 在内存数组查找时找不到的目标）
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { searchPagination: { ok: false, error: null, checks: {} } };
+        try {
+          // 1) 等主界面 + articles 列表加载
+          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          await waitFor(
+            () => document.querySelectorAll('.article-list__item').length > 0,
+            { timeout: 5000 }
+          );
+          await sleep(100);
+
+          // 2) Phase 3.7.1:article-list__count testid 存在 + 显示数字
+          const countEl = document.querySelector('[data-testid="article-list__count"]');
+          report.searchPagination.checks.countTestidExists = !!countEl;
+          // mock 模式:total=10, articles.length=10 → countText = "10"（不显示斜杠）
+          const allCountText = (countEl && countEl.textContent ? countEl.textContent.trim() : '');
+          report.searchPagination.checks.allCountShows10 = allCountText === '10';
+          report.searchPagination.checks.allCountText = allCountText;
+
+          // 3) Phase 3.7.1:hasMore=false 时"加载更多"按钮不在 DOM
+          const loadMoreBtn = document.querySelector('[data-testid="article-list__load-more"]');
+          report.searchPagination.checks.loadMoreButtonHidden = !loadMoreBtn;
+
+          // 4) 切到"星标文章"虚拟分类 → 期望 count = 3（mock 3 篇已加星标）
+          const virtualItems = Array.from(
+            document.querySelectorAll('.feed-list__virtuals .feed-list__item')
+          );
+          const starredBtn = virtualItems.find((b) =>
+            (b.textContent || '').includes('星标')
+          );
+          if (starredBtn) starredBtn.click();
+          await waitFor(() => {
+            const t = document.querySelector('[data-testid="article-list__count"]');
+            return t && t.textContent && t.textContent.trim() === '3';
+          }, { timeout: 2000 });
+          const starredCountText = (() => {
+            const t = document.querySelector('[data-testid="article-list__count"]');
+            return t && t.textContent ? t.textContent.trim() : '';
+          })();
+          report.searchPagination.checks.starredCountIs3 = starredCountText === '3';
+          report.searchPagination.checks.starredCountText = starredCountText;
+
+          // 5) 切回"所有订阅源" → 期望 count = 10（验证 articleOffsetRef 重置 + offset=0）
+          const allBtn = virtualItems.find((b) =>
+            (b.textContent || '').includes('所有订阅源')
+          );
+          if (allBtn) allBtn.click();
+          await waitFor(() => {
+            const t = document.querySelector('[data-testid="article-list__count"]');
+            return t && t.textContent && t.textContent.trim() === '10';
+          }, { timeout: 2000 });
+          const allCountAfterText = (() => {
+            const t = document.querySelector('[data-testid="article-list__count"]');
+            return t && t.textContent ? t.textContent.trim() : '';
+          })();
+          report.searchPagination.checks.allCountBackTo10 = allCountAfterText === '10';
+
+          // 6) Phase 3.7.1 核心修复:搜索解耦
+          //    SearchBar 输入"Rust" → 等下拉项（mock 数据有"Show HN: 我用 Rust 写了一个本地 RSS 阅读器"）
+          //    点第一项 → reader 打开 → 验证 reader 标题 === 下拉项标题
+          //    旧 bug:onSelect 传 articleId 字符串 → App 在 articles.find() 内存数组查找,
+          //    找不到时 pushToast('该文章已不在当前列表中'), 51+ 文章的搜索结果会失败
+          //    新 fix:onSelect 传 Article 完整对象 → App 走 handleTopicOpenArticle 同款
+          //    externalSelectedArticle 模式,即使文章不在当前分页前 50 条也能直接打开
+          const searchInput = document.querySelector('.search-bar__input');
+          report.searchPagination.checks.searchInputExists = !!searchInput;
+          if (searchInput) {
+            searchInput.focus();
+            const setter = Object.getOwnPropertyDescriptor(
+              window.HTMLInputElement.prototype, 'value'
+            ).set;
+            setter.call(searchInput, 'Rust');
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          // 等下拉项出现(300ms 防抖 + 150ms mock 延迟)
+          const dropdownReady = await waitFor(
+            () => document.querySelectorAll('.search-bar__item').length > 0,
+            { timeout: 3000 }
+          );
+          await sleep(50);
+          const dropdownItems = document.querySelectorAll('.search-bar__item');
+          report.searchPagination.checks.searchDropdownRendered = dropdownItems.length > 0;
+          report.searchPagination.checks.searchDropdownCount = dropdownItems.length;
+
+          if (dropdownItems.length > 0) {
+            const firstItem = dropdownItems[0];
+            const firstItemTitleEl = firstItem.querySelector('.search-bar__item-title');
+            const firstItemTitle = firstItemTitleEl ? firstItemTitleEl.textContent.trim() : '';
+            firstItem.click();
+            // 等 reader 视图出现
+            const readerReady = await waitFor(
+              () => !!document.querySelector('.article-reader__title'),
+              { timeout: 3000 }
+            );
+            const readerTitleEl = document.querySelector('.article-reader__title');
+            const readerTitle = readerTitleEl ? readerTitleEl.textContent.trim() : '';
+            report.searchPagination.checks.searchDecoupleReaderOpened = readerReady;
+            // Phase 3.7.1 核心:reader 标题 === 下拉项标题（不是"该文章已不在当前列表中"错误）
+            report.searchPagination.checks.searchDecoupleTitleMatches =
+              readerTitle === firstItemTitle && readerTitle.length > 0;
+            report.searchPagination.checks.firstItemTitle = firstItemTitle;
+            report.searchPagination.checks.readerTitleAfterSearch = readerTitle;
+          } else {
+            report.searchPagination.checks.searchDecoupleReaderOpened = false;
+            report.searchPagination.checks.searchDecoupleTitleMatches = false;
+          }
+        } catch (e) {
+          report.searchPagination.error = String(e);
+          report.searchPagination.stack = (e instanceof Error) ? e.stack : null;
+        }
+
+        const spChecks = [
+          'countTestidExists', 'allCountShows10', 'loadMoreButtonHidden',
+          'starredCountIs3', 'allCountBackTo10',
+          'searchInputExists', 'searchDropdownRendered',
+          'searchDecoupleReaderOpened', 'searchDecoupleTitleMatches'
+        ];
+        for (const k of spChecks) {
+          if (report.searchPagination.checks[k] !== true) {
+            report.searchPagination.ok = false;
+            return JSON.stringify(report);
+          }
+        }
+        report.searchPagination.ok = true;
         return JSON.stringify(report);
       })()
     `;
@@ -2624,6 +2796,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"db":{"ok":true');
     } else if (smokeFeedsGroup) {
       pass = raw.includes('"feedsGroup":{"ok":true');
+    } else if (smokeSearchPagination) {
+      pass = raw.includes('"searchPagination":{"ok":true');
     } else if (smokeUiReal) {
       if (SMOKE_FLAGS.smokeIntegration) {
         // 集成 fixture 同时覆盖基础 UI IPC 与 Phase 3 页面流程，两者均必须通过。

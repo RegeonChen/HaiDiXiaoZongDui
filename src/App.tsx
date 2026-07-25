@@ -61,6 +61,19 @@ export function App() {
   const [allArticlesState, setAllArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   // 从专题图打开的文章可能不在当前分页的前 50 条，用独立快照保证阅读器仍能立即显示。
   const [externalSelectedArticle, setExternalSelectedArticle] = useState<Article | null>(null);
+  // Phase 3.7.1:文章列表分页
+  // offset/limit 用于追加加载;total 用于"加载更多"按钮判断 hasMore + 显示 "10 / 433"
+  // 切换筛选条件时由 refreshArticles 重置 offset = 0
+  // **重要:articleOffset 用 ref 不用 state**
+  //   - state 模式:setArticleOffset 会让 refreshArticles 引用变化(deps 包含 offset)→
+  //     useEffect 2 (selection.feedId 监听) 重跑→refreshArticles 再调→
+  //     setArticleOffset 再变→死循环("App refreshArticles" 日志刷屏)
+  //   - ref 模式:set 不触发 re-render,refreshArticles 引用稳定,useEffect 只在
+  //     selection.feedId 变时跑
+  const ARTICLE_PAGE_SIZE = 50;
+  const articleOffsetRef = useRef(0);
+  const [articleTotal, setArticleTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   // Phase 3.5.x：标签管理（侧栏 tag 列表 + 各 tag 下文章数）
   const [tags, setTags] = useState<Tag[]>([]);
   // Phase 3.5.x：每个 tag 名下的真实文章数（来自 article_tags SQL 聚合）
@@ -112,19 +125,65 @@ export function App() {
 
   // 拉 articles
   const refreshArticles = useCallback(
-    async (filter: { feedId?: string; isRead?: boolean; isStarred?: boolean; tagIds?: string[] }) => {
-      setArticlesState({ kind: 'loading' });
-      const result = await ds.articles(filter);
+    async (filter: { feedId?: string; isRead?: boolean; isStarred?: boolean; tagIds?: string[]; search?: string }, options?: { append?: boolean }) => {
+      const append = options?.append === true;
+      // Phase 3.7.1:从 ref 读 offset(避免 setState 触发 re-render 引起的死循环)
+      const offset = append ? articleOffsetRef.current : 0;
+      if (!append) {
+        setArticlesState({ kind: 'loading' });
+        articleOffsetRef.current = 0;
+      } else {
+        setLoadingMore(true);
+      }
+      // Phase 3.7.1:透传 limit/offset 给后端分页;total 从 ds.lastArticleTotal() 同步读(IPC 已返回)
+      const result = await ds.articles({ ...filter, limit: ARTICLE_PAGE_SIZE, offset });
       if (result.kind === 'ready') {
-        setArticlesState({ kind: 'ready', data: result.data });
+        if (append) {
+          setArticlesState((prev) => {
+            if (prev.kind !== 'ready') {
+              return { kind: 'ready', data: result.data };
+            }
+            // 追加模式:把新 items 接到现有列表后面(去重防 refreshFeeds 期间列表更新)
+            const seen = new Set(prev.data.map((a) => a.id));
+            const merged = [...prev.data];
+            for (const a of result.data) {
+              if (!seen.has(a.id)) merged.push(a);
+            }
+            return { kind: 'ready', data: merged };
+          });
+          articleOffsetRef.current += result.data.length;
+        } else {
+          setArticlesState({ kind: 'ready', data: result.data });
+          articleOffsetRef.current = result.data.length;
+        }
+        // Phase 3.7.1:同步刷新 total(用于"加载更多"按钮 + 显示 "10 / 433")
+        setArticleTotal(ds.lastArticleTotal());
       } else if (result.kind === 'error') {
         setArticlesState({ kind: 'error', error: result.error });
       } else {
-        setArticlesState({ kind: 'ready', data: [] });
+        if (!append) setArticlesState({ kind: 'ready', data: [] });
+        articleOffsetRef.current = 0;
+        setArticleTotal(0);
       }
+      if (append) setLoadingMore(false);
     },
     [ds]
   );
+
+  // Phase 3.7.1:加载更多按钮回调
+  const handleLoadMore = useCallback(async () => {
+    // 用当前的 selection.feedId 复用筛选
+    const filter: Parameters<typeof refreshArticles>[0] = {};
+    const fid = selection.feedId;
+    if (fid === 'unread') filter.isRead = false;
+    else if (fid === 'starred') filter.isStarred = true;
+    else if (typeof fid === 'string' && fid.startsWith('tag:')) {
+      filter.tagIds = [fid.slice(4)];
+    } else if (fid !== 'all' && typeof fid === 'string') {
+      filter.feedId = fid;
+    }
+    await refreshArticles(filter, { append: true });
+  }, [refreshArticles, selection.feedId]);
 
   // Phase 3.6.3：刷新侧栏精确计数
   const refreshCounts = useCallback(async () => {
@@ -901,6 +960,11 @@ export function App() {
           selection.feedId === 'unread' ? '所有文章都已读完' :
           '还没有匹配的文章'
         }
+        // Phase 3.7.1:分页"加载更多"按钮
+        total={articleTotal}
+        hasMore={articleTotal > articles.length}
+        onLoadMore={handleLoadMore}
+        loadingMore={loadingMore}
       />
     );
 
@@ -913,20 +977,14 @@ export function App() {
     />
   );
 
-  // Phase 3.4.4.3：搜索跳转：切到对应 feed + 选中文章，回到 reader
-  const handleSearchSelect = useCallback(
-    (articleId: string) => {
-      const target = articles.find((a) => a.id === articleId) ?? allArticles.find((a) => a.id === articleId);
-      if (!target) {
-        pushToast('该文章已不在当前列表中', 'error');
-        return;
-      }
-      selectFeed(target.feedId);
-      selectArticle(articleId);
-      setCurrentPage('reader');
-    },
-    [articles, allArticles, selectArticle, selectFeed, pushToast]
-  );
+  // Phase 3.7.1 修复:搜索跳转直接复用 handleTopicOpenArticle 的 externalSelectedArticle
+  // 模式,不再依赖内存数组查找 — 即使搜索结果在第 51+ 篇文章也能直接打开
+  const handleSearchSelect = useCallback((article: Article) => {
+    setExternalSelectedArticle(article);
+    selectFeed(article.feedId);
+    selectArticle(article.id);
+    setCurrentPage('reader');
+  }, [selectArticle, selectFeed]);
 
   // 专题脉络图 / 专题文章列表点击来源后回到阅读器并定位原文。
   const handleTopicOpenArticle = useCallback((article: Article) => {

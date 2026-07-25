@@ -51,6 +51,8 @@ const cloneArticles = (): Article[] => MOCK_ARTICLES.map((a) => ({ ...a }));
 export class MockDataSource implements DataSource {
   private feedsState: Feed[] = cloneFeeds();
   private articlesState: Article[] = cloneArticles();
+  // Phase 3.7.1:上次 articles 查询的 total(切片前,供"加载更多"判断 hasMore)
+  private _lastArticleTotal = 0;
   private tagsState: Tag[] = [];
   // Phase 3.5.x:mock 模式维护 articleId -> Set<tagId> 映射,
   // 让 tagAddToArticle / tagRemoveFromArticle / tagGetByArticle / articles(tagIds) 真正可用
@@ -81,6 +83,8 @@ export class MockDataSource implements DataSource {
     isStarred?: boolean;
     tagIds?: string[];
     search?: string;
+    offset?: number;
+    limit?: number;
   }): Promise<DataSourceState<Article[]>> {
     await delay(150);
     let items = this.articlesState;
@@ -109,6 +113,13 @@ export class MockDataSource implements DataSource {
       const tb = b.publishedAt ? Date.parse(b.publishedAt) : 0;
       return tb - ta;
     });
+    // Phase 3.7.1:缓存 total(给"加载更多"判断 hasMore)
+    this._lastArticleTotal = items.length;
+    // Phase 3.7.1:分页(limit + offset)。搜索模式不需要分页(全量 top N)
+    if (filter.limit !== undefined) {
+      const offset = filter.offset ?? 0;
+      items = items.slice(offset, offset + filter.limit);
+    }
     return { kind: 'ready', data: items };
   }
 
@@ -118,6 +129,11 @@ export class MockDataSource implements DataSource {
     const article = this.articlesState.find((a) => a.id === id);
     if (!article) return { kind: 'error', error: `文章 ${id} 不存在` };
     return { kind: 'ready', data: article };
+  }
+
+  // Phase 3.7.1:上次 articles 查询的 total(供"加载更多"判断 hasMore)
+  lastArticleTotal(): number {
+    return this._lastArticleTotal;
   }
 
   async markRead(articleId: string, isRead: boolean): Promise<void> {

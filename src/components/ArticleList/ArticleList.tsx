@@ -3,6 +3,7 @@
  *  - 顶部：tab 切换 + 标题 + 计数
  *  - 列表项：小字标题 + 来源 / 时间 / 未读圆点
  *  - 选中：灰底 + 左侧 2px 强调线
+ *  - 底部：Phase 3.7.1"加载更多"按钮(hasMore 时显示)
  */
 import { useMemo } from 'react';
 import type { Article, Feed } from '@shared/types';
@@ -17,6 +18,14 @@ export interface ArticleListProps {
   filterLabel: string;
   /** 当前的 filter 描述，用于空态提示（Phase 3.4.4.5） */
   filterHint?: string;
+  /** Phase 3.7.1:已加载 / 匹配总数(显示 "10 / 433" 让用户知道还有更多) */
+  total?: number;
+  /** Phase 3.7.1:是否可以加载更多(articles.length < total 时为 true) */
+  hasMore?: boolean;
+  /** Phase 3.7.1:点击"加载更多"按钮 */
+  onLoadMore?: () => void;
+  /** Phase 3.7.1:正在加载更多(显示 loading 状态) */
+  loadingMore?: boolean;
 }
 
 function formatRelative(iso: string | null): string {
@@ -40,18 +49,23 @@ function formatAbsolute(iso: string | null): string {
   return new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filterLabel, filterHint }: ArticleListProps) {
+export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filterLabel, filterHint, total, hasMore, onLoadMore, loadingMore }: ArticleListProps) {
   const feedTitleById = useMemo(() => {
     const m = new Map<string, string>();
     for (const f of feeds) m.set(f.id, f.siteTitle || f.title);
     return m;
   }, [feeds]);
 
+  // Phase 3.7.1:计数显示 "已加载 / 匹配总数"
+  const countText = total !== undefined && total > articles.length
+    ? `${articles.length} / ${total}`
+    : `${articles.length}`;
+
   return (
     <div className="article-list">
       <div className="article-list__header">
         <span className="article-list__title">{filterLabel}</span>
-        <span className="article-list__count">{articles.length}</span>
+        <span className="article-list__count" data-testid="article-list__count">{countText}</span>
       </div>
       <ul className="article-list__items" role="listbox" aria-label="文章列表">
         {articles.length === 0 ? (
@@ -90,6 +104,20 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filt
           })
         )}
       </ul>
+      {/* Phase 3.7.1:加载更多按钮(hasMore 时显示) */}
+      {hasMore && onLoadMore && (
+        <div className="article-list__load-more-wrap">
+          <button
+            type="button"
+            className="article-list__load-more"
+            onClick={onLoadMore}
+            disabled={loadingMore}
+            data-testid="article-list__load-more"
+          >
+            {loadingMore ? '加载中…' : `加载更多 (${total !== undefined ? total - articles.length : '?'} 篇)`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

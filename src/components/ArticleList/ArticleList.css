@@ -156,3 +156,35 @@
   margin: 0;
   display: block;
 }
+
+/* Phase 3.7.1:加载更多按钮 */
+.article-list__load-more-wrap {
+  padding: 8px 16px 12px;
+  text-align: center;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.article-list__load-more {
+  appearance: none;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--accent);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.article-list__load-more:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.article-list__load-more:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

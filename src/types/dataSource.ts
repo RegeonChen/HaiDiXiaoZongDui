@@ -25,6 +25,12 @@ export interface DataSource {
    * 通过此方法直接按 ID 获取完整 Article，作为搜索解耦的保底手段。
    */
   getArticle(id: string): Promise<DataSourceState<Article>>;
+  /**
+   * Phase 3.7.1:上次 articles 查询的匹配总数(分页 "加载更多" 按钮判断 hasMore 用)。
+   * 实现说明:IPC 后端 article:list result 已经包含 total 字段,实现内部从 IPC 拿;
+   * Mock 模式在 articlesState 里按 filter 数。同步返回,无需额外调用。
+   */
+  lastArticleTotal(): number;
   /** 标记已读/未读 */
   markRead(articleId: string, isRead: boolean): Promise<void>;
   /** 标记星标/取消 */
