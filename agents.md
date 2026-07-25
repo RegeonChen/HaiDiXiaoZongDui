@@ -93,11 +93,21 @@
 
 ## 当前状态
 
-截至 2026-07-24：
+截至 2026-07-25：
 
-- **Phase 1–3.6、4.1、4.2、4.3 全部完成并通过验收**。`electron-vite build` + `npm run typecheck` 双端通过。
-- **侧栏三件套落地**（`e1aee96`）：`...` 菜单（tab=sources 展开/折叠、tab=tags 删除未使用标签）、标签 `×` 单删 / 批量删未用、组别 `▸/▾` 折叠（localStorage 持久化）、**tab 状态 localStorage 持久化**（修复 `refreshFeeds` 触发 unmount/remount 后 tab 被踢回 sources 的隐藏 bug）。
+- **Phase 1–4.3、3.7 全部完成并通过验收**。`electron-vite build` + `npm run typecheck` 双端通过。
+- **Phase 3.7 搜索解耦 + 列表分页**（`1a84fbd` 张晨阳，3.7.2/3.7.3 由张宇凡/陈冠中在 `32b5b38`/`03432f8` 落地）：
+  - **搜索解耦（核心修复）**：`SearchBar.onSelect` 签名 `(articleId: string)` → `(article: Article)` 完整对象。`App.handleSearchSelect` 复用 `handleTopicOpenArticle` 同款 `externalSelectedArticle` 模式，不再依赖 `articles.find()` 内存数组查找。**真根因**：旧实现用 `articles.find((a) => a.id === articleId) ?? allArticles.find(...)`，但内存数组只有当前分页前 50 条，搜索结果在第 51+ 篇时找不到 → `pushToast('该文章已不在当前列表中')`。
+  - **列表分页（50/页）**：`DataSource.articles` 透传 `limit + offset` 给后端（`ArticleRepository.list` 已支持 `LIMIT ? OFFSET ?`）。App 维护 `articleOffsetRef` (useRef 而非 state) + `articleTotal` state + `loadingMore` state。**死循环真根因**：`articleOffset` 改成 state 后，setState 让 `refreshArticles` 引用变 (deps 包含 offset) → useEffect 2 (selection.feedId 监听) 重跑 → refreshArticles 再调 → setArticleOffset 再变 → 死循环 ("App refreshArticles" 日志刷屏 100+ 次)。**修复**：用 `useRef` 替代 state，set 不触发 re-render，refreshArticles 引用稳定，useEffect 只在 `selection.feedId` 变时跑。
+  - **DataSource interface 扩展**：`getArticle(id)` (陈冠中 3.7.3) + `lastArticleTotal(): number` (UI 端同步 getter，IPC 已从 `result.total` 缓存)。IpcDataSource + MockDataSource 各自实现。
+  - **ArticleList UI 扩展**：新增 `total` / `hasMore` / `onLoadMore` / `loadingMore` props；countText 显示 `X / Y` (有更多时) 或 `X` (无更多时)；底部"加载更多"按钮 (`data-testid="article-list__load-more"`)，按 `hasMore` 条件渲染。
+  - **新 smoke 探针**：`smoke:search-pagination` 9 项全过（计数 testid / hasMore 边界 / starred=3 / all=10 重置 / 搜索解耦 reader 标题 === 下拉项标题）。
+- **侧栏 2 个 bug 修复**（`01e4e0a` + `0cc80a6`）：侧栏可滚动（`.feed-list__body` flex:1 1 0 + overflow-y:auto）+ `...` 改为"批量管理"模式（替代展开/折叠/删未用三个低频操作；`batchMode` + `selectedForBatch: Set<string>` + batch toolbar + 每行 checkbox + 选中行加 accent-soft 背景；批量模式点击行 toggle 选中 + 右键菜单禁用）。`smoke:feeds-group` 36 → 39 项。
+- **... 菜单 escape 定位真根因修复**（`87d3830` + `78db525`）：`.feed-list__topbar-actions` 加 `position: relative`（最近 positioned 祖先之前都没设 → 菜单逃到 body 级别被 `.feed-list` `overflow:hidden` 裁掉）。**DOM 存在 ≠ 视觉可见**：smoke 探针加 4 项 visual check (`moreMenuHasSize` / `moreMenuInViewport` / `moreMenuInsideFeedList` / `moreMenuHitTest`)。
+- **P2 体验打磨**（`f6468df` + `21d86d6`）：黑暗模式对比度审计（WCAG AA 4.5:1，11 个 CSS 文件硬编码错误色 → `var(--err)` / `var(--ok)` / `var(--warn)`；index.css 新增 `--warn` 变量 light #d97706 / dark #fbbf24）。Empty state 文案统一为"还没有 X" + 操作指引。键盘快捷键 j/k 切文章（自动 mark read）、Shift+J/K 切订阅源、o 打开原文、s 切换星标、Cmd/Ctrl+F 聚焦搜索框、Esc 退出。新增 IPC `SHELL_OPEN_EXTERNAL: 'shell:openExternal'`（URL 协议白名单 http(s)）。
+- **v0.3.0 release 已发布**（`bed056f` + tag `v0.3.0` + `26a29dc`）：`package.json` 0.2.2 → 0.3.0，RELEASE_NOTES_v0.3.0.md 5.5KB（侧栏三件套 + 专题演化图 + 通用图片代理 + 三种阅读模式）。GitHub Actions 自动构建 + 2 个 artifact 发布：Juhe-Shiyi-0.3.0-arm64.dmg (104.7 MB) + Juhe-Shiyi-Setup-0.3.0-x64.exe (83.3 MB)，总耗时 2m20s。
 - **订阅源侧栏真分组**（`c1325df`）：添加组 / 移动到组 / 删组（组内移到"未分组"） + ContextMenu `submenu` 字段。
+- **侧栏三件套落地**（`e1aee96`）：`...` 菜单（tab=sources 展开/折叠、tab=tags 删除未使用标签）、标签 `×` 单删 / 批量删未用、组别 `▸/▾` 折叠（localStorage 持久化）、**tab 状态 localStorage 持久化**（修复 `refreshFeeds` 触发 unmount/remount 后 tab 被踢回 sources 的隐藏 bug）。
 - **专题演化图 + 端到端接入**（`c428688` 张宇凡）：v7 migration 增 `topics` / `topic_articles` / `topic_graph_cache`；5 方向泳道（发布与能力 / 产品与应用 / 安全与治理 / 成本与部署 / 观点与解读）；TopicDetail 4 tab → 3 tab（graph / articles / briefing）；MVP 不消耗 AI token（候选发现阶段用 `source_signature` 缓存）。
 - **通用文章图片链路**（`399d3c8` 张宇凡 + `bb57450` 陈冠中 + `f1eeb48` 陈冠中）：清洗器统一处理 `data-src` / `data-original` / `srcset` / `picture` / `noscript` / 多图 `figure`；Renderer 将正文 HTTP(S) 图片改写为 `juhe-image://`；Main 代理三策略（原文来源 / 图片同源 / 无来源）+ 25 MB 上限 + 图片类型校验；`file://` 协议不发 Referer 修少数派 CDN 防盗链；migration 8 自动重洗旧 Cleaned HTML。
 - **侧栏精确计数**：`ArticleRepository.countAll/countUnread/countStarred` + `article:counts` IPC。
@@ -106,7 +116,7 @@
 - **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ done 态 3 秒延迟 + 失败红点。
 - **三种阅读模式**（`e25343a` 张宇凡 + `9aef239` 张宇凡）：精简阅读 / 网页 / 分栏（左右各半），通过 `useReaderMode` hook + `shared/article-webview.ts` + 主进程 `installArticleWebviewSecurity`。
 - **GitHub Release 自动化**：`.github/workflows/release.yml` 推 `v*` tag → build-mac (DMG) + build-win (NSIS) + release job。
-- **18 个 smoke + 97 单元测试全过**：smoke-1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes / taglist / feeds-group。
+- **19 个 smoke + 98 单元测试全过**：smoke-1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes / taglist / feeds-group / **search-pagination** (Phase 3.7.1 新增 9 项核心 check：搜索解耦 reader 标题 === 下拉项标题 / 计数 testid / hasMore 边界 / starred=3 / all=10 重置)。
 - `shared/types.ts` + `shared/ipc.ts` 作为权威协议源；跨模块接口变更需同步更新并通知。
 
 ## 设计决策
@@ -124,13 +134,18 @@
 
 ## 路线图
 
-1. Phase 1–4.3：✅ 全部完成
-2. Phase 5：v0.3.0 release 准备 / 三平台 UI 验证 / 课程交付资料准备（进行中）
+1. Phase 1–4.3、3.7：✅ 全部完成
+2. Phase 5：v0.3.0 release 已发布（`v0.3.0` tag + 2 个 artifact）/ 三平台 UI 验证 / 课程交付资料准备（进行中）
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
 ## 近期记录（按 commit 倒序）
 
+- **`1a84fbd`（张晨阳）**：Phase 3.7.1 搜索解耦（核心修复） + 列表分页（50/页） + 加载更多按钮 + 计数 testid。`SearchBar.onSelect` 签名 `(articleId: string)` → `(article: Article)` 完整对象，App `handleSearchSelect` 复用 `handleTopicOpenArticle` 同款 `externalSelectedArticle` 模式不再依赖 `articles.find()` 内存数组查找（旧 bug：第 51+ 篇搜索结果找不到 → `pushToast('该文章已不在当前列表中')`）。`articleOffsetRef` 改 `useRef` 修死循环真根因（state 模式 → setState 让 `refreshArticles` 引用变 → useEffect 重跑 → setArticleOffset 再变 → 死循环，"App refreshArticles" 日志刷屏 100+ 次）。DataSource interface 加 `lastArticleTotal(): number` 同步 getter（IPC 已从 `result.total` 缓存）；ArticleList 新增 `total` / `hasMore` / `onLoadMore` / `loadingMore` props + `data-testid="article-list__count"` + 底部"加载更多"按钮。新增 `smoke:search-pagination` 9 项全过。
+- **`87d3830`（张晨阳）**：... 菜单 escape 定位真根因 — `.feed-list__topbar-actions` 加 `position: relative`（最近 positioned 祖先之前都没设 → 菜单逃到 body 级别被 `.feed-list` `overflow:hidden` 裁掉）。**DOM 存在 ≠ 视觉可见**：smoke 探针加 4 项 visual check (`moreMenuHasSize` / `moreMenuInViewport` / `moreMenuInsideFeedList` / `moreMenuHitTest`)。
+- **`01e4e0a`（张晨阳）**：侧栏 2 个 bug — 可滚动（`.feed-list__body` flex:1 1 0 + overflow-y:auto）+ `...` 改为"批量管理"模式（替代展开/折叠/删未用三个低频操作；`batchMode` + `selectedForBatch: Set<string>` + batch toolbar + 每行 checkbox + 选中行加 accent-soft 背景；批量模式点击行 toggle 选中 + 右键菜单禁用）。`smoke:feeds-group` 36 → 39 项。
+- **`f6468df`（张晨阳）**：P2 体验打磨 — 黑暗模式对比度审计（WCAG AA 4.5:1，11 个 CSS 文件硬编码错误色 → `var(--err)` / `var(--ok)` / `var(--warn)`；index.css 新增 `--warn` 变量 light #d97706 / dark #fbbf24）。Empty state 文案统一为"还没有 X" + 操作指引。键盘快捷键 j/k 切文章（自动 mark read）、Shift+J/K 切订阅源、o 打开原文、s 切换星标、Cmd/Ctrl+F 聚焦搜索框、Esc 退出。新增 IPC `SHELL_OPEN_EXTERNAL: 'shell:openExternal'`（URL 协议白名单 http(s)）。
+- **`bed056f`（张晨阳）**：v0.3.0 release — AGENTS.md 同步到 2026-07-24，`package.json` 0.2.2 → 0.3.0，RELEASE_NOTES_v0.3.0.md 5.5KB。GitHub Actions 自动构建 + 2 个 artifact 发布：Juhe-Shiyi-0.3.0-arm64.dmg (104.7 MB) + Juhe-Shiyi-Setup-0.3.0-x64.exe (83.3 MB)，总耗时 2m20s。
 - **`e1aee96`（张晨阳）**：侧栏 3 个 bug — `...` 菜单（展开/折叠 / 删未用标签）/ 标签 `×` 单删 + 批量删 / 组别 `▸/▾` 折叠 + tab state localStorage 持久化。**真根因是 `refreshFeeds` 第一行 `setFeedsState({kind:'loading'})` 触发 FeedList unmount/remount，tab state 丢失**。`smoke:feeds-group` 17 → 36 项。
 - **`c1325df`（张晨阳）**：订阅源侧栏真分组（添加组 / 移动到组 / 删组）+ `ContextMenu` `submenu` 字段 + `AddGroupDialog`。
 - **`ff4b9a8`（张晨阳）**：AGENTS.md 同步 4.3 + 侧栏 tag 修复；`smoke:topic` 9 → 13 项。
