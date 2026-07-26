@@ -1,115 +1,18 @@
-feat(phase4.1): 订阅源操作按钮 + 标签渲染 + TagsPage 双栏 + OPML 选择性导出 (UI 完整闭环)
+docs(agents): 同步 2026-07-26 + Phase 4.1 UI 完整闭环 + 20 个 smoke
 
-== Phase 4.1.1：订阅源操作按钮 + 标签渲染 + TagsPage 双栏 ==
+== 改动 ==
+- 当前状态日期 2026-07-25 → 2026-07-26
+- Phase 1-4.3、3.7 → Phase 1-4.3、3.7、4.1 全部完成
+- Phase 4.1 后端 + UI 合并为一项说明:
+  - Task 4.1.1 中栏顶部操作按钮(action bar slot + 同步/全部已读)
+  - Task 4.1.1 标题前彩色标签 chips(ArticleList + ArticleReader)
+  - Task 4.1.1 TagsPage 双栏布局
+  - Task 4.1.4 OPML 选择性导出子界面(OpmlExportPage + 路由跳转)
+  - 默认全选 useEffect 死循环真根因修复(initialized 标志)
+  - smoke-2.4 探针适配(直接调 IPC,不再点按钮)
+  - dataSourceFactory 暴露 __JUHE_DS__(smoke 探针 hook mock 端用)
+  - console-message 转发兼容 Electron 28+ 新签名
+  - smoke:feed-actions 18 项 + smoke:opml-export-selection 17 项全过
+- 19 → 20 个 smoke + 104 单元测试全过
 
-订阅源操作按钮(中栏顶部)
-- ArticleList 新增 actionBar slot(同步/全部已读按钮)
-- 同步按钮接 ds.syncFeed(feedId) + 进度条 + 结果 toast
-- 全部已读按钮接 ds.markAllReadByFeed(feedId) + 侧栏未读数实时更新
-- 仅具体 feed 显示,all/unread/starred/tag: 都不显示(避免误操作)
-- 全部已读走 confirm dialog(列出未读数 + 确认后批量更新)
-
-标签渲染(ArticleList + ArticleReader 标题前 chips)
-- 新建 src/utils/article-title-tags.ts: parseArticleTitleTags(title) 解析 [tag:NAME|COLOR] 前缀
-- ArticleList 在 .article-list__row1 标题前显示彩色 chip(parseArticleTitleTags(article.title))
-- ArticleReader 在 <h1> 标题前显示 chips(articleTags state 优先 + title prefix 兜底 + 按 name 去重)
-- 处理 articleTags 异步未到位的 150ms 空窗期(articleTagMap state 还没拉到时)
-
-Mock 模式 tag 嵌入 title prefix(与 IPC 后端行为一致)
-- MockDataSource.rebuildArticleTitleTags(articleId) 重建 article.title 前缀
-- tagAddToArticle / tagRemoveFromArticle / tagDelete / tagUpdate 同步触发
-- 让 mock 模式下前端 article-list 也能渲染彩色 chips(IPC 模式下后端真存 prefix)
-
-TagsPage 双栏布局
-- 左栏:标签 CRUD(保持原有功能 + 加 picker 按钮整行可点)
-- 右栏:选中标签下的文章列表(标题 + 来源 + 时间,点击跳阅读器)
-- 实时同步:标签增删 / 选中切换 / 文章加 tag 全部自动更新
-- 通过 ds.articles({ tagIds: [selectedTagId] }) 拉文章列表
-
-== Phase 4.1.4：OPML 选择性导出子界面 ==
-
-新建 src/pages/OpmlExportPage/
-- 列表展示所有订阅源(checkbox + name + url)
-- 默认全选 + 顶栏"全选"/"取消全选"切换
-- 已选 N/N 计数实时显示
-- 取消/确认按钮(确认 disabled 当 0 已选)
-- 确认导出调 ds.opmlExport(feedIds) → IPC `opml:export` 传 feedIds
-
-App.tsx 路由
-- Layout AppPage 类型加 'opml-export'
-- OpmlButtons onExport 改路由:setCurrentPage('opml-export')
-- OpmlExportPage 渲染 + onClose 回到 reader
-
-修 smoke-2.4 探针适配
-- 探针原本 click "导出 OPML" 按钮 → 旧逻辑直接调 IPC
-- 新逻辑 click 按钮 → 跳转 opml-export page,后续 article click 在 opml-export page 上失败
-- 改探针:直接调 window.api.opml.export() 验证 IPC 链路,不再点按钮(点按钮的 UI 测试归 smoke-4.1.4)
-
-== 配套基础设施 ==
-
-dataSourceFactory 暴露 __JUHE_DS__
-- ?mock=1 时把 MockDataSource 实例挂到 window.__JUHE_DS__
-- smoke 探针需要 hook opmlExport(Phase 4.1.4) 或其他 mock 端方法时用
-- 生产模式不带 ?mock=1,所以不会暴露(零侵入)
-
-console-message 转发
-- Electron 28+ 改了 console-message 签名:event 对象含 message
-- 新签名和老签名都兼容,smoke 探针能转发 renderer console.log 到主进程 stdout
-
-== 新增 smoke 探针 ==
-
-smoke-4.1.1-feed-actions.cjs (18 项全过)
-- firstFeedItemFound / actionBarVisible
-- syncButtonVisible / markAllReadButtonVisible / syncButtonText / markAllReadButtonText
-- actionBarHiddenOnAll / actionBarHiddenOnUnread (具体 feed 才显示)
-- articleReaderOpened / articleDebugExposed / articleTitleChipsEmptyBefore
-- tagsPageOpened / tagsPageTwoColumnLayout / tagsPageFormRendered
-- tagsPageRightHintWhenNoSelection (双栏布局 + 右栏提示)
-- tagCreatedAndRendered / tagNameCorrect (UI 创建 tag)
-- tagsPageRightAfterSelect / tagDeletedFromList
-
-smoke-4.1.4-opml-export-selection.cjs (17 项全过)
-- exportBtnFound / opmlExportPageOpened (子界面跳转)
-- counterRendered / defaultAllSelected (5/5)
-- listRendered / itemsCountMatchesTotal (5 个 item)
-- noneSelectedAfterToggle / confirmDisabledWhenNone (0/5)
-- allSelectedAfterSecondToggle (回 5/5)
-- selectedDecreaseByOne / selectedTwoOff (N-1/N-2)
-- mockDataSourceExposed / opmlExportCalled (hook mock DS)
-- opmlExportFeedIdsCorrect (传 N-2 个 feedId)
-- backToReaderAfterConfirm (回到 reader 视图)
-
-== 真根因修复 ==
-
-OpmlExportPage 默认全选 useEffect 死循环
-- useEffect 监听 [feeds, selected.size]
-- 用户点"取消全选" → selected.size = 0 → useEffect 检测到 size=0 + feeds 存在 → 重置为全选
-- 修法:加 [initialized] 标志,只在首次加载时默认全选(避免 useEffect 自动恢复)
-
-== 文件清单 ==
-
-新增:
-- src/utils/article-title-tags.ts (title 解析工具)
-- src/pages/OpmlExportPage/OpmlExportPage.tsx + .css (选择性导出子界面)
-- scripts/smoke-4.1.1-feed-actions.cjs
-- scripts/smoke-4.1.4-opml-export-selection.cjs
-
-修改:
-- src/components/ArticleList/ArticleList.tsx + .css (actionBar slot + chip 渲染)
-- src/components/ArticleReader/ArticleReader.tsx + .css (标题前 chips + try/catch 防崩)
-- src/components/Layout/Layout.tsx (AppPage 加 'opml-export')
-- src/pages/TagsPage/TagsPage.tsx + .css (双栏布局)
-- src/data/dataSourceFactory.ts (?mock=1 挂 __JUHE_DS__)
-- src/data/mockDataSource.ts (rebuildArticleTitleTags)
-- src/App.tsx (handleSyncSelectedFeed + handleMarkAllReadByFeed + showFeedActionBar + handleOpmlExport 路由 + TagsPage onOpenArticle + OpmlExportPage 路由)
-- electron/main/index.ts (smoke-2.4 探针改直接调 IPC + smoke-4.1.1 + smoke-4.1.4 探针 + console-message 新签名)
-- package.json (加 2 个 smoke: 命令)
-
-== 验证 ==
-- npm run typecheck 通过
-- npm run build 通过(JS 520KB / CSS 108KB)
-- npm test → 104 passed (6 skipped)
-- smoke:1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui
-  / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes
-  / taglist / feeds-group / search-pagination / feed-actions / opml-export-selection
-  → 20/20 smoke 全部通过
+近期记录加 8c410db（Phase 4.1 UI 完整闭环）
