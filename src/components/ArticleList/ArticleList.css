@@ -188,3 +188,66 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Phase 4.1.1:标题前彩色标签 chips（与 ArticleReader 标题前 chips 风格一致） */
+.article-list__row1 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.article-list__title-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  flex-shrink: 0;
+  vertical-align: baseline;
+}
+.article-list__title-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  border-radius: 9px;
+  line-height: 1.5;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+/* Phase 4.1.1:中栏顶部操作按钮 slot(同步 / 全部已读) */
+.article-list__action-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px 8px;
+  border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0;
+}
+.article-list__action-bar .feed-action-btn {
+  appearance: none;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+.article-list__action-bar .feed-action-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.article-list__action-bar .feed-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.article-list__action-bar .feed-action-btn.is-busy {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}

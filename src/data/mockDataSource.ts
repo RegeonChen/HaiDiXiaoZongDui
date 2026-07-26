@@ -360,6 +360,26 @@ export class MockDataSource implements DataSource {
 
   // ============== Tag ==============
 
+  // Phase 4.1.3：重建 article.title 的标签前缀（与 IPC 后端 buildTaggedArticleTitle 行为一致）
+  //   让 mock 模式的 article.title 也能在 ArticleList 标题前渲染彩色 chips
+  //   复用 src/utils/article-title-tags 的 TAG_TITLE_PREFIX_RE 正则（避免重复定义）
+  private rebuildArticleTitleTags(articleId: string): void {
+    const idx = this.articlesState.findIndex((a) => a.id === articleId);
+    if (idx < 0) return;
+    const article = this.articlesState[idx];
+    const appliedTagIds = this.articleTagMap.get(articleId);
+    const tags = appliedTagIds && appliedTagIds.size > 0
+      ? this.tagsState.filter((t) => appliedTagIds.has(t.id))
+      : [];
+    // 复用后端 article-title-tags.ts 的同一格式：[tag:NAME|COLOR]  原标题
+    const TAG_TITLE_PREFIX_RE = /^(?:\[tag:[^\]\r\n]+\]\s*)+/;
+    const cleanTitle = article.title.replace(TAG_TITLE_PREFIX_RE, '').trim();
+    const newTitle = tags.length === 0
+      ? cleanTitle
+      : `${tags.map((t) => `[tag:${t.name}|${t.color ?? 'inherit'}]`).join(' ')} ${cleanTitle}`;
+    this.articlesState = this.articlesState.map((a) => (a.id === articleId ? { ...a, title: newTitle } : a));
+  }
+
   async tagList(): Promise<DataSourceState<Tag[]>> {
     return { kind: 'ready', data: this.tagsState };
   }
@@ -385,11 +405,22 @@ export class MockDataSource implements DataSource {
       updatedAt: new Date().toISOString()
     };
     this.tagsState = this.tagsState.map((t) => (t.id === id ? updated : t));
+    // Phase 4.1.3：颜色/名字变更需要重建所有引用此 tag 的文章 title
+    for (const [articleId, tagSet] of this.articleTagMap.entries()) {
+      if (tagSet.has(id)) this.rebuildArticleTitleTags(articleId);
+    }
     return { kind: 'ready', data: updated };
   }
 
   async tagDelete(id: string): Promise<void> {
     this.tagsState = this.tagsState.filter((t) => t.id !== id);
+    // Phase 4.1.3：删 tag 后需要从 articleTagMap 清理 + 重建所有相关 article 的 title
+    for (const [articleId, tagSet] of this.articleTagMap.entries()) {
+      if (tagSet.has(id)) {
+        tagSet.delete(id);
+        this.rebuildArticleTitleTags(articleId);
+      }
+    }
   }
 
   async tagAddToArticle(articleId: string, tagId: string): Promise<void> {
@@ -400,11 +431,15 @@ export class MockDataSource implements DataSource {
       this.articleTagMap.set(articleId, set);
     }
     set.add(tagId);
+    // Phase 4.1.3:同步重建 article.title 的标签前缀(与 IPC 后端行为一致)
+    this.rebuildArticleTitleTags(articleId);
   }
 
   async tagRemoveFromArticle(articleId: string, tagId: string): Promise<void> {
     const set = this.articleTagMap.get(articleId);
     if (set) set.delete(tagId);
+    // Phase 4.1.3:同步重建 article.title
+    this.rebuildArticleTitleTags(articleId);
   }
 
   async tagGetByArticle(articleId: string): Promise<DataSourceState<Tag[]>> {

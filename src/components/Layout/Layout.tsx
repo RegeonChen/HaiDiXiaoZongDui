@@ -17,7 +17,7 @@ import { OpmlButtons } from '../OpmlButtons/OpmlButtons';
 import { ResizeHandle } from '../ResizeHandle/ResizeHandle';
 import './Layout.css';
 
-export type AppPage = 'reader' | 'general' | 'ai' | 'tags' | 'notes' | 'digests' | 'topics' | 'logs';
+export type AppPage = 'reader' | 'general' | 'ai' | 'tags' | 'notes' | 'digests' | 'topics' | 'logs' | 'opml-export';
 
 export interface LayoutProps {
   feedsSlot: ReactNode;

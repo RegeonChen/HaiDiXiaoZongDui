@@ -4,10 +4,13 @@
  *  - 列表项：小字标题 + 来源 / 时间 / 未读圆点
  *  - 选中：灰底 + 左侧 2px 强调线
  *  - 底部：Phase 3.7.1"加载更多"按钮(hasMore 时显示)
+ *  - Phase 4.1.1：标题前彩色标签 chips（从 article.title 解析 tag prefix）
+ *  - Phase 4.1.1：顶部 action bar slot（同步 / 全部已读按钮）
  */
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import type { Article, Feed } from '@shared/types';
 import { EmptyView } from '../StatusView/EmptyView';
+import { parseArticleTitleTags } from '../../utils/article-title-tags';
 import './ArticleList.css';
 
 export interface ArticleListProps {
@@ -26,6 +29,12 @@ export interface ArticleListProps {
   onLoadMore?: () => void;
   /** Phase 3.7.1:正在加载更多(显示 loading 状态) */
   loadingMore?: boolean;
+  /**
+   * Phase 4.1.1：中栏顶部操作按钮 slot。
+   * 调用方传入同步/全部已读等按钮；不传则不显示 action bar。
+   * 渲染在 .article-list__header 下方一行。
+   */
+  actionBar?: ReactNode;
 }
 
 function formatRelative(iso: string | null): string {
@@ -49,7 +58,7 @@ function formatAbsolute(iso: string | null): string {
   return new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filterLabel, filterHint, total, hasMore, onLoadMore, loadingMore }: ArticleListProps) {
+export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filterLabel, filterHint, total, hasMore, onLoadMore, loadingMore, actionBar }: ArticleListProps) {
   const feedTitleById = useMemo(() => {
     const m = new Map<string, string>();
     for (const f of feeds) m.set(f.id, f.siteTitle || f.title);
@@ -67,6 +76,8 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filt
         <span className="article-list__title">{filterLabel}</span>
         <span className="article-list__count" data-testid="article-list__count">{countText}</span>
       </div>
+      {/* Phase 4.1.1:中栏顶部操作按钮 slot(同步 / 全部已读) */}
+      {actionBar && <div className="article-list__action-bar" data-testid="article-list__action-bar">{actionBar}</div>}
       <ul className="article-list__items" role="listbox" aria-label="文章列表">
         {articles.length === 0 ? (
           <li className="article-list__empty-wrap">
@@ -79,17 +90,42 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filt
         ) : (
           articles.map((a) => {
             const isSelected = a.id === selectedArticleId;
+            // Phase 4.1.1:从 title 解析 tag prefix(后端把 tag 信息嵌到 title 前缀)
+            let titleTags: ReturnType<typeof parseArticleTitleTags>['tags'] = [];
+            let cleanTitle = a.title ?? '';
+            try {
+              const parsed = parseArticleTitleTags(a.title ?? '');
+              titleTags = parsed.tags;
+              cleanTitle = parsed.cleanTitle;
+            } catch (e) {
+              // 解析失败:回退原始 title,避免列表渲染崩
+              console.error('[ArticleList] parseArticleTitleTags failed', e);
+            }
             return (
               <li key={a.id} role="option" aria-selected={isSelected}>
                 <button
                   type="button"
                   className={`article-list__item ${isSelected ? 'is-active' : ''} ${a.isRead ? 'is-read' : 'is-unread'}`}
                   onClick={() => onSelect(a.id)}
-                  title={`${a.title}\n${a.author ?? ''}`}
+                  title={`${cleanTitle}\n${a.author ?? ''}`}
                 >
                   <div className="article-list__row1">
                     <span className={`article-list__dot ${a.isRead ? 'is-read' : 'is-unread'}`} aria-hidden="true" />
-                    <span className="article-list__article-title">{a.title}</span>
+                    {titleTags.length > 0 && (
+                      <span className="article-list__title-tags" data-testid="article-list__title-tags">
+                        {titleTags.map((t, i) => (
+                          <span
+                            key={`${t.name}-${i}`}
+                            className="article-list__title-tag"
+                            style={{ background: t.color ?? 'var(--accent)' }}
+                            title={`标签：${t.name}`}
+                          >
+                            {t.name}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                    <span className="article-list__article-title">{cleanTitle}</span>
                     {a.isStarred && <span className="article-list__star" aria-label="已加星标">★</span>}
                   </div>
                   <div className="article-list__row2">

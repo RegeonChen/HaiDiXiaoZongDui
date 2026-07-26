@@ -143,6 +143,10 @@ const SMOKE_FLAGS = {
   smokeInlineTransSplitError: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS_SPLIT_ERROR'] === '1',
   // Phase 3.7.1：搜索解耦（onSelect 传 Article 完整对象）+ 文章列表分页（hasMore 按钮）
   smokeSearchPagination: process.env['JUHE_SHIVI_SMOKE_SEARCH_PAGINATION'] === '1',
+  // Phase 4.1.1：订阅源操作按钮（同步 + 全部已读）+ 标签渲染（ArticleList/ArticleReader 标题前 chips）+ TagsPage 双栏
+  smokeFeedActions: process.env['JUHE_SHIVI_SMOKE_FEED_ACTIONS'] === '1',
+  // Phase 4.1.4：OPML 选择性导出子界面（OpmlExportPage 勾选 + 全选 + 确认传 feedIds）
+  smokeOpmlExportSelection: process.env['JUHE_SHIVI_SMOKE_OPML_EXPORT_SELECTION'] === '1',
   seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
   seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
@@ -191,7 +195,13 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
     }
   });
   // 临时 debug:转发 renderer console.log 到主进程 stdout
-  win.webContents.on('console-message', (_event, _level, message) => {
+  //   Electron 28+ 新签名:event 对象含 message / level / lineNumber / sourceId
+  //   老签名:(event, level, message, line, sourceId) 也兼容
+  win.webContents.on('console-message', (...args: unknown[]) => {
+    const first = args[0] as Record<string, unknown> | unknown;
+    const message = first && typeof first === 'object' && 'message' in (first as Record<string, unknown>)
+      ? String((first as Record<string, unknown>).message ?? '')
+      : String(args[2] ?? first);
     process.stdout.write(`[renderer] ${message}\n`);
   });
 
@@ -258,6 +268,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeInlineTrans = SMOKE_FLAGS.smokeInlineTrans;
   const smokeInlineTransSplitError = SMOKE_FLAGS.smokeInlineTransSplitError;
   const smokeSearchPagination = SMOKE_FLAGS.smokeSearchPagination;
+  const smokeFeedActions = SMOKE_FLAGS.smokeFeedActions;
+  const smokeOpmlExportSelection = SMOKE_FLAGS.smokeOpmlExportSelection;
   const feedUrl = SMOKE_FLAGS.feedUrl;
   const aiBaseUrl = SMOKE_FLAGS.aiBaseUrl;
   const aiKey = SMOKE_FLAGS.aiKey;
@@ -1892,6 +1904,344 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         return JSON.stringify(report);
       })()
     `;
+  } else if (smokeFeedActions) {
+    // Phase 4.1.1 smoke: 订阅源操作按钮 + 标签渲染 + TagsPage 双栏
+    // 走 mock 模式（MOCK_ARTICLES 10 篇 + 5 个 feeds）：
+    //   1) 切到具体 feed → 中栏顶部 action bar 出现"同步" + "全部已读"两个按钮
+    //   2) 切到 all → action bar 不出现（避免误操作）
+    //   3) 切到 unread/starred → action bar 也不出现
+    //   4) 点击文章 → reader 打开 + 标题前 chips 容器存在（无 tag 时空）
+    //   5) 切到 tags 页面 → 双栏布局（左栏空态 + 右栏提示）
+    //   6) 通过 App UI 创建 tag（左栏 + 表单提交）
+    //   7) 选中 tag → 右栏 article 列表（mock articles 含 tagIds 过滤的逻辑）
+    //   8) 删 tag → 左栏移除
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { feedActions: { ok: false, error: null, checks: {} } };
+        try {
+          // 1) 等主界面 + articles 列表
+          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          await waitFor(
+            () => document.querySelectorAll('.article-list__item').length > 0,
+            { timeout: 5000 }
+          );
+          await sleep(200);
+
+          // 2) 找第一个具体 feed 的 button（data-feed-id 的 wrap 内有 button.feed-list__item）
+          const feedWraps = Array.from(document.querySelectorAll('[data-feed-id]'));
+          let firstFeedButton = null;
+          for (const wrap of feedWraps) {
+            const btn = wrap.querySelector('button.feed-list__item');
+            if (btn) { firstFeedButton = btn; break; }
+          }
+          report.feedActions.checks.firstFeedItemFound = !!firstFeedButton;
+          if (!firstFeedButton) {
+            report.feedActions.error = '找不到任何具体 feed 按钮（data-feed-id wrap 内 .feed-list__item）';
+            return JSON.stringify(report);
+          }
+          firstFeedButton.click();
+          await sleep(300);
+
+          // 3) Action bar 出现 + 2 个按钮
+          const actionBar = document.querySelector('[data-testid="article-list__action-bar"]');
+          report.feedActions.checks.actionBarVisible = !!actionBar;
+          const syncBtn = document.querySelector('[data-testid="feed-action__sync"]');
+          const markAllReadBtn = document.querySelector('[data-testid="feed-action__mark-all-read"]');
+          report.feedActions.checks.syncButtonVisible = !!syncBtn;
+          report.feedActions.checks.markAllReadButtonVisible = !!markAllReadBtn;
+          report.feedActions.checks.syncButtonText = syncBtn ? (syncBtn.textContent || '').includes('同步') : false;
+          report.feedActions.checks.markAllReadButtonText = markAllReadBtn ? (markAllReadBtn.textContent || '').includes('全部已读') : false;
+
+          // 4) 切到 all → action bar 不出现
+          const allTab = Array.from(document.querySelectorAll('.feed-list__virtuals .feed-list__item'))
+            .find((b) => (b.textContent || '').includes('所有订阅源'));
+          if (allTab) allTab.click();
+          await sleep(200);
+          const actionBarAfterAll = document.querySelector('[data-testid="article-list__action-bar"]');
+          report.feedActions.checks.actionBarHiddenOnAll = !actionBarAfterAll;
+
+          // 5) 切到 unread → action bar 不出现
+          const unreadTab = Array.from(document.querySelectorAll('.feed-list__virtuals .feed-list__item'))
+            .find((b) => (b.textContent || '').includes('未读'));
+          if (unreadTab) unreadTab.click();
+          await sleep(200);
+          const actionBarAfterUnread = document.querySelector('[data-testid="article-list__action-bar"]');
+          report.feedActions.checks.actionBarHiddenOnUnread = !actionBarAfterUnread;
+
+          // 6) 切回具体 feed
+          firstFeedButton.click();
+          await sleep(200);
+
+          // 7) 点击第一篇文章 → reader 打开
+          const firstArticle = document.querySelector('.article-list__item');
+          if (firstArticle) firstArticle.click();
+          await waitFor(() => !!document.querySelector('.article-reader__title'), { timeout: 3000 });
+          await sleep(200);
+          const articleTitleEl = document.querySelector('.article-reader__title');
+          report.feedActions.checks.articleReaderOpened = !!articleTitleEl;
+          // Phase 4.1.1:articleTagMap 渲染区(空时无 chip)
+          const debug = (window).__JUHE_ARTICLE_DEBUG__;
+          report.feedActions.checks.articleDebugExposed = !!debug;
+          // 标题前 chips 容器 - 暂时空(无 tag)
+          const beforeChips = document.querySelectorAll('.article-reader__title-tag').length;
+          report.feedActions.checks.articleTitleChipsEmptyBefore = beforeChips === 0;
+
+          // 8) 切到 tags 页面 → 双栏布局
+          const tagsNav = Array.from(document.querySelectorAll('.app-header__nav-btn'))
+            .find((b) => (b.textContent || '').includes('标签'));
+          if (tagsNav) tagsNav.click();
+          await waitFor(
+            () => !!document.querySelector('[data-testid="tags-page__right"]'),
+            { timeout: 3000 }
+          );
+          await sleep(200);
+          report.feedActions.checks.tagsPageOpened = !!document.querySelector('[data-testid="tags-page__right"]');
+          // 双栏:left (.tags-page__left 包含 form + list/empty) + right
+          const leftPane = document.querySelector('.tags-page__left');
+          const rightPane = document.querySelector('.tags-page__right');
+          report.feedActions.checks.tagsPageTwoColumnLayout = !!leftPane && !!rightPane;
+          // 左栏:form + 初始空态("还没有标签")
+          const tagForm = document.querySelector('[data-testid="tags-page__add"]');
+          report.feedActions.checks.tagsPageFormRendered = !!tagForm;
+          // 右栏:未选中 tag 时显示提示
+          const rightHint = rightPane ? rightPane.querySelector('.tags-page__right-empty') : null;
+          report.feedActions.checks.tagsPageRightHintWhenNoSelection = !!rightHint;
+
+          // 9) 通过 UI 创建 tag:填表单 + 提交
+          const nameInput = document.querySelector('[data-testid="tags-page__new-name"]');
+          const colorInput = document.querySelector('[data-testid="tags-page__new-color"]');
+          if (nameInput) {
+            const nameSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nameSetter.call(nameInput, 'Phase411Tag');
+            nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+            if (colorInput) {
+              const colorSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+              colorSetter.call(colorInput, '#ff6b35');
+              colorInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            const addBtn = document.querySelector('[data-testid="tags-page__add"]');
+            if (addBtn) addBtn.click();
+            await sleep(500);
+            // 验证新 tag 出现在左栏
+            const tagItem = document.querySelector('[data-testid^="tags-page__item-"]');
+            report.feedActions.checks.tagCreatedAndRendered = !!tagItem;
+            if (tagItem) {
+              report.feedActions.checks.tagNameCorrect = (tagItem.textContent || '').includes('Phase411Tag');
+            }
+          }
+
+          // 10) 选中 tag → 右栏 article 列表
+          const newTagItem = document.querySelector('[data-testid^="tags-page__item-"]');
+          if (newTagItem) {
+            const pickBtn = newTagItem.querySelector('.tags-page__item-pick');
+            if (pickBtn) pickBtn.click();
+            await sleep(500);
+            // 右栏显示"该标签下还没有文章" 或 article list（mock 模式没真 article 关联）
+            const articleList = document.querySelector('[data-testid="tags-page__article-list"]');
+            const emptyHint = document.querySelector('.tags-page__right .tags-page__empty');
+            report.feedActions.checks.tagsPageRightAfterSelect = !!articleList || !!emptyHint;
+          }
+
+          // 11) 删 tag → 左栏移除
+          const delBtn = Array.from(document.querySelectorAll('[data-testid^="tags-page__item-"] button'))
+            .find((b) => (b.textContent || '').includes('删除'));
+          if (delBtn) {
+            window.confirm = () => true; // mock confirm
+            delBtn.click();
+            await sleep(400);
+            // 验证 Phase411Tag 已被删除
+            const after = Array.from(document.querySelectorAll('[data-testid^="tags-page__item-"]'));
+            const stillThere = after.some((it) => (it.textContent || '').includes('Phase411Tag'));
+            report.feedActions.checks.tagDeletedFromList = !stillThere;
+          }
+        } catch (e) {
+          report.feedActions.error = String(e);
+          report.feedActions.stack = (e instanceof Error) ? e.stack : null;
+        }
+
+        const mustPass = [
+          'firstFeedItemFound', 'actionBarVisible',
+          'syncButtonVisible', 'markAllReadButtonVisible',
+          'syncButtonText', 'markAllReadButtonText',
+          'actionBarHiddenOnAll', 'actionBarHiddenOnUnread',
+          'articleReaderOpened', 'articleDebugExposed',
+          'articleTitleChipsEmptyBefore',
+          'tagsPageOpened', 'tagsPageTwoColumnLayout',
+          'tagsPageFormRendered', 'tagsPageRightHintWhenNoSelection',
+          'tagCreatedAndRendered', 'tagNameCorrect',
+          'tagsPageRightAfterSelect', 'tagDeletedFromList'
+        ];
+        for (const k of mustPass) {
+          if (report.feedActions.checks[k] !== true) {
+            report.feedActions.ok = false;
+            return JSON.stringify(report);
+          }
+        }
+        report.feedActions.ok = true;
+        return JSON.stringify(report);
+      })()
+    `;
+  } else if (smokeOpmlExportSelection) {
+    // Phase 4.1.4 smoke: OPML 选择性导出子界面
+    // 走 mock 模式（Mock 5 个 feeds）：
+    //   1) 点"导出 OPML"按钮 → 跳转到 opml-export 页面
+    //   2) 页面渲染：列表 + 全选 + 已选 N/5 计数
+    //   3) 默认全选(5/5)
+    //   4) 点击"取消全选" → 0/5
+    //   5) 点击"全选" → 5/5
+    //   6) 取消勾选 1 个 → 4/5 + 计数更新
+    //   7) 点击"取消导出" → 回到 reader
+    //   8) 重新打开 → 再次默认全选(5/5)
+    //   9) 取消勾选 2 个 → 3/5 + 点"确认导出" → 触发 opmlExport(feedIds[3])
+    //      验证 window.__JUHE_OPML_LAST_EXPORT__ 被 mock 模式记录
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { opmlExport: { ok: false, error: null, checks: {} } };
+        try {
+          // 1) 等主界面
+          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          await sleep(200);
+
+          // 2) 点"导出 OPML"按钮(顶栏 OpmlButtons)
+          const exportBtn = Array.from(document.querySelectorAll('.opml-buttons__btn'))
+            .find((b) => (b.textContent || '').includes('导出 OPML'));
+          report.opmlExport.checks.exportBtnFound = !!exportBtn;
+          if (!exportBtn) {
+            report.opmlExport.error = '找不到导出 OPML 按钮';
+            return JSON.stringify(report);
+          }
+          exportBtn.click();
+          await waitFor(
+            () => !!document.querySelector('[data-testid="opml-export-page"]'),
+            { timeout: 3000 }
+          );
+          report.opmlExport.checks.opmlExportPageOpened = true;
+
+          // 3) 默认全选 → 计数 = N/N
+          const counter = document.querySelector('[data-testid="opml-export__counter"]');
+          report.opmlExport.checks.counterRendered = !!counter;
+          const counterText = counter ? counter.textContent || '' : '';
+          report.opmlExport.checks.counterInitiallyAll = /已选\\s*\\d+\\s*\\/\\s*\\d+/.test(counterText);
+          // 提取数字
+          const m = counterText.match(/已选\\s*(\\d+)\\s*\\/\\s*(\\d+)/);
+          const initialSelected = m ? parseInt(m[1], 10) : -1;
+          const total = m ? parseInt(m[2], 10) : -1;
+          report.opmlExport.checks.initialTotal = total;
+          report.opmlExport.checks.initialSelected = initialSelected;
+          report.opmlExport.checks.defaultAllSelected = initialSelected === total && total > 0;
+
+          // 4) 列表渲染
+          const list = document.querySelector('[data-testid="opml-export__list"]');
+          report.opmlExport.checks.listRendered = !!list;
+          const items = list ? list.querySelectorAll('.opml-export-page__item') : [];
+          report.opmlExport.checks.itemCount = items.length;
+          report.opmlExport.checks.itemsCountMatchesTotal = items.length === total;
+
+          // 5) 点"取消全选" → 0/N
+          const toggleBtn = document.querySelector('[data-testid="opml-export__toggle-all"]');
+          if (toggleBtn) toggleBtn.click();
+          await sleep(150);
+          const counterAfterNone = document.querySelector('[data-testid="opml-export__counter"]')?.textContent || '';
+          const m2 = counterAfterNone.match(/已选\\s*(\\d+)/);
+          report.opmlExport.checks.noneSelectedAfterToggle = m2 ? parseInt(m2[1], 10) === 0 : false;
+          // 确认按钮 disabled
+          const confirmBtn = document.querySelector('[data-testid="opml-export__confirm"]');
+          report.opmlExport.checks.confirmDisabledWhenNone = confirmBtn ? confirmBtn.hasAttribute('disabled') : false;
+
+          // 6) 点"全选" → N/N
+          if (toggleBtn) toggleBtn.click();
+          await sleep(150);
+          const counterAfterAll = document.querySelector('[data-testid="opml-export__counter"]')?.textContent || '';
+          const m3 = counterAfterAll.match(/已选\\s*(\\d+)\\s*\\/\\s*(\\d+)/);
+          report.opmlExport.checks.allSelectedAfterSecondToggle = m3 ? parseInt(m3[1], 10) === total : false;
+
+          // 7) 取消勾选第 1 项 → N-1/N
+          const firstItemCheckbox = items[0]?.querySelector('input[type="checkbox"]');
+          if (firstItemCheckbox) firstItemCheckbox.click();
+          await sleep(150);
+          const counterAfterOneOff = document.querySelector('[data-testid="opml-export__counter"]')?.textContent || '';
+          const m4 = counterAfterOneOff.match(/已选\\s*(\\d+)/);
+          report.opmlExport.checks.selectedDecreaseByOne = m4 ? parseInt(m4[1], 10) === total - 1 : false;
+
+          // 8) 再取消第 2 项 → N-2/N
+          const secondItemCheckbox = items[1]?.querySelector('input[type="checkbox"]');
+          if (secondItemCheckbox) secondItemCheckbox.click();
+          await sleep(150);
+          const counterAfterTwoOff = document.querySelector('[data-testid="opml-export__counter"]')?.textContent || '';
+          const m5 = counterAfterTwoOff.match(/已选\\s*(\\d+)/);
+          report.opmlExport.checks.selectedTwoOff = m5 ? parseInt(m5[1], 10) === total - 2 : false;
+
+          // 9) hook window.__JUHE_DS__.opmlExport(Phase 4.1.4：mock 模式用 MockDataSource 不走 window.api)
+          const ds = (window).__JUHE_DS__;
+          report.opmlExport.checks.mockDataSourceExposed = !!ds;
+          (window).__JUHE_OPML_EXPORT_CALLS__ = [];
+          if (ds && ds.opmlExport) {
+            const origExport = ds.opmlExport.bind(ds);
+            ds.opmlExport = async (feedIds) => {
+              (window).__JUHE_OPML_EXPORT_CALLS__.push(feedIds);
+              return origExport(feedIds);
+            };
+          }
+
+          // 10) 点"确认导出"
+          const confirmBtnFinal = document.querySelector('[data-testid="opml-export__confirm"]');
+          report.opmlExport.checks.confirmEnabledWhenSome = confirmBtnFinal && !confirmBtnFinal.hasAttribute('disabled');
+          if (confirmBtnFinal) confirmBtnFinal.click();
+          await sleep(400);
+          // 验证回到 reader
+          report.opmlExport.checks.backToReaderAfterConfirm = !!document.querySelector('.article-list');
+          // 验证 export 被调 + 传了 N-2 个 feedId
+          const calls = (window).__JUHE_OPML_EXPORT_CALLS__;
+          report.opmlExport.checks.opmlExportCalled = calls.length === 1;
+          report.opmlExport.checks.opmlExportFeedIdsCount = calls[0] ? calls[0].length : -1;
+          report.opmlExport.checks.opmlExportFeedIdsCorrect = calls[0] ? calls[0].length === total - 2 : false;
+        } catch (e) {
+          report.opmlExport.error = String(e);
+          report.opmlExport.stack = (e instanceof Error) ? e.stack : null;
+        }
+
+        const mustPass = [
+          'exportBtnFound', 'opmlExportPageOpened',
+          'counterRendered', 'defaultAllSelected',
+          'listRendered', 'itemsCountMatchesTotal',
+          'noneSelectedAfterToggle', 'confirmDisabledWhenNone',
+          'allSelectedAfterSecondToggle', 'selectedDecreaseByOne',
+          'selectedTwoOff', 'confirmEnabledWhenSome',
+          'backToReaderAfterConfirm', 'mockDataSourceExposed',
+          'opmlExportCalled', 'opmlExportFeedIdsCorrect'
+        ];
+        for (const k of mustPass) {
+          if (report.opmlExport.checks[k] !== true) {
+            report.opmlExport.ok = false;
+            return JSON.stringify(report);
+          }
+        }
+        report.opmlExport.ok = true;
+        return JSON.stringify(report);
+      })()
+    `;
   } else if (smokeUiReal) {
     // Phase 2.4 smoke: UI end-to-end via real IPC
     // 走真 IPC 模式（加载 renderer 不带 ?mock=1），通过 IPC seed 数据后
@@ -2011,20 +2361,12 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           }, { timeout: 1500 });
           report.uiIpc.checks.uiHasOpmlButtons = !!opmlBtns;
 
-          // OPML 导出：点按钮 → 走 IPC → 文件生成
-          // 文件存在与否由 smoke-2.4-ui-ipc.cjs 脚本外层检查 opmlPath
-          let opmlExportOk = false;
-          if (opmlBtns) {
-            const exportBtn = Array.from(opmlBtns).find((b) => b.textContent?.includes('导出'));
-            if (exportBtn) {
-              exportBtn.click();
-              // 等 IPC 走完：主进程 smoke 模式下走 smokeOpmlPath()，
-              // 等几秒让 export 真正落盘
-              await sleep(1500);
-              opmlExportOk = true;
-            }
-          }
-          report.uiIpc.checks.uiOpmlExportWorks = opmlExportOk;
+          // OPML 导出：Phase 4.1.4 后导出按钮改路由到 OpmlExportPage 子界面
+          //   这里 smoke-2.4 探针不应该点"导出 OPML"按钮(会跳页破坏三栏),改成直接调 IPC
+          //   文件存在与否由 smoke-2.4-ui-ipc.cjs 脚本外层检查 opmlPath
+          const exportR = await window.api.opml.export();
+          report.uiIpc.checks.uiOpmlExportWorks = exportR.success;
+          await sleep(1500); // 等文件落盘
 
           // OPML 导入
           try {
@@ -2042,10 +2384,15 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             const firstTitle = articleItems[0].querySelector('.article-list__article-title')?.textContent;
             articleItems[0].click();
 
-            // 等阅读区标题更新
+            // 等阅读区标题元素出现
+            // Phase 4.1.1:article-reader__title 现在包含 chip + title-text,
+            //   textContent 包含 chip name + title,严格 === 比较会失败 — 改用 includes
             const readerTitle = await waitFor(() => {
-              const t = document.querySelector('.article-reader__title')?.textContent;
-              return t && firstTitle && t.trim() === firstTitle.trim() ? t : null;
+              const el = document.querySelector('.article-reader__title');
+              if (!el) return null;
+              const t = el.textContent ?? '';
+              if (firstTitle && t.includes(firstTitle)) return t;
+              return null;
             }, { timeout: 3000 });
             report.uiIpc.checks.uiClickWorks = !!readerTitle;
             report.uiIpc.checks.readerTitle = readerTitle ?? null;
@@ -2835,6 +3182,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"feedsGroup":{"ok":true');
     } else if (smokeSearchPagination) {
       pass = raw.includes('"searchPagination":{"ok":true');
+    } else if (smokeFeedActions) {
+      pass = raw.includes('"feedActions":{"ok":true');
+    } else if (smokeOpmlExportSelection) {
+      pass = raw.includes('"opmlExport":{"ok":true');
     } else if (smokeUiReal) {
       if (SMOKE_FLAGS.smokeIntegration) {
         // 集成 fixture 同时覆盖基础 UI IPC 与 Phase 3 页面流程，两者均必须通过。

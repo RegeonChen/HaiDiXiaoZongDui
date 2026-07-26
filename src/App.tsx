@@ -35,6 +35,7 @@ import { NotesPage } from './pages/NotesPage/NotesPage';
 import { DigestsPage } from './pages/DigestsPage/DigestsPage';
 import { TopicsPage } from './pages/TopicsPage/TopicsPage';
 import { LogsPage } from './pages/LogsPage/LogsPage';
+import { OpmlExportPage } from './pages/OpmlExportPage/OpmlExportPage';
 import { GeneralSettingsModal } from './components/GeneralSettingsModal/GeneralSettingsModal';
 import './index.css';
 
@@ -351,6 +352,126 @@ export function App() {
     },
     [ds, refreshCounts]
   );
+
+  // Phase 4.1.1:同步当前选中订阅源(中栏顶部"同步"按钮)
+  //   - 进度通过底部 syncingProgress bar 展示
+  //   - 完成后通过 toast 报告"新增 X 篇,更新 Y 篇"或具体错误
+  //   - 完成后刷新 articles + counts
+  //   - 同步后调 refreshArticles 走分页通道,触发文章列表更新
+  const [feedActionBusy, setFeedActionBusy] = useState(false);
+  const handleSyncSelectedFeed = useCallback(async () => {
+    const fid = selection.feedId;
+    if (typeof fid !== 'string') return;
+    if (fid === 'all' || fid === 'unread' || fid === 'starred' || fid.startsWith('tag:')) return;
+    const feed = feeds.find((f) => f.id === fid);
+    if (!feed || feedActionBusy) return;
+    setFeedActionBusy(true);
+    // 启动底部进度条(progress 态,等同步完成切 done)
+    setSyncingProgress({
+      kind: 'progress',
+      feedName: feed.siteTitle || feed.title,
+      completed: 0,
+      total: 1,
+      okCount: 0,
+      failCount: 0
+    });
+    pushToast(`正在同步「${feed.siteTitle || feed.title}」…`, 'info');
+    try {
+      const r = await ds.syncFeed(feed.id);
+      if (r.ok) {
+        const msg = `同步完成：新增 ${r.newArticles} 篇${r.updatedArticles > 0 ? `，更新 ${r.updatedArticles} 篇` : ''}`;
+        pushToast(msg, 'success');
+        setSyncingProgress({ kind: 'done', total: 1, okCount: 1, failCount: 0 });
+        if (syncDoneTimerRef.current !== null) clearTimeout(syncDoneTimerRef.current);
+        syncDoneTimerRef.current = setTimeout(() => {
+          setSyncingProgress(null);
+          syncDoneTimerRef.current = null;
+        }, 3000);
+        await refreshFeeds();
+        const result = await ds.articles({});
+        if (result.kind === 'ready') {
+          setAllArticlesState({ kind: 'ready', data: result.data });
+        }
+        // 同步后刷新当前分页 articles（重置 offset=0）
+        await refreshArticles({ feedId: feed.id });
+        void refreshCounts();
+      } else {
+        pushToast(`同步失败：${r.error ?? '未知错误'}`, 'error');
+        setSyncingProgress({ kind: 'done', total: 1, okCount: 0, failCount: 1 });
+        if (syncDoneTimerRef.current !== null) clearTimeout(syncDoneTimerRef.current);
+        syncDoneTimerRef.current = setTimeout(() => {
+          setSyncingProgress(null);
+          syncDoneTimerRef.current = null;
+        }, 3000);
+      }
+    } catch (e) {
+      pushToast(`同步出错：${String(e)}`, 'error');
+      setSyncingProgress(null);
+    } finally {
+      setFeedActionBusy(false);
+    }
+  }, [selection.feedId, feeds, feedActionBusy, ds, pushToast, refreshFeeds, refreshArticles, refreshCounts]);
+
+  // Phase 4.1.1:全部标为已读(中栏顶部"全部已读"按钮)
+  //   - 仅对具体 feed 有效(all/unread/starred/tag: 不显示按钮)
+  //   - 调 ds.markAllReadByFeed 返回更新的文章数
+  //   - 完成后本地 articles 状态同步 isRead=true + 调 refreshArticles 触发重新分页
+  //   - 调 refreshCounts 侧栏未读数实时更新
+  const handleMarkAllReadByFeed = useCallback(async () => {
+    const fid = selection.feedId;
+    if (typeof fid !== 'string') return;
+    if (fid === 'all' || fid === 'unread' || fid === 'starred' || fid.startsWith('tag:')) return;
+    const feed = feeds.find((f) => f.id === fid);
+    if (!feed || feedActionBusy) return;
+    const unreadCount = allArticles.filter((a) => a.feedId === feed.id && !a.isRead).length;
+    if (unreadCount === 0) {
+      pushToast('该订阅源下没有未读文章', 'info');
+      return;
+    }
+    const ok = await confirmRef.current?.open({
+      title: '全部标为已读',
+      message: `确定要把「${feed.siteTitle || feed.title}」下 ${unreadCount} 篇未读文章全部标为已读？`,
+      confirmLabel: '全部已读',
+      cancelLabel: '取消'
+    });
+    if (!ok) return;
+    setFeedActionBusy(true);
+    try {
+      const count = await ds.markAllReadByFeed(feed.id);
+      pushToast(`已标记 ${count} 篇为已读`, 'success');
+      // 本地 articles 状态批量更新 isRead=true
+      setArticlesState((prev) => {
+        if (prev.kind !== 'ready') return prev;
+        return {
+          kind: 'ready',
+          data: prev.data.map((a) => (a.feedId === feed.id ? { ...a, isRead: true } : a))
+        };
+      });
+      setAllArticlesState((prev) => {
+        if (prev.kind !== 'ready') return prev;
+        return {
+          kind: 'ready',
+          data: prev.data.map((a) => (a.feedId === feed.id ? { ...a, isRead: true } : a))
+        };
+      });
+      // 刷新当前分页 articles + 侧栏计数
+      await refreshArticles({ feedId: feed.id });
+      void refreshCounts();
+    } catch (e) {
+      pushToast(`标记失败：${e instanceof Error ? e.message : String(e)}`, 'error');
+    } finally {
+      setFeedActionBusy(false);
+    }
+  }, [selection.feedId, feeds, feedActionBusy, allArticles, ds, pushToast, refreshArticles, refreshCounts]);
+
+  // Phase 4.1.1:判断当前选中的 feedId 是否显示同步/全部已读按钮
+  //   - 仅具体 feed 显示(all/unread/starred/tag: 都不显示,避免误操作)
+  const showFeedActionBar = useMemo(() => {
+    const fid = selection.feedId;
+    if (typeof fid !== 'string') return false;
+    if (fid === 'all' || fid === 'unread' || fid === 'starred' || fid.startsWith('tag:')) return false;
+    return feeds.some((f) => f.id === fid);
+  }, [selection.feedId, feeds]);
 
   // P2 体验打磨：全局键盘快捷键
   //   j / k        下一条 / 上一条 文章（自动 mark read）
@@ -874,24 +995,13 @@ export function App() {
     return { ok: true, message: 'done', result: r.data };
   }, [ds, pushToast, refreshFeeds]);
 
-  const handleOpmlExport = useCallback(async () => {
-    const api = (window as unknown as { api?: { opml?: { export: () => Promise<{ success: boolean; data?: boolean; error?: { message: string } }> } } }).api;
-    if (!api?.opml?.export) {
-      pushToast('当前模式不支持 OPML 操作', 'error');
-      return { ok: false, message: 'no-opml' };
-    }
-    const r = await api.opml.export();
-    if (!r.success) {
-      pushToast(`OPML 导出失败：${r.error?.message ?? '未知错误'}`, 'error');
-      return { ok: false, message: r.error?.message ?? 'failed' };
-    }
-    if (r.data === true) {
-      pushToast('OPML 导出成功', 'success');
-    } else {
-      pushToast('已取消导出', 'info');
-    }
-    return { ok: r.data === true, message: r.data ? 'done' : 'cancelled' };
-  }, [pushToast]);
+  // Phase 4.1.4:OPML 导出改为跳转到 OpmlExportPage 子页面,
+  //   由子页面收集 feedIds 后调 window.api.opml.export(feedIds)
+  //   这里只做路由跳转,不再直接触发原生保存对话框
+  const handleOpmlExport = useCallback(() => {
+    setCurrentPage('opml-export');
+    return Promise.resolve({ ok: true, message: 'navigated' });
+  }, []);
 
   // ----- 渲染三栏（reader 页面） -----
   const feedsSlot =
@@ -965,6 +1075,31 @@ export function App() {
         hasMore={articleTotal > articles.length}
         onLoadMore={handleLoadMore}
         loadingMore={loadingMore}
+        // Phase 4.1.1:中栏顶部操作按钮(同步 / 全部已读)
+        actionBar={showFeedActionBar ? (
+          <>
+            <button
+              type="button"
+              className={`feed-action-btn ${feedActionBusy ? 'is-busy' : ''}`}
+              onClick={() => void handleSyncSelectedFeed()}
+              disabled={feedActionBusy}
+              data-testid="feed-action__sync"
+              title="同步当前订阅源"
+            >
+              {feedActionBusy ? '同步中…' : '↻ 同步'}
+            </button>
+            <button
+              type="button"
+              className={`feed-action-btn ${feedActionBusy ? 'is-busy' : ''}`}
+              onClick={() => void handleMarkAllReadByFeed()}
+              disabled={feedActionBusy}
+              data-testid="feed-action__mark-all-read"
+              title="把该订阅源下所有未读文章标为已读"
+            >
+              ✓ 全部已读
+            </button>
+          </>
+        ) : undefined}
       />
     );
 
@@ -1002,7 +1137,7 @@ export function App() {
       pageSlot = <SettingsPage onToast={pushToast} />;
       break;
     case 'tags':
-      pageSlot = <TagsPage onToast={pushToast} />;
+      pageSlot = <TagsPage onToast={pushToast} onOpenArticle={handleTopicOpenArticle} />;
       break;
     case 'notes':
       pageSlot = <NotesPage onToast={pushToast} />;
@@ -1015,6 +1150,9 @@ export function App() {
       break;
     case 'logs':
       pageSlot = <LogsPage />;
+      break;
+    case 'opml-export':
+      pageSlot = <OpmlExportPage onToast={pushToast} onClose={() => setCurrentPage('reader')} />;
       break;
     case 'general':
     case 'reader':
