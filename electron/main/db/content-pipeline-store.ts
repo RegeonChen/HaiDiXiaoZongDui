@@ -257,6 +257,7 @@ export class SqliteContentPipelineStore implements
 
   async listFeedEntriesForExport(): Promise<OpmlFeedEntry[]> {
     return FeedRepository.list().map((feed) => ({
+      id: feed.id,
       title: feed.title || feed.siteTitle || new URL(feed.url).hostname,
       url: feed.url,
       siteUrl: feed.link || null,

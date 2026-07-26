@@ -37,8 +37,12 @@ export class OpmlApplicationService {
     };
   }
 
-  async exportFile(filePath: string): Promise<void> {
-    await exportOpmlFile(filePath, await this.store.listFeedEntriesForExport());
+  async exportFile(filePath: string, feedIds?: string[]): Promise<void> {
+    const allFeeds = await this.store.listFeedEntriesForExport();
+    const feeds = feedIds && feedIds.length > 0
+      ? allFeeds.filter((f) => feedIds.includes(f.id))
+      : allFeeds;
+    await exportOpmlFile(filePath, feeds);
   }
 }
 
@@ -168,6 +172,7 @@ function visitOutline(
     seen.add(key);
 
     result.feeds.push({
+      id: '', // 从外部 OPML 解析的条目没有 DB ID，导入时才分配
       title: outlineTitle ?? new URL(url).hostname,
       url,
       siteUrl: optionalHttpUrl(stringValue(value['htmlUrl'])),

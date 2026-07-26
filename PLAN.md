@@ -467,6 +467,115 @@
 - **Verification:** 从同步多篇真实文章开始，可以生成一个包含事件分组、时间线、观点差异和来源引用的专题简报。
 - **MVP Result (2026-07-23):** 专题 CRUD、自动关联、事件聚合、发展方向、点线图、原文回跳、缓存和来源简报已端到端接通。后续若启用模型，仅用于优化语义关系与观点差异，不参与第一轮候选发现。
 
+## Phase 4.1: Feed Action Buttons & Tag Display Enhancement
+
+**Overall Goal:** 在订阅源中栏添加操作按钮（同步/全部标为已读），在文章列表和阅读区显示文章标签，将标签管理界面改为双栏布局并支持按标签查看文章。
+
+### Task 4.1.1 - Feed Action Buttons & Tag UI (张晨阳)
+
+- **Task Detail:**
+  1. **订阅源操作按钮**：在中栏上方当前选中订阅源名称右侧添加两个按钮——"同步"和"全部标为已读"。
+  2. **同步按钮**：点击后触发单源同步（调用 `ds.syncFeed(feedId)`），屏幕下方弹出进度提示和结果 toast（成功显示"同步完成：新增 X 篇，更新 Y 篇"，失败显示具体错误原因）。
+  3. **全部标为已读按钮**：点击后将当前订阅源下所有文章批量标记为已读（调用批量已读 IPC），确认左栏"未读"等数字实时更新。
+  4. **文章标签显示**：在中栏 `ArticleList` 和右栏 `ArticleReader` 的文章标题前，渲染该文章的所有标签（标签名称 + 颜色圆点/背景色），标签信息从文章标题中解析嵌入的标签标记。
+  5. **标签管理双栏布局**：将现有标签管理页面改为左右两栏布局。左栏保留现有标签列表和管理功能（CRUD）；右栏为选中标签下的文章列表（标题 + 来源 + 时间），支持点击跳转到阅读器。
+  6. **右栏文章列表实时同步**：当用户对文章添加/移除标签后，右栏文章列表实时更新；当选中标签改变时，右栏同步切换为对应标签的文章列表。
+- **Affected Areas:** `src/components/ArticleList/ArticleList.tsx`（标签渲染 + 订阅源操作按钮）、`src/components/ArticleList/ArticleList.css`（操作按钮 + 标签样式）、`src/components/ArticleReader/ArticleReader.tsx`（标题前标签渲染）、`src/pages/TagManagePage.tsx`（左右双栏布局 + 右栏文章列表）、`src/App.tsx`（单源同步状态 + 批量已读 + 标签页状态管理）、`src/components/FeedList/FeedList.tsx`（计数实时更新）。
+- **Verification:**
+  - 点击订阅源 → 中栏上方显示源名称 + "同步"和"全部标为已读"两个按钮。
+  - 点击"同步" → 底部显示同步进度，完成后显示"同步完成：新增 X 篇，更新 Y 篇"或具体错误信息。
+  - 点击"全部标为已读" → 该源下所有文章变为已读，左栏"未读"计数实时更新。
+  - 一篇文章有标签"AI"（蓝色）和"技术"（绿色）→ 中栏和右栏标题前显示两个彩色标签。
+  - 标签管理页左栏点击标签"AI" → 右栏显示所有带"AI"标签的文章列表。
+  - 为文章添加/移除标签 → 右栏列表和中栏标题标签实时更新。
+
+### Task 4.1.2 - Single Feed Sync Progress & Tag Marker Compatibility (张宇凡)
+
+- **Task Detail:**
+  1. 确保单源同步（`syncFeed`）返回明确的进度信息（当前状态：正在抓取 / 正在解析 / 正在清洗 / 完成）和最终结果（新增数、更新数、错误信息）。
+  2. 同步失败时返回可读的错误原因（网络超时、Feed 格式错误、内容清洗失败等），供 UI 层展示具体错误 toast。
+  3. 评估标签嵌入标题对内容管线的影响：确认标签标记格式（如 `[tag:AI|#3B82F6]` 前缀）不会被 Feed 解析、正文清洗或 Markdown 渲染误处理；如需过滤，在清洗流程中增加标签标记剥离逻辑。
+  4. 补充单源同步烟测：针对一个有效 Feed 触发单源同步，验证进度回调和结果返回值完整性。
+- **Affected Areas:** `electron/main/sync-service.ts`（单源同步进度回调）、`electron/main/content-cleaner.ts`（标签标记过滤，如需要）、`scripts/`（同步烟测脚本）。
+- **Verification:**
+  - 点击单源"同步"按钮 → 底部依次显示"正在同步：XXX"→ 完成后显示新增/更新数量。
+  - 同步一个失效 Feed → 底部显示具体错误原因（如"网络超时"），而非通用"同步失败"。
+  - 标题中含标签标记的文章 → Cleaned HTML/Markdown 中标签标记不出现或正确渲染为标签组件。
+
+### Task 4.1.3 - Batch Mark Read & Tag-Title Binding & Tag Article Query (陈冠中)
+
+- **Task Detail:**
+  1. **批量标为已读**：在 `ArticleRepository` 中新增 `markAllReadByFeed(feedId)` 方法，将该订阅源下所有未读文章批量标记为已读；通过 IPC 暴露该接口，支持前端调用并返回更新的行数。
+  2. **标签-标题深度绑定**：
+     - 定义标签嵌入标题的存储格式（如标题前缀 `[tag:标签名|颜色hex] `），确保格式唯一可解析。
+     - 在 `tagAddToArticle` 操作中，同步更新 `articles` 表的 `title` 字段（将标签标记嵌入标题）。
+     - 在 `tagRemoveFromArticle` 操作中，同步从 `articles` 表的 `title` 字段中移除对应标签标记。
+     - 在 `getArticle` / `articles` 查询中确保标题字段包含最新的标签嵌入信息。
+     - 确保标签更新的事务性：标签增删和标题更新在同一事务中完成，防止数据不一致。
+  3. **按标签查询文章**：在 `ArticleRepository.list` 中完善 `tagIds` 筛选逻辑，确保可通过标签 ID 精确查询该标签下的所有文章；支持排序（时间倒序）和分页。
+  4. **IPC 接口**：提供 `article:markAllReadByFeed` IPC 通道；确认现有 `article:list` 的 `tagIds` 筛选和分页参数正常工作。
+- **Affected Areas:** `electron/main/db/article-repository.ts`（markAllReadByFeed + 标题更新 + tagIds 查询完善）、`electron/main/db/tag-repository.ts`（tagAddToArticle / tagRemoveFromArticle 中增加标题回写）、`electron/main/index.ts`（新增 IPC handler）、`shared/ipc.ts`（新通道定义）、`src/data/ipcDataSource.ts`（接口实现）、`src/data/mockDataSource.ts`（mock 实现）。
+- **Verification:**
+  - 点击"全部标为已读" → 该源下 10 篇未读文章全部变为已读 → 左栏"未读"计数 -10。
+  - 为文章添加标签"AI"（蓝色）→ 文章标题在 DB 中变为 `[tag:AI|#3B82F6] 原标题` → 前端解析后标题前显示蓝色"AI"标签。
+  - 移除标签"AI" → 标题恢复为原标题，前端标签消失。
+  - 标签管理页选中标签"AI" → 右栏显示所有带"AI"标签的文章，按时间倒序排列。
+  - 同一篇文章添加/移除标签的操作在重启后标题和标签状态一致。
+
+### Task 4.1.4 - OPML Export Selection UI (张晨阳)
+
+- **Task Detail:**
+  1. **导出选择子界面**：将现有的"导出 OPML"操作改为进入一个新的子界面（或全屏 Modal），不再直接触发导出。
+  2. **订阅源选择列表**：子界面展示所有订阅源的列表，每项包含订阅源名称、URL 和勾选框。初始状态下所有订阅源均被勾选。
+  3. **全选/取消全选**：列表顶部提供"全选"和"取消全选"按钮，一键切换所有订阅源的勾选状态。
+  4. **单个勾选/取消勾选**：用户可单独勾选或取消勾选任意订阅源，已选数量实时显示。
+  5. **操作按钮**：底部提供"取消导出"（返回上一页/关闭 Modal）和"确认导出"两个按钮。
+  6. **确认导出**：点击后收集当前已勾选的订阅源 ID 列表，调用选择性导出 IPC，后续行为与现有导出 OPML 一致（弹出保存对话框，写入文件）。
+- **Affected Areas:** `src/pages/OpmlExportPage.tsx`（新增选择子界面）、`src/components/OpmlButtons.tsx`（修改导出按钮行为，跳转子页面而非直接导出）、`src/App.tsx`（路由/Modal 状态管理）。
+- **Verification:**
+  - 点击"导出 OPML" → 进入订阅源选择子界面，所有订阅源默认勾选。
+  - 点击"取消全选" → 所有勾选取消 → 点击"全选" → 所有勾选恢复。
+  - 手动取消勾选 2 个订阅源 → 已选数量更新 → 点击"确认导出" → 弹出保存对话框 → 导出文件仅含已勾选的订阅源。
+  - 点击"取消导出" → 返回原界面，不触发任何文件操作。
+
+### Task 4.1.5 - Selective OPML Export Service (张宇凡)
+
+- **Task Detail:**
+  1. 改造 `opmlExport` 方法，使其接受可选的 `feedIds?: string[]` 参数：
+     - 若未传 `feedIds` 或为空，保持现有行为——导出所有订阅源。
+     - 若传入 `feedIds`，仅导出指定的订阅源，未选中的订阅源不出现在 OPML 文件中。
+  2. 确认选择性导出的 OPML 文件格式与全量导出完全一致，可被其他 RSS 阅读器正常导入。
+  3. 当 `feedIds` 中某个 ID 对应的订阅源不存在时，跳过该项而非中断整个导出。
+  4. 补充选择性导出烟测：传入部分 feedId，验证导出文件仅含指定订阅源。
+- **Affected Areas:** `electron/main/opml-service.ts`（opmlExport 方法签名 + 过滤逻辑）、`electron/main/index.ts`（opml:export IPC handler 参数透传）。
+- **Verification:**
+  - 传入 3 个 feedId → 导出 OPML 文件仅含 3 个 `<outline>` 条目。
+  - 传入不存在的 feedId → 导出正常完成，该 ID 被跳过，其余源正常导出。
+  - 不传 feedIds → 行为与现有全量导出一致，所有订阅源均出现在文件中。
+
+### Task 4.1.6 - Feed List Query & Selective Export IPC (陈冠中)
+
+- **Task Detail:**
+  1. 确认 `feed:list` IPC 返回的订阅源列表包含 UI 选择界面所需的所有字段（`id`、`title`、`url`），供前端渲染勾选列表。
+  2. 若 `feed:list` 需扩展字段（如 `siteTitle`、`feedType`），在 `FeedRepository` 和 `shared/types.ts` 中同步更新。
+  3. 确保 `opml:export` IPC handler 支持接收 `feedIds` 参数并透传给张宇凡的 `opmlExport` 方法。
+  4. 更新 `DataSource` 接口中 `opmlExport` 相关方法的签名（如需），同步更新 `IpcDataSource` 和 `MockDataSource` 实现。
+  5. Mock 模式下，选择性导出行为与全量导出保持一致（根据传入的 feedIds 过滤后生成 OPML 内容）。
+- **Affected Areas:** `electron/main/db/feed-repository.ts`（确认查询字段完整）、`electron/main/index.ts`（opml:export handler 参数）、`shared/ipc.ts`（如需新增类型）、`src/types/dataSource.ts`（如接口签名变更）、`src/data/ipcDataSource.ts` / `src/data/mockDataSource.ts`（接口实现同步）。
+- **Verification:**
+  - `feed:list` 返回数据包含 `id`、`title`、`url`，前端可正常渲染勾选列表。
+  - `opml:export` 传入 `feedIds: ['feed-a', 'feed-c']` → 只导出这两个源。
+  - Mock 模式下选择性导出行为与 IPC 模式一致。
+
+### Phase 4.1 Integration (张晨阳 + 张宇凡 + 陈冠中)
+
+- 张晨阳的 UI 操作按钮 + 导出选择界面 → 触发张宇凡的单源同步 + 选择性 OPML 导出 → 陈冠中的批量已读、标签查询和 feed 列表查询 → 张晨阳展示结果并更新界面。
+- **Verification:**
+  - 选中一个订阅源 → 点击"同步" → 底部显示进度 → 完成后新增文章出现在列表 → 点击"全部标为已读" → 文章变灰且计数更新。
+  - 为文章添加标签 → 中栏和右栏标题前出现彩色标签 → 标签管理页右栏出现该文章 → 移除标签 → 标签消失。
+  - 标签管理页选中不同标签 → 右栏文章列表实时切换 → 点击文章 → 跳转阅读器。
+  - 点击"导出 OPML" → 进入选择界面 → 调整勾选 → 确认导出 → 生成的 OPML 文件仅含选中的订阅源。
+
 ## Phase 5: Cross-platform Acceptance
 
 **Overall Goal:** 完成三平台验证、问题修复和课程交付准备。

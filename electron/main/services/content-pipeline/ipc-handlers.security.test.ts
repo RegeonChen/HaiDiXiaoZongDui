@@ -62,7 +62,7 @@ describe('content pipeline IPC security', () => {
     });
     expect(exported).toEqual({ success: true, data: true });
     expect(harness.importFile).toHaveBeenCalledWith('/approved/subscriptions.opml');
-    expect(harness.exportFile).toHaveBeenCalledWith('/approved/export.opml');
+    expect(harness.exportFile).toHaveBeenCalledWith('/approved/export.opml', undefined);
     expect(harness.importFile).not.toHaveBeenCalledWith('/Users/victim/.zshrc');
     expect(harness.exportFile).not.toHaveBeenCalledWith(
       '/Users/victim/Library/Application Support/app.db'

@@ -3086,6 +3086,17 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
     }
   });
 
+  // Phase 4.1.3：将指定订阅源下所有未读文章批量标为已读
+  trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_MARK_ALL_READ_BY_FEED, async (_, args): Promise<IpcResult<number>> => {
+    try {
+      if (!args?.feedId) return fail('INVALID_PARAMS', '缺少 feedId');
+      const updated = ArticleRepository.markAllReadByFeed(args.feedId);
+      return ok(updated);
+    } catch (e) {
+      return fail('ARTICLE_MARK_ALL_READ_BY_FEED_FAILED', String(e));
+    }
+  });
+
   // Phase 3.6.3：侧栏计数
   trustedIpcMain.handle(IPC_CHANNELS.ARTICLE_COUNTS, async (): Promise<IpcResult<{ all: number; unread: number; starred: number }>> => {
     try {

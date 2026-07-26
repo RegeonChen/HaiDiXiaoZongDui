@@ -72,6 +72,8 @@ export interface ArticleContentResult {
 }
 
 export interface OpmlFeedEntry {
+  /** Phase 4.1.6：订阅源 ID，用于选择性导出过滤 */
+  id: string;
   title: string;
   url: string;
   siteUrl: string | null;

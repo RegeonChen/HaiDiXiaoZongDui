@@ -135,7 +135,8 @@ export interface FullDataSource extends DataSource {
 
   // --- OPML（已存在，签名同步）---
   opmlImport(): Promise<DataSourceState<OpmlImportResult | null>>;
-  opmlExport(): Promise<DataSourceState<boolean>>;
+  /** Phase 4.1.6：feedIds 用于选择性导出 OPML */
+  opmlExport(feedIds?: string[]): Promise<DataSourceState<boolean>>;
 
   // --- Content ---
   getCleanedMarkdown(articleId: string): Promise<DataSourceState<string>>;
@@ -184,6 +185,13 @@ export class IpcDataSource implements FullDataSource {
   async markStarred(articleId: string, isStarred: boolean): Promise<void> {
     const r = await window.api.article.markStarred(articleId, isStarred);
     throwOnError(r, 'markStarred');
+  }
+
+  // Phase 4.1.3：将指定订阅源下所有未读文章批量标为已读
+  async markAllReadByFeed(feedId: string): Promise<number> {
+    const r = await window.api.article.markAllReadByFeed(feedId);
+    if (!r.success) throw new Error(`${r.error.code}: ${r.error.message}`);
+    return r.data;
   }
 
   // Phase 3.6.3：侧栏计数
@@ -478,7 +486,7 @@ export class IpcDataSource implements FullDataSource {
     return unwrap(await window.api.opml.import());
   }
 
-  async opmlExport(): Promise<DataSourceState<boolean>> {
-    return unwrap(await window.api.opml.export());
+  async opmlExport(feedIds?: string[]): Promise<DataSourceState<boolean>> {
+    return unwrap(await window.api.opml.export(feedIds));
   }
 }

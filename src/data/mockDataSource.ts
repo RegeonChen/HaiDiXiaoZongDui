@@ -152,6 +152,21 @@ export class MockDataSource implements DataSource {
     console.log('[mock:ds] markStarred', { articleId, isStarred });
   }
 
+  // Phase 4.1.3：将指定订阅源下所有未读文章批量标为已读
+  async markAllReadByFeed(feedId: string): Promise<number> {
+    let count = 0;
+    this.articlesState = this.articlesState.map((a) => {
+      if (a.feedId === feedId && !a.isRead) {
+        count += 1;
+        return { ...a, isRead: true };
+      }
+      return a;
+    });
+    // eslint-disable-next-line no-console
+    console.log('[mock:ds] markAllReadByFeed', { feedId, updated: count });
+    return count;
+  }
+
   async articleCounts(): Promise<DataSourceState<{ all: number; unread: number; starred: number }>> {
     const all = this.articlesState.length;
     const unread = this.articlesState.filter(a => !a.isRead).length;
@@ -679,7 +694,8 @@ export class MockDataSource implements DataSource {
     return { kind: 'ready', data: null };
   }
 
-  async opmlExport(): Promise<DataSourceState<boolean>> {
+  // Phase 4.1.6：feedIds 用于选择性导出 OPML
+  async opmlExport(_feedIds?: string[]): Promise<DataSourceState<boolean>> {
     return { kind: 'ready', data: false };
   }
 }

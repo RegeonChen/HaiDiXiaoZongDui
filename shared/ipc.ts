@@ -91,6 +91,8 @@ export const IPC_CHANNELS = {
   ARTICLE_MARK_READ:    'article:markRead',
   ARTICLE_MARK_STARRED: 'article:markStarred',
   ARTICLE_BATCH_MARK_READ: 'article:batchMarkRead',
+  // Phase 4.1.3：将指定订阅源下所有未读文章批量标为已读
+  ARTICLE_MARK_ALL_READ_BY_FEED: 'article:markAllReadByFeed',
 
   // -- Article Counts（Phase 3.6.3：侧栏计数） --
   ARTICLE_COUNTS:  'article:counts',
@@ -217,6 +219,8 @@ export interface IpcRequestMap {
   [IPC_CHANNELS.ARTICLE_MARK_READ]:       { args: { id: string; isRead: boolean };      result: void };
   [IPC_CHANNELS.ARTICLE_MARK_STARRED]:    { args: { id: string; isStarred: boolean };   result: void };
   [IPC_CHANNELS.ARTICLE_BATCH_MARK_READ]: { args: { ids: string[]; isRead: boolean };   result: void };
+  // Phase 4.1.3：将指定订阅源下所有未读文章批量标为已读
+  [IPC_CHANNELS.ARTICLE_MARK_ALL_READ_BY_FEED]: { args: { feedId: string };              result: number };
 
   // -- Article Counts（Phase 3.6.3） --
   [IPC_CHANNELS.ARTICLE_COUNTS]: { args: void; result: { all: number; unread: number; starred: number } };
@@ -301,8 +305,8 @@ export interface IpcRequestMap {
   // -- OPML --
   /** Main 进程显示原生文件选择器；Renderer 不得传入任意路径。null 表示用户取消。 */
   [IPC_CHANNELS.OPML_IMPORT]: { args: void; result: OpmlImportResult | null };
-  /** Main 进程显示原生保存对话框；false 表示用户取消。 */
-  [IPC_CHANNELS.OPML_EXPORT]: { args: void; result: boolean };
+  /** Main 进程显示原生保存对话框；false 表示用户取消。Phase 4.1.6：feedIds 用于选择性导出。 */
+  [IPC_CHANNELS.OPML_EXPORT]: { args: { feedIds?: string[] }; result: boolean };
 }
 
 // ============================================================

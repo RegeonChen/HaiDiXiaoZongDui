@@ -7,6 +7,33 @@ import crypto from 'node:crypto';
 import { getDatabase, saveDatabase } from './connection';
 import type { Tag, TagCreateInput, TagUpdateInput } from '../../../shared/types';
 
+/** 标签嵌入标题的前缀标记格式：`[tag:标签名|颜色hex] ` */
+const TAG_TITLE_MARKER_RE = /\[tag:[^\]]+\]\s*/g;
+
+/** 为单篇文章重建标题中的标签标记前缀，写入 articles 表。
+ *  skipSave: 批量操作时设为 true，由调用方统一 saveDatabase()。 */
+function rebuildArticleTitleTags(articleId: string, skipSave = false): void {
+  const db = getDatabase();
+
+  // 获取干净标题（不含任何 tag 标记）
+  const titleRows = db.exec('SELECT title FROM articles WHERE id = ?', [articleId]);
+  if (!titleRows.length || !titleRows[0].values.length) return;
+  const rawTitle = titleRows[0].values[0][0] as string;
+  const cleanTitle = rawTitle.replace(TAG_TITLE_MARKER_RE, '').trim();
+
+  // 获取当前文章所有标签（读取内存中的最新状态）
+  const tags = TagRepository.getByArticle(articleId);
+  if (tags.length === 0) {
+    db.run('UPDATE articles SET title = ? WHERE id = ?', [cleanTitle, articleId]);
+  } else {
+    const prefix = tags
+      .map((t) => `[tag:${t.name}|${t.color ?? 'inherit'}]`)
+      .join(' ') + ' ';
+    db.run('UPDATE articles SET title = ? WHERE id = ?', [prefix + cleanTitle, articleId]);
+  }
+  if (!skipSave) saveDatabase();
+}
+
 function now(): string {
   return new Date().toISOString();
 }
@@ -68,8 +95,20 @@ export const TagRepository = {
     const db = getDatabase();
     const existing = this.getById(id);
     if (!existing) return false;
+    // 先收集受影响的文章 ID，再删除关联
+    const affectedRows = db.exec('SELECT article_id FROM article_tags WHERE tag_id = ?', [id]);
+    const affectedArticleIds: string[] = [];
+    if (affectedRows.length && affectedRows[0].values.length) {
+      for (const row of affectedRows[0].values) {
+        affectedArticleIds.push(row[0] as string);
+      }
+    }
     db.run('DELETE FROM article_tags WHERE tag_id = ?', [id]);
     db.run('DELETE FROM tags WHERE id = ?', [id]);
+    // Phase 4.1.3：标签删除后同步回写受影响文章的标题，最后统一 saveDatabase
+    for (const articleId of affectedArticleIds) {
+      rebuildArticleTitleTags(articleId, true);
+    }
     saveDatabase();
     return true;
   },
@@ -78,14 +117,16 @@ export const TagRepository = {
   addToArticle(articleId: string, tagId: string): void {
     const db = getDatabase();
     db.run('INSERT OR IGNORE INTO article_tags (article_id, tag_id) VALUES (?, ?)', [articleId, tagId]);
-    saveDatabase();
+    // Phase 4.1.3：标签增删后同步回写文章标题（内部统一 saveDatabase）
+    rebuildArticleTitleTags(articleId);
   },
 
   /** 为文章移除标签 */
   removeFromArticle(articleId: string, tagId: string): void {
     const db = getDatabase();
     db.run('DELETE FROM article_tags WHERE article_id = ? AND tag_id = ?', [articleId, tagId]);
-    saveDatabase();
+    // Phase 4.1.3：标签增删后同步回写文章标题（内部统一 saveDatabase）
+    rebuildArticleTitleTags(articleId);
   },
 
   /** 获取文章的标签列表 */
@@ -109,6 +150,10 @@ export const TagRepository = {
       }
     }
     stmt.free();
+    // Phase 4.1.3：批量重建所有文章标题，最后统一 saveDatabase
+    for (const articleId of articleIds) {
+      rebuildArticleTitleTags(articleId, true);
+    }
     saveDatabase();
   }
 };

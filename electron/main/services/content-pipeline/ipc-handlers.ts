@@ -71,10 +71,10 @@ export function registerContentPipelineIpc(
     return success(await services.opml.importFile(filePath));
   });
 
-  secureHandle(IPC_CHANNELS.OPML_EXPORT, async (event) => {
+  secureHandle(IPC_CHANNELS.OPML_EXPORT, async (event, args) => {
     const filePath = await security.selectOpmlExportPath(event);
     if (!filePath) return success(false);
-    await services.opml.exportFile(filePath);
+    await services.opml.exportFile(filePath, args?.feedIds);
     return success(true);
   });
 

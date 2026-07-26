@@ -36,6 +36,11 @@ export interface DataSource {
   /** 标记星标/取消 */
   markStarred(articleId: string, isStarred: boolean): Promise<void>;
   /**
+   * Phase 4.1.3：将指定订阅源下所有未读文章批量标为已读。
+   * 返回实际更新的文章数。
+   */
+  markAllReadByFeed(feedId: string): Promise<number>;
+  /**
    * Phase 3.6.3：获取侧栏三个分类的精确计数。
    * 返回 { all, unread, starred }，分别对应所有文章、未读文章、星标文章的总数。
    */

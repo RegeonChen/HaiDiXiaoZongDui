@@ -295,6 +295,22 @@ export const ArticleRepository = {
   },
 
   /**
+   * Phase 4.1.3：将指定订阅源下所有未读文章批量标为已读。
+   * 返回实际更新的行数。
+   */
+  markAllReadByFeed(feedId: string): number {
+    const db = getDatabase();
+    const ts = now();
+    db.run(
+      'UPDATE articles SET is_read = 1, updated_at = ? WHERE feed_id = ? AND is_read = 0',
+      [ts, feedId]
+    );
+    const count = db.getRowsModified();
+    saveDatabase();
+    return count;
+  },
+
+  /**
    * Phase 3.6.3：获取所有文章总数（含已读/未读）。
    */
   countAll(): number {

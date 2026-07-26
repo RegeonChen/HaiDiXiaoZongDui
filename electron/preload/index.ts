@@ -81,6 +81,10 @@ const api = {
     batchMarkRead: (ids: string[], isRead: boolean): Promise<IpcResponse<typeof IPC_CHANNELS.ARTICLE_BATCH_MARK_READ>> =>
       invoke(IPC_CHANNELS.ARTICLE_BATCH_MARK_READ, { ids, isRead }),
 
+    // Phase 4.1.3：将指定订阅源下所有未读文章批量标为已读
+    markAllReadByFeed: (feedId: string): Promise<IpcResponse<typeof IPC_CHANNELS.ARTICLE_MARK_ALL_READ_BY_FEED>> =>
+      invoke(IPC_CHANNELS.ARTICLE_MARK_ALL_READ_BY_FEED, { feedId }),
+
     // Phase 3.6.3：侧栏计数
     counts: (): Promise<IpcResponse<typeof IPC_CHANNELS.ARTICLE_COUNTS>> =>
       invokeVoid(IPC_CHANNELS.ARTICLE_COUNTS),
@@ -120,8 +124,9 @@ const api = {
     import: (): Promise<IpcResponse<typeof IPC_CHANNELS.OPML_IMPORT>> =>
       invokeVoid(IPC_CHANNELS.OPML_IMPORT),
 
-    export: (): Promise<IpcResponse<typeof IPC_CHANNELS.OPML_EXPORT>> =>
-      invokeVoid(IPC_CHANNELS.OPML_EXPORT)
+    // Phase 4.1.6：feedIds 用于选择性导出 OPML
+    export: (feedIds?: string[]): Promise<IpcResponse<typeof IPC_CHANNELS.OPML_EXPORT>> =>
+      invoke(IPC_CHANNELS.OPML_EXPORT, { feedIds })
   },
 
   // —— Settings ——
