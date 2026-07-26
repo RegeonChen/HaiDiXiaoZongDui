@@ -34,15 +34,35 @@ describe('SyncService', () => {
       recordFeedSyncFailure: vi.fn(async () => undefined)
     };
     const pipeline = {
-      syncFeed: vi.fn(async () => pipelineOutput('a'))
+      syncFeed: vi.fn(async (
+        _target: unknown,
+        options?: { onStage?: (stage: 'fetching' | 'parsing') => void }
+      ) => {
+        options?.onStage?.('fetching');
+        options?.onStage?.('parsing');
+        return pipelineOutput('a');
+      })
     } as unknown as FeedPipeline;
 
-    const result = await new SyncService(store, pipeline).syncFeed('a');
+    const service = new SyncService(store, pipeline);
+    const result = await service.syncFeed('a');
 
     expect(result).toMatchObject({
       success: true,
       newArticles: 3,
       updatedArticles: 1
+    });
+    expect(result.stages.map(({ stage }) => stage)).toEqual([
+      'fetching',
+      'parsing',
+      'saving',
+      'completed'
+    ]);
+    expect(service.getProgress()).toMatchObject({
+      totalFeeds: 1,
+      completedFeeds: 1,
+      currentFeedId: 'a',
+      currentStage: { stage: 'completed' }
     });
     expect(store.saveFeedPipelineOutput).toHaveBeenCalledOnce();
   });
@@ -58,8 +78,13 @@ describe('SyncService', () => {
       recordFeedSyncFailure: vi.fn(async () => undefined)
     };
     const pipeline = {
-      syncFeed: vi.fn(async ({ feedId }: { feedId: string }) => {
+      syncFeed: vi.fn(async (
+        { feedId }: { feedId: string },
+        options?: { onStage?: (stage: 'fetching' | 'parsing') => void }
+      ) => {
+        options?.onStage?.('fetching');
         if (feedId === 'a') throw new Error('network failed');
+        options?.onStage?.('parsing');
         return pipelineOutput(feedId);
       })
     } as unknown as FeedPipeline;
@@ -70,7 +95,19 @@ describe('SyncService', () => {
     expect(results).toHaveLength(2);
     expect(results[0]?.success).toBe(false);
     expect(results[1]?.success).toBe(true);
-    expect(service.getProgress()).toMatchObject({ totalFeeds: 2, completedFeeds: 2 });
+    expect(results[0]?.stages.map(({ stage }) => stage)).toEqual(['fetching', 'failed']);
+    expect(results[1]?.stages.map(({ stage }) => stage)).toEqual([
+      'fetching',
+      'parsing',
+      'saving',
+      'completed'
+    ]);
+    expect(service.getProgress()).toMatchObject({
+      totalFeeds: 2,
+      completedFeeds: 2,
+      currentFeedId: 'b',
+      currentStage: { stage: 'completed' }
+    });
     expect(store.recordFeedSyncFailure).toHaveBeenCalledWith('a', 'network failed');
   });
 
@@ -100,7 +137,11 @@ describe('SyncService', () => {
       recordFeedSyncFailure: vi.fn(async () => undefined)
     };
     const pipeline = {
-      syncFeed: vi.fn(async () => {
+      syncFeed: vi.fn(async (
+        _target: unknown,
+        options?: { onStage?: (stage: 'fetching' | 'parsing') => void }
+      ) => {
+        options?.onStage?.('fetching');
         throw new ContentPipelineError('HTTP_TIMEOUT', '请求超时：example.com');
       })
     } as unknown as FeedPipeline;
@@ -108,9 +149,38 @@ describe('SyncService', () => {
     const result = await new SyncService(store, pipeline).syncFeed('a');
 
     expect(result.error).toBe('[HTTP_TIMEOUT] 请求超时：example.com');
+    expect(result.stages.map(({ stage }) => stage)).toEqual(['fetching', 'failed']);
     expect(store.recordFeedSyncFailure).toHaveBeenCalledWith(
       'a',
       '[HTTP_TIMEOUT] 请求超时：example.com'
     );
+  });
+
+  it('reports a missing feed as a completed failed sync', async () => {
+    const store: FeedSyncStore = {
+      listFeedSyncTargets: vi.fn(async () => []),
+      getFeedSyncTarget: vi.fn(async () => null),
+      saveFeedPipelineOutput: vi.fn(async () => ({ newArticles: 0, updatedArticles: 0 })),
+      recordFeedSyncFailure: vi.fn(async () => undefined)
+    };
+    const pipeline = {
+      syncFeed: vi.fn()
+    } as unknown as FeedPipeline;
+    const service = new SyncService(store, pipeline);
+
+    const result = await service.syncFeed('missing');
+
+    expect(result).toMatchObject({
+      success: false,
+      error: '未找到订阅源：missing',
+      stages: [{ stage: 'failed' }]
+    });
+    expect(service.getProgress()).toMatchObject({
+      totalFeeds: 1,
+      completedFeeds: 1,
+      currentFeedId: 'missing',
+      currentStage: { stage: 'failed' }
+    });
+    expect(pipeline.syncFeed).not.toHaveBeenCalled();
   });
 });

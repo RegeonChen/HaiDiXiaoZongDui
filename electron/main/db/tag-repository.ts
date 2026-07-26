@@ -6,36 +6,53 @@
 import crypto from 'node:crypto';
 import { getDatabase, saveDatabase } from './connection';
 import type { Tag, TagCreateInput, TagUpdateInput } from '../../../shared/types';
-
-/** 标签嵌入标题的前缀标记格式：`[tag:标签名|颜色hex] ` */
-const TAG_TITLE_MARKER_RE = /\[tag:[^\]]+\]\s*/g;
+import { buildTaggedArticleTitle } from './article-title-tags';
 
 /** 为单篇文章重建标题中的标签标记前缀，写入 articles 表。
  *  skipSave: 批量操作时设为 true，由调用方统一 saveDatabase()。 */
 function rebuildArticleTitleTags(articleId: string, skipSave = false): void {
   const db = getDatabase();
 
-  // 获取干净标题（不含任何 tag 标记）
+  // 获取当前标题；buildTaggedArticleTitle 会先剥离旧前缀。
   const titleRows = db.exec('SELECT title FROM articles WHERE id = ?', [articleId]);
   if (!titleRows.length || !titleRows[0].values.length) return;
-  const rawTitle = titleRows[0].values[0][0] as string;
-  const cleanTitle = rawTitle.replace(TAG_TITLE_MARKER_RE, '').trim();
+  const currentTitle = titleRows[0].values[0][0] as string;
 
   // 获取当前文章所有标签（读取内存中的最新状态）
   const tags = TagRepository.getByArticle(articleId);
-  if (tags.length === 0) {
-    db.run('UPDATE articles SET title = ? WHERE id = ?', [cleanTitle, articleId]);
-  } else {
-    const prefix = tags
-      .map((t) => `[tag:${t.name}|${t.color ?? 'inherit'}]`)
-      .join(' ') + ' ';
-    db.run('UPDATE articles SET title = ? WHERE id = ?', [prefix + cleanTitle, articleId]);
-  }
+  db.run(
+    'UPDATE articles SET title = ? WHERE id = ?',
+    [buildTaggedArticleTitle(currentTitle, tags), articleId]
+  );
   if (!skipSave) saveDatabase();
 }
 
 function now(): string {
   return new Date().toISOString();
+}
+
+function articleIdsForTag(tagId: string): string[] {
+  const rows = getDatabase().exec(
+    'SELECT article_id FROM article_tags WHERE tag_id = ?',
+    [tagId]
+  );
+  if (!rows.length) return [];
+  return rows[0].values.map((row) => row[0] as string);
+}
+
+function runTransaction<T>(action: () => T): T {
+  const db = getDatabase();
+  db.run('BEGIN TRANSACTION');
+  let result: T;
+  try {
+    result = action();
+    db.run('COMMIT');
+  } catch (error) {
+    db.run('ROLLBACK');
+    throw error;
+  }
+  saveDatabase();
+  return result;
 }
 
 export const TagRepository = {
@@ -83,50 +100,56 @@ export const TagRepository = {
     const name = input.name ?? existing.name;
     const color = input.color !== undefined ? input.color : existing.color;
     const timestamp = now();
-    db.run(
-      'UPDATE tags SET name=?, color=?, updated_at=? WHERE id=?',
-      [name, color, timestamp, id]
-    );
-    saveDatabase();
-    return this.getById(id);
+    const affectedArticleIds = articleIdsForTag(id);
+    return runTransaction(() => {
+      db.run(
+        'UPDATE tags SET name=?, color=?, updated_at=? WHERE id=?',
+        [name, color, timestamp, id]
+      );
+      for (const articleId of affectedArticleIds) {
+        rebuildArticleTitleTags(articleId, true);
+      }
+      return this.getById(id);
+    });
   },
 
   delete(id: string): boolean {
     const db = getDatabase();
     const existing = this.getById(id);
     if (!existing) return false;
-    // 先收集受影响的文章 ID，再删除关联
-    const affectedRows = db.exec('SELECT article_id FROM article_tags WHERE tag_id = ?', [id]);
-    const affectedArticleIds: string[] = [];
-    if (affectedRows.length && affectedRows[0].values.length) {
-      for (const row of affectedRows[0].values) {
-        affectedArticleIds.push(row[0] as string);
+    const affectedArticleIds = articleIdsForTag(id);
+    return runTransaction(() => {
+      db.run('DELETE FROM article_tags WHERE tag_id = ?', [id]);
+      db.run('DELETE FROM tags WHERE id = ?', [id]);
+      for (const articleId of affectedArticleIds) {
+        rebuildArticleTitleTags(articleId, true);
       }
-    }
-    db.run('DELETE FROM article_tags WHERE tag_id = ?', [id]);
-    db.run('DELETE FROM tags WHERE id = ?', [id]);
-    // Phase 4.1.3：标签删除后同步回写受影响文章的标题，最后统一 saveDatabase
-    for (const articleId of affectedArticleIds) {
-      rebuildArticleTitleTags(articleId, true);
-    }
-    saveDatabase();
-    return true;
+      return true;
+    });
   },
 
   /** 为文章添加标签（幂等） */
   addToArticle(articleId: string, tagId: string): void {
     const db = getDatabase();
-    db.run('INSERT OR IGNORE INTO article_tags (article_id, tag_id) VALUES (?, ?)', [articleId, tagId]);
-    // Phase 4.1.3：标签增删后同步回写文章标题（内部统一 saveDatabase）
-    rebuildArticleTitleTags(articleId);
+    runTransaction(() => {
+      db.run(
+        'INSERT OR IGNORE INTO article_tags (article_id, tag_id) VALUES (?, ?)',
+        [articleId, tagId]
+      );
+      rebuildArticleTitleTags(articleId, true);
+    });
   },
 
   /** 为文章移除标签 */
   removeFromArticle(articleId: string, tagId: string): void {
     const db = getDatabase();
-    db.run('DELETE FROM article_tags WHERE article_id = ? AND tag_id = ?', [articleId, tagId]);
-    // Phase 4.1.3：标签增删后同步回写文章标题（内部统一 saveDatabase）
-    rebuildArticleTitleTags(articleId);
+    runTransaction(() => {
+      db.run(
+        'DELETE FROM article_tags WHERE article_id = ? AND tag_id = ?',
+        [articleId, tagId]
+      );
+      rebuildArticleTitleTags(articleId, true);
+    });
   },
 
   /** 获取文章的标签列表 */
@@ -143,18 +166,23 @@ export const TagRepository = {
   /** 批量为文章添加标签 */
   batchAdd(articleIds: string[], tagIds: string[]): void {
     const db = getDatabase();
-    const stmt = db.prepare('INSERT OR IGNORE INTO article_tags (article_id, tag_id) VALUES (?, ?)');
-    for (const articleId of articleIds) {
-      for (const tagId of tagIds) {
-        stmt.run([articleId, tagId]);
+    runTransaction(() => {
+      const stmt = db.prepare(
+        'INSERT OR IGNORE INTO article_tags (article_id, tag_id) VALUES (?, ?)'
+      );
+      try {
+        for (const articleId of articleIds) {
+          for (const tagId of tagIds) {
+            stmt.run([articleId, tagId]);
+          }
+        }
+      } finally {
+        stmt.free();
       }
-    }
-    stmt.free();
-    // Phase 4.1.3：批量重建所有文章标题，最后统一 saveDatabase
-    for (const articleId of articleIds) {
-      rebuildArticleTitleTags(articleId, true);
-    }
-    saveDatabase();
+      for (const articleId of articleIds) {
+        rebuildArticleTitleTags(articleId, true);
+      }
+    });
   }
 };
 

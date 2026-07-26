@@ -7,12 +7,27 @@
  *   - 切换时只换 Provider，不改组件代码
  *   - 所有方法都返回 Result 风格（成功/失败/加载），统一错误处理
  */
-import type { Article, ArticleFilter, Feed } from '@shared/types';
+import type {
+  Article,
+  ArticleFilter,
+  Feed,
+  SyncProgress,
+  SyncStageEvent
+} from '@shared/types';
 
 export type DataSourceState<T> =
   | { kind: 'loading' }
   | { kind: 'ready'; data: T }
   | { kind: 'error'; error: string };
+
+export interface FeedSyncOutcome {
+  ok: boolean;
+  message: string;
+  newArticles: number;
+  updatedArticles: number;
+  error: string | null;
+  stages: SyncStageEvent[];
+}
 
 export interface DataSource {
   /** 拉取所有订阅源 */
@@ -51,8 +66,10 @@ export interface DataSource {
    * 聚合后用 0 补全以保持 tag 列表完整。
    */
   articleCountsByTag(): Promise<DataSourceState<Record<string, number>>>;
-  /** 同步一个 feed */
-  syncFeed(feedId: string): Promise<{ ok: boolean; message: string }>;
+  /** 同步一个 feed，并返回可供 UI 展示的阶段与最终计数 */
+  syncFeed(feedId: string): Promise<FeedSyncOutcome>;
+  /** 查询当前单源或批量同步进度 */
+  syncProgress(): Promise<DataSourceState<SyncProgress>>;
   /**
    * 新增订阅源。
    * - IPC 模式：调 window.api.feed.create({ url, title })

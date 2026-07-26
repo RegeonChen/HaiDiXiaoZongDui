@@ -72,9 +72,10 @@ export function registerContentPipelineIpc(
   });
 
   secureHandle(IPC_CHANNELS.OPML_EXPORT, async (event, args) => {
+    const feedIds = optionalStringArray(args, 'feedIds');
     const filePath = await security.selectOpmlExportPath(event);
     if (!filePath) return success(false);
-    await services.opml.exportFile(filePath, args?.feedIds);
+    await services.opml.exportFile(filePath, feedIds);
     return success(true);
   });
 
@@ -189,6 +190,28 @@ function requiredString(value: unknown, key: string): string {
     throw new TypeError(`${key} 必须是非空字符串`);
   }
   return value[key].trim();
+}
+
+function optionalStringArray(value: unknown, key: string): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) throw new TypeError('请求参数必须是对象');
+  const candidate = value[key];
+  if (candidate === undefined) return undefined;
+  if (!Array.isArray(candidate)) throw new TypeError(`${key} 必须是字符串数组`);
+
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of candidate) {
+    if (typeof entry !== 'string' || !entry.trim()) {
+      throw new TypeError(`${key} 只能包含非空字符串`);
+    }
+    const id = entry.trim();
+    if (!seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+  }
+  return result;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

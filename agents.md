@@ -93,9 +93,16 @@
 
 ## 当前状态
 
-截至 2026-07-25：
+截至 2026-07-26：
 
 - **Phase 1–4.3、3.7 全部完成并通过验收**。`electron-vite build` + `npm run typecheck` 双端通过。
+- **Phase 4.1 内容管线后端增量完成**（张宇凡 Task 4.1.2 / 4.1.5）：
+  - 单源同步结果包含 `fetching / parsing / saving / completed / failed` 阶段历史、当前进度、
+    新增/更新数与稳定错误码；正文清洗仍遵循打开文章或 AI 调用时的懒执行架构。
+  - Feed 重同步保留已有标签标题前缀；标签改名、改色、删除和增删关联时事务性重建标题。
+  - 选择性 OPML 导出支持已选 Feed ID、空选择回退全量、未知 ID 跳过，并在 Main IPC 入口校验参数。
+  - `smoke:phase2` 10 项报告字段全部通过，覆盖单源阶段、失败错误码及选择性 OPML 导出/导回。
+    Task 4.1.1 的进度/标签 UI 与 Task 4.1.4 的导出选择 UI 仍由界面负责人接入。
 - **Phase 3.7 搜索解耦 + 列表分页**（`1a84fbd` 张晨阳，3.7.2/3.7.3 由张宇凡/陈冠中在 `32b5b38`/`03432f8` 落地）：
   - **搜索解耦（核心修复）**：`SearchBar.onSelect` 签名 `(articleId: string)` → `(article: Article)` 完整对象。`App.handleSearchSelect` 复用 `handleTopicOpenArticle` 同款 `externalSelectedArticle` 模式，不再依赖 `articles.find()` 内存数组查找。**真根因**：旧实现用 `articles.find((a) => a.id === articleId) ?? allArticles.find(...)`，但内存数组只有当前分页前 50 条，搜索结果在第 51+ 篇时找不到 → `pushToast('该文章已不在当前列表中')`。
   - **列表分页（50/页）**：`DataSource.articles` 透传 `limit + offset` 给后端（`ArticleRepository.list` 已支持 `LIMIT ? OFFSET ?`）。App 维护 `articleOffsetRef` (useRef 而非 state) + `articleTotal` state + `loadingMore` state。**死循环真根因**：`articleOffset` 改成 state 后，setState 让 `refreshArticles` 引用变 (deps 包含 offset) → useEffect 2 (selection.feedId 监听) 重跑 → refreshArticles 再调 → setArticleOffset 再变 → 死循环 ("App refreshArticles" 日志刷屏 100+ 次)。**修复**：用 `useRef` 替代 state，set 不触发 re-render，refreshArticles 引用稳定，useEffect 只在 `selection.feedId` 变时跑。
@@ -116,7 +123,7 @@
 - **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ done 态 3 秒延迟 + 失败红点。
 - **三种阅读模式**（`e25343a` 张宇凡 + `9aef239` 张宇凡）：精简阅读 / 网页 / 分栏（左右各半），通过 `useReaderMode` hook + `shared/article-webview.ts` + 主进程 `installArticleWebviewSecurity`。
 - **GitHub Release 自动化**：`.github/workflows/release.yml` 推 `v*` tag → build-mac (DMG) + build-win (NSIS) + release job。
-- **19 个 smoke + 98 单元测试全过**：smoke-1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes / taglist / feeds-group / **search-pagination** (Phase 3.7.1 新增 9 项核心 check：搜索解耦 reader 标题 === 下拉项标题 / 计数 testid / hasMore 边界 / starred=3 / all=10 重置)。
+- **19 个 smoke + 104 单元测试全过（另 6 个需外网的真实 Feed 测试按设计跳过）**：smoke-1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes / taglist / feeds-group / **search-pagination**。以上 19 个 smoke 均已在本轮逐项复验并核对报告字段。
 - `shared/types.ts` + `shared/ipc.ts` 作为权威协议源；跨模块接口变更需同步更新并通知。
 
 ## 设计决策

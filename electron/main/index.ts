@@ -1254,10 +1254,20 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
           const firstSync = await window.api.sync.feed(created.data.id);
           const syncedFeed = await window.api.feed.get(created.data.id);
+          const firstProgress = await window.api.sync.progress();
+          const firstStages = firstSync.success
+            ? firstSync.data?.stages.map(function(stage) { return stage.stage; })
+            : [];
           report.phase2.checks.firstSync = firstSync.success && firstSync.data?.success === true &&
             firstSync.data?.newArticles === 1 && syncedFeed.success &&
             syncedFeed.data?.lastSyncSuccess === true &&
             syncedFeed.data?.siteTitle === 'Phase 2 Integration Feed';
+          report.phase2.checks.singleSyncProgress = firstStages.join(',') ===
+            'fetching,parsing,saving,completed' &&
+            firstProgress.success && firstProgress.data?.totalFeeds === 1 &&
+            firstProgress.data?.completedFeeds === 1 &&
+            firstProgress.data?.currentFeedId === created.data.id &&
+            firstProgress.data?.currentStage?.stage === 'completed';
 
           const firstList = await window.api.article.list({ feedId: created.data.id });
           const article = firstList.success ? firstList.data?.items[0] : null;
@@ -1285,10 +1295,16 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const failedSync = await window.api.sync.feed(failedFeed.data.id);
           const recordedFailure = await window.api.feed.get(failedFeed.data.id);
           const deletedFailedFeed = await window.api.feed.delete(failedFeed.data.id);
+          const failedStages = failedSync.success
+            ? failedSync.data?.stages.map(function(stage) { return stage.stage; })
+            : [];
           report.phase2.checks.syncFailureState = failedSync.success &&
             failedSync.data?.success === false && recordedFailure.success &&
             recordedFailure.data?.lastSyncSuccess === false &&
-            !!recordedFailure.data?.lastSyncError && deletedFailedFeed.success;
+            failedSync.data?.error?.includes('[HTTP_BAD_STATUS]') === true &&
+            failedStages.join(',') === 'fetching,failed' &&
+            recordedFailure.data?.lastSyncError?.includes('[HTTP_BAD_STATUS]') === true &&
+            deletedFailedFeed.success;
 
           const markedRead = await window.api.article.markRead(article.id, true);
           const markedStarred = await window.api.article.markStarred(article.id, true);
@@ -1298,14 +1314,35 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             updatedArticle.data?.isStarred === true &&
             updatedArticle.data?.cleaningStatus === 'done';
 
-          const exported = await window.api.opml.export();
+          const unselectedFeed = await window.api.feed.create({
+            url: feedUrl.replace('/feed.xml', '/unselected.xml'),
+            title: 'Unselected Feed'
+          });
+          const exported = await window.api.opml.export([created.data.id, 'missing-feed-id']);
+          const deletedBeforeImport = await window.api.feed.delete(created.data.id);
           const imported = await window.api.opml.import();
-          report.phase2.checks.opmlRoundTrip = exported.success && exported.data === true &&
+          const feedsAfterImport = await window.api.feed.list();
+          const importedFeed = feedsAfterImport.success
+            ? feedsAfterImport.data.find(function(feed) { return feed.url === feedUrl; })
+            : null;
+          report.phase2.checks.selectiveOpmlRoundTrip =
+            unselectedFeed.success && exported.success && exported.data === true &&
+            deletedBeforeImport.success &&
             imported.success && imported.data !== null &&
-            imported.data?.feedsSkipped === 1 && imported.data?.feedsImported === 0;
+            imported.data?.feedsSkipped === 0 && imported.data?.feedsImported === 1 &&
+            feedsAfterImport.success && feedsAfterImport.data.length === 2 &&
+            !!feedsAfterImport.data.find(function(feed) {
+              return feed.id === unselectedFeed.data?.id;
+            }) && !!importedFeed;
 
-          const deleted = await window.api.feed.delete(created.data.id);
-          report.phase2.checks.deleteFeed = deleted.success;
+          const deletedImported = importedFeed
+            ? await window.api.feed.delete(importedFeed.id)
+            : { success: false };
+          const deletedUnselected = unselectedFeed.success
+            ? await window.api.feed.delete(unselectedFeed.data.id)
+            : { success: false };
+          report.phase2.checks.deleteFeed =
+            deletedImported.success && deletedUnselected.success;
           report.phase2.ok = Object.values(report.phase2.checks).every(function(value) {
             return value;
           });

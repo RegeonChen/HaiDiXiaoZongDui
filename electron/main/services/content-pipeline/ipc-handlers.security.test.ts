@@ -80,6 +80,41 @@ describe('content pipeline IPC security', () => {
     expect(harness.exportFile).not.toHaveBeenCalled();
   });
 
+  it('validates, trims and deduplicates selected feed IDs before exporting', async () => {
+    const harness = createHarness({
+      importPath: null,
+      exportPath: '/approved/export.opml'
+    });
+
+    const result = await invoke(IPC_CHANNELS.OPML_EXPORT, trustedRendererUrl, {
+      feedIds: [' feed-a ', 'feed-b', 'feed-a']
+    });
+
+    expect(result).toEqual({ success: true, data: true });
+    expect(harness.exportFile).toHaveBeenCalledWith(
+      '/approved/export.opml',
+      ['feed-a', 'feed-b']
+    );
+  });
+
+  it('rejects invalid selected feed IDs before opening a native dialog', async () => {
+    const harness = createHarness({
+      importPath: null,
+      exportPath: '/approved/export.opml'
+    });
+
+    const result = await invoke(IPC_CHANNELS.OPML_EXPORT, trustedRendererUrl, {
+      feedIds: ['feed-a', '']
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: 'VALIDATION_ERROR' }
+    });
+    expect(harness.selectOpmlExportPath).not.toHaveBeenCalled();
+    expect(harness.exportFile).not.toHaveBeenCalled();
+  });
+
   it('rejects an untrusted sender before services or file dialogs run', async () => {
     const harness = createHarness({
       importPath: '/approved/subscriptions.opml',

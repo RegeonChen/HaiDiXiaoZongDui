@@ -34,9 +34,14 @@ import type {
   ExportFormat,
   Language,
   SummaryDetailLevel,
-  AITranslationProgressEvent
+  AITranslationProgressEvent,
+  SyncProgress
 } from '@shared/types';
-import type { DataSource, DataSourceState } from '../types/dataSource';
+import type {
+  DataSource,
+  DataSourceState,
+  FeedSyncOutcome
+} from '../types/dataSource';
 import { MOCK_ARTICLES, MOCK_FEEDS } from './mockData';
 // 浏览器端 mock split：与主进程（张宇凡 b53e7a2）行为对齐 —
 // 顶层块级元素独立成块，行内节点合并为合成 <p>，代码/表格不切内部。
@@ -63,6 +68,13 @@ export class MockDataSource implements DataSource {
   private topicGraphState: Map<string, TopicGraph> = new Map();
   private providersState: AIProvider[] = [];
   private logsState: LogEntry[] = [];
+  private syncProgressState: SyncProgress = {
+    totalFeeds: 0,
+    completedFeeds: 0,
+    results: [],
+    currentFeedId: null,
+    currentStage: null
+  };
   private id = 0;
 
   private nextId(prefix: string): string {
@@ -185,11 +197,73 @@ export class MockDataSource implements DataSource {
     return { kind: 'ready', data: result };
   }
 
-  async syncFeed(feedId: string): Promise<{ ok: boolean; message: string }> {
+  async syncFeed(feedId: string): Promise<FeedSyncOutcome> {
+    const at = new Date().toISOString();
     if (feedId === 'feed-36kr') {
-      return { ok: false, message: '远程服务器返回错误: 503' };
+      const stages = [
+        { stage: 'fetching' as const, at },
+        { stage: 'failed' as const, at }
+      ];
+      const error = '[HTTP_BAD_STATUS] 请求返回 HTTP 503：mock.example';
+      this.syncProgressState = {
+        totalFeeds: 1,
+        completedFeeds: 1,
+        results: [{
+          feedId,
+          success: false,
+          error,
+          newArticles: 0,
+          updatedArticles: 0,
+          stages,
+          startedAt: at,
+          finishedAt: at
+        }],
+        currentFeedId: feedId,
+        currentStage: stages[1]
+      };
+      return {
+        ok: false,
+        message: error,
+        newArticles: 0,
+        updatedArticles: 0,
+        error,
+        stages
+      };
     }
-    return { ok: true, message: '同步成功（mock）' };
+    const stages = [
+      { stage: 'fetching' as const, at },
+      { stage: 'parsing' as const, at },
+      { stage: 'saving' as const, at },
+      { stage: 'completed' as const, at }
+    ];
+    this.syncProgressState = {
+      totalFeeds: 1,
+      completedFeeds: 1,
+      results: [{
+        feedId,
+        success: true,
+        error: null,
+        newArticles: 0,
+        updatedArticles: 0,
+        stages,
+        startedAt: at,
+        finishedAt: at
+      }],
+      currentFeedId: feedId,
+      currentStage: stages[3]
+    };
+    return {
+      ok: true,
+      message: '同步成功（新增 0，更新 0）',
+      newArticles: 0,
+      updatedArticles: 0,
+      error: null,
+      stages
+    };
+  }
+
+  async syncProgress(): Promise<DataSourceState<SyncProgress>> {
+    return { kind: 'ready', data: this.syncProgressState };
   }
 
   async createFeed(url: string, title?: string): Promise<DataSourceState<Feed>> {
@@ -696,6 +770,6 @@ export class MockDataSource implements DataSource {
 
   // Phase 4.1.6：feedIds 用于选择性导出 OPML
   async opmlExport(_feedIds?: string[]): Promise<DataSourceState<boolean>> {
-    return { kind: 'ready', data: false };
+    return { kind: 'ready', data: true };
   }
 }

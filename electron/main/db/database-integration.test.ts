@@ -26,6 +26,7 @@ import {
 } from './connection';
 import { SqliteContentPipelineStore } from './content-pipeline-store';
 import { FeedRepository } from './feed-repository';
+import { TagRepository } from './tag-repository';
 import { TopicRepository } from './topic-repository';
 import { runMigrations } from './migration';
 
@@ -351,6 +352,45 @@ describe('database integrity', () => {
       cleanedMarkdown: 'Cleaned V2',
       cleaningStatus: 'done'
     });
+  });
+
+  it('keeps title tag markers consistent across tag edits and feed resyncs', async () => {
+    const feed = FeedRepository.create({
+      url: 'https://tags.example/feed.xml',
+      title: 'Tag feed'
+    });
+    const storedArticle = article({
+      id: 'tagged-article',
+      feedId: feed.id,
+      guid: 'tagged-guid',
+      title: 'Source V1',
+      url: 'https://tags.example/article'
+    });
+    expect(ArticleRepository.insertBatch([storedArticle])).toBe(1);
+
+    const tag = TagRepository.create({ name: 'AI', color: '#123456' });
+    TagRepository.addToArticle(storedArticle.id, tag.id);
+    expect(ArticleRepository.getById(storedArticle.id)?.title)
+      .toBe('[tag:AI|#123456] Source V1');
+
+    expect(TagRepository.update(tag.id, { name: '模型', color: '#654321' }))
+      .toMatchObject({ name: '模型', color: '#654321' });
+    expect(ArticleRepository.getById(storedArticle.id)?.title)
+      .toBe('[tag:模型|#654321] Source V1');
+
+    const store = new SqliteContentPipelineStore();
+    await store.saveFeedPipelineOutput(pipelineOutput(feed.id, feed.url, {
+      title: '[tag:Injected|#000000] Source V2',
+      url: storedArticle.url,
+      rawHtml: storedArticle.rawHtml,
+      rawText: storedArticle.rawText,
+      guid: storedArticle.guid
+    }));
+    expect(ArticleRepository.getById(storedArticle.id)?.title)
+      .toBe('[tag:模型|#654321] Source V2');
+
+    TagRepository.removeFromArticle(storedArticle.id, tag.id);
+    expect(ArticleRepository.getById(storedArticle.id)?.title).toBe('Source V2');
   });
 });
 

@@ -9,6 +9,7 @@ export interface FeedPipelineInput {
 
 export interface FeedPipelineOptions {
   feedTimeoutMs?: number;
+  onStage?: (stage: 'fetching' | 'parsing') => void;
 }
 
 export type TextFetcher = (url: string, options?: {
@@ -32,10 +33,12 @@ export class FeedPipeline {
     options: FeedPipelineOptions = {}
   ): Promise<FeedPipelineOutput> {
     const startedAt = new Date().toISOString();
+    options.onStage?.('fetching');
     const feedSource = await this.textFetcher(input.feedUrl, {
       timeoutMs: options.feedTimeoutMs ?? 15_000,
       maxBytes: 5 * 1024 * 1024
     });
+    options.onStage?.('parsing');
     const feed = await parseFeed(feedSource, input.feedUrl);
 
     return {

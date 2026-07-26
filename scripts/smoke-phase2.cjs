@@ -2,7 +2,8 @@
  * Offline Phase 2 integration smoke.
  *
  * Starts a local Feed/article HTTP server and verifies the full Electron path:
- * feed create -> sync -> SQLite -> lazy cleaning -> state changes -> OPML.
+ * feed create -> staged single sync -> SQLite -> lazy cleaning -> state changes
+ * -> selective OPML export/import.
  */
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
@@ -111,7 +112,7 @@ server.listen(0, '127.0.0.1', () => {
     const passed = stdout.includes('SMOKE_REPORT_PASS') && databaseExists && opmlExists &&
       lazyFetchCached && syncedTwice;
     finish(passed, passed
-      ? '[smoke-phase2] ✓ Phase 2 离线端到端验证全部通过'
+      ? '[smoke-phase2] ✓ 单源同步阶段、稳定错误与选择性 OPML 离线端到端验证全部通过'
       : '[smoke-phase2] ✗ Phase 2 离线端到端验证失败');
   });
 });

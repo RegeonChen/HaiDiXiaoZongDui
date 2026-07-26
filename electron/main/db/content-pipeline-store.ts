@@ -8,6 +8,10 @@
 import crypto from 'node:crypto';
 import { getDatabase, saveDatabase } from './connection.js';
 import { FeedRepository } from './feed-repository.js';
+import {
+  preserveArticleTitleTags,
+  stripArticleTitleTags
+} from './article-title-tags.js';
 import type { ArticleContentStore } from '../services/content-pipeline/article-content-service.js';
 import type { OpmlFeedStore } from '../services/content-pipeline/opml-service.js';
 import type {
@@ -69,7 +73,7 @@ export class SqliteContentPipelineStore implements
 
       for (const article of output.articles) {
         const existingRows = db.exec(
-          `SELECT id, url, raw_html AS rawHtml, raw_text AS rawText
+          `SELECT id, title, url, raw_html AS rawHtml, raw_text AS rawText
            FROM articles WHERE feed_id = ? AND guid = ? LIMIT 1`,
           [output.feedId, article.guid]
         );
@@ -98,7 +102,10 @@ export class SqliteContentPipelineStore implements
                  raw_html = ?, raw_text = ?, updated_at = ?${cacheInvalidation}
              WHERE id = ?`,
             [
-              article.title,
+              preserveArticleTitleTags(
+                typeof existing.title === 'string' ? existing.title : '',
+                article.title
+              ),
               article.url,
               article.author,
               article.publishedAt,
@@ -121,7 +128,7 @@ export class SqliteContentPipelineStore implements
           [
             crypto.randomUUID(),
             output.feedId,
-            article.title,
+            stripArticleTitleTags(article.title),
             article.url,
             article.author,
             article.publishedAt,

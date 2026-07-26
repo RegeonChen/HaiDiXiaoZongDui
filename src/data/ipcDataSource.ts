@@ -33,9 +33,14 @@ import type {
   ExportFormat,
   Language,
   SummaryDetailLevel,
-  AITranslationProgressEvent
+  AITranslationProgressEvent,
+  SyncProgress
 } from '@shared/types';
-import type { DataSource, DataSourceState } from '../types/dataSource';
+import type {
+  DataSource,
+  DataSourceState,
+  FeedSyncOutcome
+} from '../types/dataSource';
 
 type ErrorResponse = { success: false; error: { code: string; message: string; detail?: string } };
 type SuccessResponse<T> = { success: true; data: T };
@@ -204,17 +209,42 @@ export class IpcDataSource implements FullDataSource {
     return unwrap(await window.api.article.countsByTag());
   }
 
-  async syncFeed(feedId: string): Promise<{ ok: boolean; message: string }> {
+  async syncFeed(feedId: string): Promise<FeedSyncOutcome> {
     const r = await window.api.sync.feed(feedId);
-    if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
+    if (!r.success) {
+      const message = `${r.error.code}: ${r.error.message}`;
+      return {
+        ok: false,
+        message,
+        newArticles: 0,
+        updatedArticles: 0,
+        error: message,
+        stages: []
+      };
+    }
     const result = r.data;
     if (result.success) {
       return {
         ok: true,
-        message: `同步成功（新增 ${result.newArticles}，更新 ${result.updatedArticles}）`
+        message: `同步成功（新增 ${result.newArticles}，更新 ${result.updatedArticles}）`,
+        newArticles: result.newArticles,
+        updatedArticles: result.updatedArticles,
+        error: null,
+        stages: result.stages
       };
     }
-    return { ok: false, message: result.error ?? '同步失败' };
+    return {
+      ok: false,
+      message: result.error ?? '同步失败',
+      newArticles: 0,
+      updatedArticles: 0,
+      error: result.error,
+      stages: result.stages
+    };
+  }
+
+  async syncProgress(): Promise<DataSourceState<SyncProgress>> {
+    return unwrap(await window.api.sync.progress());
   }
 
   async createFeed(url: string, title?: string): Promise<DataSourceState<Feed>> {

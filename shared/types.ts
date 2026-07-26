@@ -564,6 +564,13 @@ export interface AITagSuggestion {
 
 // ---- Sync（同步） ----
 
+export type SyncStage = 'fetching' | 'parsing' | 'saving' | 'completed' | 'failed';
+
+export interface SyncStageEvent {
+  stage: SyncStage;
+  at: IsoTimestamp;
+}
+
 export interface SyncResult {
   /** 同步的订阅源 ID */
   feedId: string;
@@ -580,6 +587,8 @@ export interface SyncResult {
   newArticles: number;
   /** 更新的文章数 */
   updatedArticles: number;
+  /** 本次单源同步经历的阶段，按发生顺序记录 */
+  stages: SyncStageEvent[];
   startedAt: IsoTimestamp;
   finishedAt: IsoTimestamp;
 }
@@ -588,6 +597,10 @@ export interface SyncProgress {
   totalFeeds: number;
   completedFeeds: number;
   results: SyncResult[];
+  /** 当前或最近处理的订阅源；尚未开始时为 null */
+  currentFeedId: string | null;
+  /** 当前阶段；完成后保留最终阶段，尚未开始时为 null */
+  currentStage: SyncStageEvent | null;
 }
 
 // ---- Settings（用户设置） ----

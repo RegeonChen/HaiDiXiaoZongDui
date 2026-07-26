@@ -491,6 +491,7 @@
 
 ### Task 4.1.2 - Single Feed Sync Progress & Tag Marker Compatibility (张宇凡)
 
+- **Status (2026-07-26):** ✅ 后端与真实 Electron 烟测完成；底部进度 UI 由 Task 4.1.1 接入。
 - **Task Detail:**
   1. 确保单源同步（`syncFeed`）返回明确的进度信息（当前状态：正在抓取 / 正在解析 / 正在清洗 / 完成）和最终结果（新增数、更新数、错误信息）。
   2. 同步失败时返回可读的错误原因（网络超时、Feed 格式错误、内容清洗失败等），供 UI 层展示具体错误 toast。
@@ -501,6 +502,16 @@
   - 点击单源"同步"按钮 → 底部依次显示"正在同步：XXX"→ 完成后显示新增/更新数量。
   - 同步一个失效 Feed → 底部显示具体错误原因（如"网络超时"），而非通用"同步失败"。
   - 标题中含标签标记的文章 → Cleaned HTML/Markdown 中标签标记不出现或正确渲染为标签组件。
+- **Implementation Notes (2026-07-26):**
+  - `SyncResult` 记录 `fetching → parsing → saving → completed/failed` 阶段历史，`sync:progress`
+    同时返回当前 Feed、当前阶段、完成数和最终结果。正文抓取与清洗按现有架构在打开文章或
+    调用 AI 时懒执行，因此同步阶段没有伪造“正在清洗”状态。
+  - 同步失败保留内容管线稳定错误码（如 `[HTTP_BAD_STATUS]`、`[HTTP_TIMEOUT]`），
+    `IpcDataSource` 将新增数、更新数、错误和阶段完整透传给 UI。
+  - 标签前缀仅在文章标题开头识别；Feed 重同步采用最新来源标题并保留数据库中的现有标签，
+    新文章会剥离来源伪装的内部标签前缀。标签改名、改色、删除和文章标签增删均在事务内重建标题。
+  - `smoke:phase2` 已覆盖有效单源的完整阶段、最终计数、进度查询，以及失效 Feed 的稳定错误码；
+    数据库集成测试覆盖标签修改和 Feed 重同步后的标题一致性。
 
 ### Task 4.1.3 - Batch Mark Read & Tag-Title Binding & Tag Article Query (陈冠中)
 
@@ -540,6 +551,7 @@
 
 ### Task 4.1.5 - Selective OPML Export Service (张宇凡)
 
+- **Status (2026-07-26):** ✅ 完成。
 - **Task Detail:**
   1. 改造 `opmlExport` 方法，使其接受可选的 `feedIds?: string[]` 参数：
      - 若未传 `feedIds` 或为空，保持现有行为——导出所有订阅源。
@@ -552,6 +564,11 @@
   - 传入 3 个 feedId → 导出 OPML 文件仅含 3 个 `<outline>` 条目。
   - 传入不存在的 feedId → 导出正常完成，该 ID 被跳过，其余源正常导出。
   - 不传 feedIds → 行为与现有全量导出一致，所有订阅源均出现在文件中。
+- **Implementation Notes (2026-07-26):**
+  - Main IPC 在打开保存对话框前校验、裁剪并去重 `feedIds`；未传或空数组保持全量导出。
+  - OPML 服务使用 ID 集合过滤，未知 ID 自动跳过，输出仍复用同一 `exportOpml` 格式化路径。
+  - 单元测试覆盖部分选择、未知 ID 和空选择；`smoke:phase2` 真实导出一个已选源、保留一个
+    未选源，再删除已选源并从文件导回，验证文件未混入未选源。
 
 ### Task 4.1.6 - Feed List Query & Selective Export IPC (陈冠中)
 

@@ -39,8 +39,11 @@ export class OpmlApplicationService {
 
   async exportFile(filePath: string, feedIds?: string[]): Promise<void> {
     const allFeeds = await this.store.listFeedEntriesForExport();
-    const feeds = feedIds && feedIds.length > 0
-      ? allFeeds.filter((f) => feedIds.includes(f.id))
+    const selectedIds = feedIds && feedIds.length > 0
+      ? new Set(feedIds)
+      : null;
+    const feeds = selectedIds
+      ? allFeeds.filter((feed) => selectedIds.has(feed.id))
       : allFeeds;
     await exportOpmlFile(filePath, feeds);
   }
