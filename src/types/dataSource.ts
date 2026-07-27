@@ -35,6 +35,11 @@ export interface DataSource {
   /** 按筛选条件拉取文章 */
   articles(filter: ArticleFilter): Promise<DataSourceState<Article[]>>;
   /**
+   * 按筛选条件获取精确文章总数，不受 articles 默认分页大小影响。
+   * 用于确认文案、分页总数等不能从当前内存页推导的场景。
+   */
+  articleCount(filter: ArticleFilter): Promise<DataSourceState<number>>;
+  /**
    * Phase 3.7.3：按 ID 获取单篇文章。
    * 用于搜索跳转等场景——搜索结果文章可能不在当前分页列表中，
    * 通过此方法直接按 ID 获取完整 Article，作为搜索解耦的保底手段。

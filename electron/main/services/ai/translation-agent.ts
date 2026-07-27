@@ -237,7 +237,7 @@ export function splitMarkdownIntoChunks(
 function splitMarkdownParagraphs(content: string): string[] {
   const paragraphs: string[] = [];
   const current: string[] = [];
-  let fence: '```' | '~~~' | null = null;
+  let fence: { character: '`' | '~'; length: number } | null = null;
   const flush = (): void => {
     const paragraph = current.join('\n').trim();
     if (paragraph) paragraphs.push(paragraph);
@@ -245,10 +245,22 @@ function splitMarkdownParagraphs(content: string): string[] {
   };
 
   for (const line of content.replace(/\r\n?/g, '\n').split('\n')) {
-    const fenceMatch = line.match(/^\s*(```|~~~)/);
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
     if (fenceMatch) {
-      const marker = fenceMatch[1] as '```' | '~~~';
-      fence = fence === null ? marker : fence === marker ? null : fence;
+      const marker = fenceMatch[1];
+      const character = marker[0] as '`' | '~';
+      if (fence === null) {
+        fence = { character, length: marker.length };
+      } else {
+        const suffix = line.slice(line.indexOf(marker) + marker.length);
+        if (
+          character === fence.character &&
+          marker.length >= fence.length &&
+          suffix.trim() === ''
+        ) {
+          fence = null;
+        }
+      }
       current.push(line);
       continue;
     }

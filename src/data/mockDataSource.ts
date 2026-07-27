@@ -35,7 +35,9 @@ import type {
   Language,
   SummaryDetailLevel,
   AITranslationProgressEvent,
-  SyncProgress
+  SyncProgress,
+  SyncStageEvent,
+  ArticleFilter
 } from '@shared/types';
 import type {
   DataSource,
@@ -89,15 +91,7 @@ export class MockDataSource implements DataSource {
     return { kind: 'ready', data: this.feedsState };
   }
 
-  async articles(filter: {
-    feedId?: string;
-    isRead?: boolean;
-    isStarred?: boolean;
-    tagIds?: string[];
-    search?: string;
-    offset?: number;
-    limit?: number;
-  }): Promise<DataSourceState<Article[]>> {
+  async articles(filter: ArticleFilter): Promise<DataSourceState<Article[]>> {
     await delay(150);
     let items = this.articlesState;
     if (filter.feedId) items = items.filter((a) => a.feedId === filter.feedId);
@@ -133,6 +127,29 @@ export class MockDataSource implements DataSource {
       items = items.slice(offset, offset + filter.limit);
     }
     return { kind: 'ready', data: items };
+  }
+
+  async articleCount(filter: ArticleFilter): Promise<DataSourceState<number>> {
+    await delay(20);
+    let items = this.articlesState;
+    if (filter.feedId) items = items.filter((a) => a.feedId === filter.feedId);
+    if (filter.isRead !== undefined) items = items.filter((a) => a.isRead === filter.isRead);
+    if (filter.isStarred !== undefined) items = items.filter((a) => a.isStarred === filter.isStarred);
+    if (filter.tagIds && filter.tagIds.length > 0) {
+      items = items.filter((a) => {
+        const applied = this.articleTagMap.get(a.id);
+        return !!applied && filter.tagIds!.every((tagId) => applied.has(tagId));
+      });
+    }
+    if (filter.search?.trim()) {
+      const q = filter.search.toLowerCase();
+      items = items.filter((a) =>
+        a.title.toLowerCase().includes(q) ||
+        (a.rawText ?? '').toLowerCase().includes(q) ||
+        (a.cleanedMarkdown ?? '').toLowerCase().includes(q)
+      );
+    }
+    return { kind: 'ready', data: items.length };
   }
 
   // Phase 3.7.3：按 ID 获取单篇文章（搜索跳转保底）
@@ -200,11 +217,18 @@ export class MockDataSource implements DataSource {
   async syncFeed(feedId: string): Promise<FeedSyncOutcome> {
     const at = new Date().toISOString();
     if (feedId === 'feed-36kr') {
-      const stages = [
-        { stage: 'fetching' as const, at },
-        { stage: 'failed' as const, at }
-      ];
+      const stages: SyncStageEvent[] = [{ stage: 'fetching', at }];
       const error = '[HTTP_BAD_STATUS] 请求返回 HTTP 503：mock.example';
+      this.syncProgressState = {
+        totalFeeds: 1,
+        completedFeeds: 0,
+        results: [],
+        currentFeedId: feedId,
+        currentStage: stages[0]
+      };
+      await delay(100);
+      const failedAt = new Date().toISOString();
+      stages.push({ stage: 'failed', at: failedAt });
       this.syncProgressState = {
         totalFeeds: 1,
         completedFeeds: 1,
@@ -216,11 +240,22 @@ export class MockDataSource implements DataSource {
           updatedArticles: 0,
           stages,
           startedAt: at,
-          finishedAt: at
+          finishedAt: failedAt
         }],
         currentFeedId: feedId,
         currentStage: stages[1]
       };
+      this.feedsState = this.feedsState.map((feed) =>
+        feed.id === feedId
+          ? {
+              ...feed,
+              lastSyncAt: failedAt,
+              lastSyncSuccess: false,
+              lastSyncError: error,
+              updatedAt: failedAt
+            }
+          : feed
+      );
       return {
         ok: false,
         message: error,
@@ -230,12 +265,26 @@ export class MockDataSource implements DataSource {
         stages
       };
     }
-    const stages = [
-      { stage: 'fetching' as const, at },
-      { stage: 'parsing' as const, at },
-      { stage: 'saving' as const, at },
-      { stage: 'completed' as const, at }
-    ];
+    const stages: SyncStageEvent[] = [{ stage: 'fetching', at }];
+    this.syncProgressState = {
+      totalFeeds: 1,
+      completedFeeds: 0,
+      results: [],
+      currentFeedId: feedId,
+      currentStage: stages[0]
+    };
+    for (const stage of ['parsing', 'saving'] as const) {
+      await delay(100);
+      const stageEvent = { stage, at: new Date().toISOString() };
+      stages.push(stageEvent);
+      this.syncProgressState = {
+        ...this.syncProgressState,
+        currentStage: stageEvent
+      };
+    }
+    await delay(100);
+    const completedAt = new Date().toISOString();
+    stages.push({ stage: 'completed', at: completedAt });
     this.syncProgressState = {
       totalFeeds: 1,
       completedFeeds: 1,
@@ -247,11 +296,22 @@ export class MockDataSource implements DataSource {
         updatedArticles: 0,
         stages,
         startedAt: at,
-        finishedAt: at
+        finishedAt: completedAt
       }],
       currentFeedId: feedId,
       currentStage: stages[3]
     };
+    this.feedsState = this.feedsState.map((feed) =>
+      feed.id === feedId
+        ? {
+            ...feed,
+            lastSyncAt: completedAt,
+            lastSyncSuccess: true,
+            lastSyncError: null,
+            updatedAt: completedAt
+          }
+        : feed
+    );
     return {
       ok: true,
       message: '同步成功（新增 0，更新 0）',

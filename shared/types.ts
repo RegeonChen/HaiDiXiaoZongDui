@@ -113,9 +113,11 @@ export interface Article {
    * 生成规则：
    * - 仅保留正文区域，剔除导航、广告、侧栏、评论区等干扰内容
    * - 所有标签和属性必须通过安全清洗（白名单制），移除 script/style/iframe/object 等
-   * - 保留的标签：h1-h6, p, img, a, ul, ol, li, blockquote, pre, code, table/thead/tbody/tr/th/td,
+   * - 保留的标签：h1-h6, p, img, a, ul/ol/li, dl/dt/dd, blockquote, pre/code,
+   *   table/caption/colgroup/col/thead/tbody/tfoot/tr/th/td,
    *   em, strong, br, hr
-   * - 保留的属性：img[src,alt,title], a[href,title], th/td[colspan,rowspan], pre/code[class]
+   * - 保留的属性：img[src,alt,title], a[href,title], ol[start,reversed,type],
+   *   li[value], 表格结构与可访问性属性, pre/code[class]；任务 checkbox 转为 [x]/[ ]
    * - img src 保留原始绝对 URL，不做本地化处理
    * - a href 必须为 http/https/mailto 协议，移除 javascript: 等危险协议
    * - code 标签的 class 保留（如 class="language-python"），供语法高亮使用
@@ -131,13 +133,14 @@ export interface Article {
    * 生成规则：
    * - 代码块：必须标注语言（如 ```python），无法识别语言时标注 ```text
    * - 图片：使用原始绝对 URL，格式为 ![alt](url)
-   * - 表格：使用 GFM 表格语法，对齐信息由 HTML th/td style 推断，
-   *   无法推断时默认左对齐
+   * - 表格：简单表格使用 GFM 表格语法；合并单元格或无表头表格使用已清洗的
+   *   HTML 回退，避免 colspan/rowspan 数据错列
    * - 标题：保留原文层级，## → ####，h1 一般保留给文章标题（单个 #）
    * - 链接：格式为 [text](url)，保留原文链接文本，不展开裸 URL
    * - 引用：使用 > 语法，嵌套引用使用 >>
-   * - 列表：有序列表用 1./2./3.，无序列表用 -，嵌套列表缩进 2 空格
-   * - 不应出现 HTML 标签（已全部转换为等效 Markdown）
+   * - 列表：普通有序列表保留 start 编号，无序列表用 -，任务列表保留 [x]/[ ]；
+   *   reversed/type/li[value] 和描述列表使用已清洗的 HTML 回退
+   * - 除 GFM 无法无损表达的复杂表格/列表回退外，不应出现 HTML 标签
    * - 不应出现明显非正文内容（导航文字、广告语、"相关阅读"等）
    * - 空行统一为单个 \\n\\n，行内不含 \\r
    * - null 表示尚未完成清洗或清洗失败
@@ -174,7 +177,7 @@ export interface TranslatedParagraph {
 
 /**
  * Phase 3.5.2（张宇凡 b53e7a2）：Cleaned HTML 顶层语义块，用于段落内翻译插槽。
- * - 顶层块级元素（<p> / <h1-6> / <pre> / <ul> / <ol> / <blockquote> / <table> / <figure>）独立成块
+ * - 顶层块级元素（<p> / <h1-6> / <pre> / <ul> / <ol> / <dl> / <blockquote> / <table> / <figure>）独立成块
  * - 行内节点（文本 / <a> / <strong> / <em> / <code> 等）合并为一个合成 <p>
  * - 代码块、表格等容器**不切内部**
  *

@@ -97,11 +97,11 @@
 
 - **Phase 1–4.3、3.7、4.1 全部完成并通过验收**。`electron-vite build` + `npm run typecheck` 双端通过。
 - **Phase 4.1 UI 完整闭环**（`8c410db` 张晨阳，4.1.2/4.1.3/4.1.5/4.1.6 由张宇凡/陈冠中在 `b0a7187`/`7478ae9` 落地）：
-  - **Task 4.1.1 中栏顶部操作按钮**：`ArticleList` 加 `actionBar` slot（`data-testid="article-list__action-bar"`），仅具体 feed 显示（`all`/`unread`/`starred`/`tag:` 不显示，避免误操作）。同步按钮调 `ds.syncFeed(feedId)` + 底部进度条 + "新增 X，更新 Y" toast；全部已读按钮调 `ds.markAllReadByFeed(feedId)` + confirm dialog + 侧栏未读数实时更新。
-  - **Task 4.1.1 标题前彩色标签 chips**（`ArticleList` + `ArticleReader`）：新建 `src/utils/article-title-tags.ts` 的 `parseArticleTitleTags(title)` 解析后端嵌的 `[tag:NAME|COLOR]` 前缀。`ArticleReader` 优先用 `articleTags` state + 兜底用 title 解析（处理 150ms 异步空窗期），按 name 去重。**Mock 模式同步行为**：`MockDataSource.rebuildArticleTitleTags(articleId)` 让 `tagAddToArticle` / `tagRemoveFromArticle` / `tagDelete` / `tagUpdate` 同步更新 `article.title` 前缀，与 IPC 后端一致（前端不需要再拉 IPC 拿 tag）。
-  - **Task 4.1.1 TagsPage 双栏布局**：左栏标签 CRUD（picker 按钮整行可点 + 选中态 `is-selected`）+ 右栏选中标签下的文章列表（标题 + 来源 + 时间 + 点击跳阅读器）。实时同步：标签增删 / 选中切换 / 文章加 tag → 右栏文章列表 + 中栏标题 chips 同步更新。
-  - **Task 4.1.4 OPML 选择性导出子界面**（`src/pages/OpmlExportPage/`）：列表展示订阅源（`checkbox` + name + url），默认全选，顶栏"全选"/"取消全选"切换，已选 `N/N` 计数实时显示，取消/确认按钮（确认 disabled 当 0 已选）。确认导出调 `ds.opmlExport(feedIds)` → IPC `opml:export` 传 `feedIds`。`AppPage` 加 `'opml-export'`，`OpmlButtons.onExport` 改 `setCurrentPage('opml-export')` 路由跳转。**真根因修复**：默认全选 `useEffect` 监听 `[feeds, selected.size]` → 用户点"取消全选"→ `selected.size=0` → useEffect 重置全选（死循环）。**修法**：加 `initialized` 标志，只在首次加载默认全选。
-  - **新探针**：`smoke:feed-actions` 18 项全过（action bar 显示/隐藏 + 标签渲染 + TagsPage 双栏 + UI 创建 tag）；`smoke:opml-export-selection` 17 项全过（默认全选 5/5 + 取消全选 0/5 + 取消勾选 1/2 项 + 确认导出 hook 验证传 `N-2` 个 feedId + 回到 reader）。
+  - **Task 4.1.1 中栏顶部操作按钮**：`ArticleList` 加 `actionBar` slot（`data-testid="article-list__action-bar"`），仅具体 feed 显示（`all`/`unread`/`starred`/`tag:` 不显示，避免误操作）。同步按钮调 `ds.syncFeed(feedId)` 并轮询 `ds.syncProgress()` 展示抓取/解析/保存阶段；成功与失败均刷新 Feed 状态，且用当前选择 ref 防止旧同步覆盖用户新切换的订阅源。全部已读先通过 `ds.articleCount({ feedId, isRead:false })` 取精确数量，再确认并调用 `ds.markAllReadByFeed(feedId)`，不再依赖全局前 50 篇缓存。
+  - **Task 4.1.1 标题前彩色标签 chips**（`ArticleList` + `ArticleReader`）：新建 `src/utils/article-title-tags.ts` 的 `parseArticleTitleTags(title)` 解析后端嵌的 `[tag:NAME|COLOR]` 前缀。标签名中的 `%` / `|` / `]` 采用最小转义，兼容原有普通中英文标记。`ArticleReader` 优先用 `articleTags` state + 兜底用 title 解析（处理 150ms 异步空窗期），按 name 去重。**Mock 模式同步行为**：`MockDataSource.rebuildArticleTitleTags(articleId)` 让 `tagAddToArticle` / `tagRemoveFromArticle` / `tagDelete` / `tagUpdate` 同步更新 `article.title` 前缀，与 IPC 后端一致（前端不需要再拉 IPC 拿 tag）。
+  - **Task 4.1.1 TagsPage 双栏布局**：左栏标签 CRUD（picker 按钮整行可点 + 选中态 `is-selected`）+ 右栏选中标签下的文章列表（标题 + 来源 + 时间 + 点击跳阅读器）。右栏按 50 篇分页，显示精确 `已加载/总数` 并支持“加载更多”；切标签会立即清空旧列表，查询失败显示可重试错误，不再伪装成空标签。实时同步：标签增删 / 选中切换 / 文章加 tag → 右栏文章列表 + 中栏标题 chips 同步更新。
+  - **Task 4.1.4 OPML 选择性导出子界面**（`src/pages/OpmlExportPage/`）：列表展示订阅源（`checkbox` + name + url），默认全选，顶栏"全选"/"取消全选"切换，已选 `N/N` 计数实时显示，取消/确认按钮（确认 disabled 当 0 已选）。确认导出调 `ds.opmlExport(feedIds)` → IPC `opml:export` 传 `feedIds`；应用层返回错误时保留页面和勾选，允许原地重试，仅成功或用户取消系统保存框后关闭页面。`AppPage` 加 `'opml-export'`，`OpmlButtons.onExport` 改 `setCurrentPage('opml-export')` 路由跳转。**真根因修复**：默认全选 `useEffect` 监听 `[feeds, selected.size]` → 用户点"取消全选"→ `selected.size=0` → useEffect 重置全选（死循环）。**修法**：加 `initialized` 标志，只在首次加载默认全选。
+  - **回归探针**：`smoke:feed-actions` 真实点击并验证同步阶段、同步期间切换选择、失败红点刷新、精确全部已读、标签绑定和 TagsPage 关联文章；`smoke:opml-export-selection` 覆盖默认全选、取消勾选、应用层错误保留与成功重试，两次均核对 `N-2` 个 feedId。
   - **smoke-2.4 探针适配**：`handleOpmlExport` 改路由后，原探针"点导出按钮"破坏三栏（currentPage 跳到 `opml-export` → article list unmount）。**修法**：探针直接调 `window.api.opml.export()` 验证 IPC 链路，不再点按钮（点按钮的 UI 测试归 smoke-4.1.4）。
   - **数据层**：`dataSourceFactory` 在 `?mock=1` 时把 `MockDataSource` 实例挂到 `window.__JUHE_DS__`（smoke 探针 hook mock 端方法用，零侵入生产）。`console-message` 转发兼容 Electron 28+ 新签名（event 对象含 message）。
 - **Phase 4.1 内容管线后端增量完成**（`b0a7187` 张宇凡 + `7478ae9` 陈冠中）：
@@ -109,6 +109,7 @@
   - `ArticleRepository.markAllReadByFeed(feedId)` 批量标已读 + `tagAddToArticle` / `tagRemoveFromArticle` / `batchAdd` 同步回写文章标题标签标记（事务性）。
   - 选择性 OPML 导出支持已选 Feed ID、空选择回退全量、未知 ID 跳过，并在 Main IPC 入口校验参数。
   - `smoke:phase2` 10 项报告字段全部通过，覆盖单源阶段、失败错误码及选择性 OPML 导出/导回。
+- **正文复杂结构清洗修复（2026-07-27）**：简单表格继续输出 GFM，合并单元格/无表头表格和特殊编号/描述列表使用安全 HTML 回退；任务列表保留 `[x]/[ ]`，代码围栏按正文反引号长度动态扩展。精简与翻译阅读模式均补齐宽表格、表注和描述列表样式；migration 9 保留原始网页 HTML 并让旧派生正文按需重洗。
 - **Phase 3.7 搜索解耦 + 列表分页**（`1a84fbd` 张晨阳，3.7.2/3.7.3 由张宇凡/陈冠中在 `32b5b38`/`03432f8` 落地）：
   - **搜索解耦（核心修复）**：`SearchBar.onSelect` 签名 `(articleId: string)` → `(article: Article)` 完整对象。`App.handleSearchSelect` 复用 `handleTopicOpenArticle` 同款 `externalSelectedArticle` 模式，不再依赖 `articles.find()` 内存数组查找。**真根因**：旧实现用 `articles.find((a) => a.id === articleId) ?? allArticles.find(...)`，但内存数组只有当前分页前 50 条，搜索结果在第 51+ 篇时找不到 → `pushToast('该文章已不在当前列表中')`。
   - **列表分页（50/页）**：`DataSource.articles` 透传 `limit + offset` 给后端（`ArticleRepository.list` 已支持 `LIMIT ? OFFSET ?`）。App 维护 `articleOffsetRef` (useRef 而非 state) + `articleTotal` state + `loadingMore` state。**死循环真根因**：`articleOffset` 改成 state 后，setState 让 `refreshArticles` 引用变 (deps 包含 offset) → useEffect 2 (selection.feedId 监听) 重跑 → refreshArticles 再调 → setArticleOffset 再变 → 死循环 ("App refreshArticles" 日志刷屏 100+ 次)。**修复**：用 `useRef` 替代 state，set 不触发 re-render，refreshArticles 引用稳定，useEffect 只在 `selection.feedId` 变时跑。
@@ -129,7 +130,7 @@
 - **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ done 态 3 秒延迟 + 失败红点。
 - **三种阅读模式**（`e25343a` 张宇凡 + `9aef239` 张宇凡）：精简阅读 / 网页 / 分栏（左右各半），通过 `useReaderMode` hook + `shared/article-webview.ts` + 主进程 `installArticleWebviewSecurity`。
 - **GitHub Release 自动化**：`.github/workflows/release.yml` 推 `v*` tag → build-mac (DMG) + build-win (NSIS) + release job。
-- **20 个 smoke + 104 单元测试全过（另 6 个需外网的真实 Feed 测试按设计跳过）**：smoke-1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes / taglist / feeds-group / **search-pagination** / **feed-actions** (Phase 4.1.1：action bar 显示/隐藏 + 标签渲染 + TagsPage 双栏 + UI 创建 tag) / **opml-export-selection** (Phase 4.1.4：默认全选 + 取消/确认 + 传 N-2 feedId)。以上 20 个 smoke 均已在本轮逐项复验并核对报告字段。
+- **20 个 smoke 基线 + 116 单元测试**（另 6 个需外网的真实 Feed 测试按设计跳过）：smoke-1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes / taglist / feeds-group / **search-pagination** / **feed-actions** / **opml-export-selection**。2026-07-27 的 Phase 4.1 语义修复新增标签编码和 TagsPage 55 篇分页测试，并重新核对 `feed-actions` / `opml-export-selection` 报告字段；正文复杂结构修复新增 6 项清洗/迁移/翻译分段回归。
 - `shared/types.ts` + `shared/ipc.ts` 作为权威协议源；跨模块接口变更需同步更新并通知。
 
 ## 设计决策

@@ -286,6 +286,28 @@ const migrations: Migration[] = [
           AND (cleaned_html IS NOT NULL OR cleaned_markdown IS NOT NULL)
       `);
     }
+  },
+  {
+    version: 9,
+    up(db) {
+      // Cleaner v4 preserves complex table/list semantics, emits safe Markdown
+      // fences for code that contains backticks, and distinguishes prose stored
+      // in `<pre>` from source code. Rebuild only derived article-page content;
+      // the persisted source HTML remains local.
+      db.run(`
+        UPDATE articles
+        SET content_title = NULL,
+            content_byline = NULL,
+            content_excerpt = NULL,
+            cleaned_html = NULL,
+            cleaned_markdown = NULL,
+            cleaning_status = 'pending',
+            cleaning_error = NULL
+        WHERE source_kind = 'article_page'
+          AND source_html IS NOT NULL
+          AND (cleaned_html IS NOT NULL OR cleaned_markdown IS NOT NULL)
+      `);
+    }
   }
 ];
 

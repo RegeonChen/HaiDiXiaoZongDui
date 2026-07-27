@@ -114,6 +114,40 @@
   margin: 10px 0;
   padding-left: 28px;
 }
+.translated-article-view__block li {
+  margin: 0.3em 0;
+}
+.translated-article-view__block dl {
+  margin: 10px 0;
+}
+.translated-article-view__block dt {
+  font-weight: 700;
+}
+.translated-article-view__block dd {
+  margin: 0.25em 0 0.75em 28px;
+}
+.translated-article-view__block table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 12px 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.translated-article-view__block caption {
+  padding: 0 0 6px;
+  color: var(--fg-soft);
+  font-weight: 600;
+  text-align: left;
+}
+.translated-article-view__block th,
+.translated-article-view__block td {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  overflow-wrap: normal;
+  text-align: left;
+  word-break: normal;
+}
 .translated-article-view__block blockquote {
   margin: 12px 0;
   padding: 6px 12px;

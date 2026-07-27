@@ -8,8 +8,9 @@ import type { CleanedContent } from './types';
 
 const ALLOWED_TAGS = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'p', 'img', 'a', 'ul', 'ol', 'li', 'blockquote',
-  'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'p', 'img', 'a', 'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'blockquote',
+  'pre', 'code', 'table', 'caption', 'colgroup', 'col',
+  'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
   'em', 'strong', 'br', 'hr'
 ];
 
@@ -28,7 +29,7 @@ const CONTENT_BLOCK_TAGS = new Set([
   'P',
   'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
   'PRE',
-  'UL', 'OL',
+  'UL', 'OL', 'DL',
   'BLOCKQUOTE',
   'TABLE',
   'FIGURE',
@@ -90,6 +91,22 @@ export function splitCleanedHtmlIntoBlocks(html: string): HtmlBlock[] {
 
     const element = node as Element;
     const tag = element.tagName.toUpperCase();
+    if (tag === 'TABLE') {
+      const caption = directTableCaption(element);
+      if (caption?.textContent?.trim()) {
+        flushInlineNodes();
+        const paragraph = fragment.ownerDocument.createElement('p');
+        for (const child of Array.from(caption.childNodes)) {
+          paragraph.appendChild(child.cloneNode(true));
+        }
+        appendBlock(paragraph.outerHTML, 'P');
+
+        const table = element.cloneNode(true) as Element;
+        directTableCaption(table)?.remove();
+        appendBlock(table.outerHTML, 'TABLE');
+        return;
+      }
+    }
     if (CONTENT_BLOCK_TAGS.has(tag)) {
       flushInlineNodes();
       appendBlock(element.outerHTML, tag);
@@ -123,6 +140,8 @@ export function cleanArticleContent(sourceHtml: string, articleUrl: string): Cle
   }
 
   removeKnownNoise(document);
+  normalizeTaskCheckboxes(document);
+  normalizeProsePreformattedBlocks(document);
 
   // Normalize common browser-side image formats before Readability. JSDOM does
   // not run lazy-loading scripts or evaluate <picture> source selection.
@@ -146,8 +165,14 @@ export function cleanArticleContent(sourceHtml: string, articleUrl: string): Cle
     allowedAttributes: {
       img: ['src', 'alt', 'title'],
       a: ['href', 'title'],
-      th: ['colspan', 'rowspan'],
-      td: ['colspan', 'rowspan'],
+      ol: ['start', 'reversed', 'type'],
+      ul: ['type'],
+      li: ['value'],
+      table: ['aria-label'],
+      colgroup: ['span'],
+      col: ['span'],
+      th: ['colspan', 'rowspan', 'scope', 'headers', 'abbr', 'align'],
+      td: ['colspan', 'rowspan', 'headers', 'align'],
       pre: ['class'],
       code: ['class']
     },
@@ -180,6 +205,120 @@ function removeKnownNoise(document: Document): void {
       element.remove();
     }
   }
+}
+
+/**
+ * Readability removes form controls before sanitize-html sees them. Convert
+ * task-list checkboxes to inert GFM markers first so checked state survives in
+ * both Cleaned HTML and Cleaned Markdown without retaining interactive input.
+ */
+function normalizeTaskCheckboxes(document: Document): void {
+  for (const input of Array.from(document.querySelectorAll('li input'))) {
+    if (input.getAttribute('type')?.toLowerCase() !== 'checkbox') continue;
+    const marker = input.hasAttribute('checked') ? '[x] ' : '[ ] ';
+    input.replaceWith(document.createTextNode(marker));
+  }
+}
+
+/**
+ * Some publishing systems put the entire article in a `<pre>` and use CSS
+ * `white-space: pre-wrap` to make it look like prose. Treating those blocks as
+ * source code creates one giant code fence and prevents paragraph translation.
+ *
+ * Only normalize long, sentence-heavy blocks without code semantics. The
+ * conservative checks keep ordinary `<pre>` snippets and `<pre><code>` blocks
+ * untouched.
+ */
+function normalizeProsePreformattedBlocks(document: Document): void {
+  for (const pre of Array.from(document.querySelectorAll('pre'))) {
+    if (!isLikelyProsePre(pre)) continue;
+
+    const container = document.createElement('div');
+    const serialized = pre.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+    const parts = serialized.split(/\r?\n[ \t]*\r?\n+/);
+
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+
+      const template = document.createElement('template');
+      template.innerHTML = trimmed;
+      foldSoftLineBreaks(template.content);
+
+      const text = template.content.textContent?.trim() ?? '';
+      const markdownHeading = text.match(/^(#{1,6})[ \t]+(.+)$/);
+      if (markdownHeading && template.content.childElementCount === 0) {
+        const heading = document.createElement(`h${markdownHeading[1].length}`);
+        heading.textContent = markdownHeading[2].trim();
+        container.appendChild(heading);
+        continue;
+      }
+
+      const paragraph = document.createElement('p');
+      paragraph.appendChild(template.content);
+      if (paragraph.textContent?.trim() || paragraph.querySelector('a, img, br')) {
+        container.appendChild(paragraph);
+      }
+    }
+
+    if (container.childElementCount > 0) pre.replaceWith(container);
+  }
+}
+
+function isLikelyProsePre(pre: Element): boolean {
+  if (pre.querySelector('code, kbd, samp')) return false;
+
+  const semanticHint = [
+    pre.getAttribute('class'),
+    pre.getAttribute('id'),
+    pre.getAttribute('data-language'),
+    pre.getAttribute('data-lang')
+  ].filter(Boolean).join(' ');
+  if (/(?:code|source|syntax|highlight|prettyprint|language|lang)/i.test(semanticHint)) {
+    return false;
+  }
+
+  const unsupportedChild = Array.from(pre.querySelectorAll('*')).some((element) =>
+    !['A', 'EM', 'STRONG', 'B', 'I', 'SPAN', 'BR'].includes(element.tagName)
+  );
+  if (unsupportedChild) return false;
+
+  const text = pre.textContent?.replace(/\r\n?/g, '\n').trim() ?? '';
+  if (text.length < 400) return false;
+
+  const compact = text.replace(/\s/g, '');
+  const letters = text.match(/\p{L}/gu)?.length ?? 0;
+  if (compact.length === 0 || letters / compact.length < 0.55) return false;
+
+  const sentenceMarks = text.match(/[.!?。！？](?=\s|$|["')\]}»”’])/g)?.length ?? 0;
+  if (sentenceMarks < 3) return false;
+
+  const lines = text.split('\n').filter((line) => line.trim());
+  const indentedLines = lines.filter((line) => /^\s{2,}\S/.test(line)).length;
+  const codeLikeLines = lines.filter((line) =>
+    /(?:[{};]\s*$|^(?:import|export|const|let|var|function|class|def|if|for|while|return|#include)\b|=>)/
+      .test(line.trim())
+  ).length;
+  if (lines.length >= 4 && indentedLines / lines.length > 0.25) return false;
+  if (codeLikeLines / lines.length > 0.2) return false;
+
+  return true;
+}
+
+function foldSoftLineBreaks(fragment: DocumentFragment): void {
+  const walker = fragment.ownerDocument.createTreeWalker(
+    fragment,
+    fragment.ownerDocument.defaultView?.NodeFilter.SHOW_TEXT ?? 4
+  );
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+  for (const node of textNodes) {
+    node.data = node.data.replace(/[ \t]*\r?\n[ \t]*/g, ' ');
+  }
+}
+
+function directTableCaption(table: Element): Element | null {
+  return Array.from(table.children).find((child) => child.tagName === 'CAPTION') ?? null;
 }
 
 /** Common lazy-loader attributes used across CMS and publishing platforms. */
@@ -411,6 +550,46 @@ function htmlToMarkdown(html: string): string {
   });
 
   turndown.use(gfm);
+  turndown.addRule('complexTableAsHtml', {
+    filter: (node) =>
+      node.nodeName === 'TABLE' &&
+      Boolean(node.querySelector('[rowspan], [colspan]')),
+    replacement: (_content, node) =>
+      `\n\n${(node as Element).outerHTML}\n\n`
+  });
+  turndown.addRule('complexOrderedListAsHtml', {
+    filter: (node) => {
+      if (node.nodeName !== 'OL') return false;
+      const element = node as Element;
+      const type = element.getAttribute('type');
+      return element.hasAttribute('reversed') ||
+        Boolean(element.querySelector('li[value]')) ||
+        (type !== null && type !== '1');
+    },
+    replacement: (_content, node) =>
+      `\n\n${(node as Element).outerHTML}\n\n`
+  });
+  turndown.addRule('descriptionListAsHtml', {
+    filter: 'dl',
+    replacement: (_content, node) =>
+      `\n\n${(node as Element).outerHTML}\n\n`
+  });
+  turndown.addRule('tableWithCaption', {
+    filter: (node) =>
+      node.nodeName === 'TABLE' &&
+      directTableCaption(node as Element) !== null,
+    replacement: (_content, node) => {
+      const table = (node as Element).cloneNode(true) as Element;
+      const caption = directTableCaption(table);
+      caption?.remove();
+
+      const captionMarkdown = caption
+        ? turndown.turndown(caption.innerHTML).trim()
+        : '';
+      const tableMarkdown = turndown.turndown(table.outerHTML).trim();
+      return `\n\n${captionMarkdown}\n\n${tableMarkdown}\n\n`;
+    }
+  });
   turndown.addRule('fencedCodeWithLanguage', {
     filter: 'pre',
     replacement: (_content, node) => {
@@ -420,12 +599,21 @@ function htmlToMarkdown(html: string): string {
       const languageMatch = className.match(/(?:language|lang)-([a-z0-9_+-]+)/i);
       const language = languageMatch?.[1] ?? 'text';
       const code = (node.textContent ?? '').replace(/^\n+|\n+$/g, '');
-      return `\n\n\`\`\`${language}\n${code}\n\`\`\`\n\n`;
+      const longestBacktickRun = Math.max(
+        0,
+        ...(code.match(/`+/g) ?? []).map((run) => run.length)
+      );
+      const fence = '`'.repeat(Math.max(3, longestBacktickRun + 1));
+      return `\n\n${fence}${language}\n${code}\n${fence}\n\n`;
     }
   });
 
   return turndown
     .turndown(html)
+    .replace(
+      /^([ \t]*(?:[-+*]|\d+\.)[ \t]+)\\\[([xX ])\\\](?=[ \t])/gm,
+      '$1[$2]'
+    )
     .replace(/\r\n?/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

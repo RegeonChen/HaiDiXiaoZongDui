@@ -256,7 +256,7 @@ describe('database integrity', () => {
       cleanedMarkdown: 'Old content without the image'
     });
 
-    getDatabase().run('DELETE FROM db_version WHERE version = 8');
+    getDatabase().run('DELETE FROM db_version WHERE version >= 8');
     saveDatabase();
     closeDatabase();
     await initDatabase();
@@ -264,6 +264,48 @@ describe('database integrity', () => {
 
     expect(await store.getArticleContentTarget(storedArticle.id)).toMatchObject({
       sourceHtml: '<article><img data-src="/real.png"></article>',
+      sourceKind: 'article_page',
+      contentTitle: null,
+      cleanedHtml: null,
+      cleanedMarkdown: null,
+      cleaningStatus: 'pending'
+    });
+  });
+
+  it('invalidates old cleaned article pages once for the structure-cleaner upgrade', async () => {
+    const feed = FeedRepository.create({
+      url: 'https://structures.example/feed.xml',
+      title: 'Structure migration feed'
+    });
+    const storedArticle = article({
+      id: 'structure-migration-article',
+      feedId: feed.id,
+      guid: 'structure-migration-guid',
+      url: 'https://structures.example/post'
+    });
+    expect(ArticleRepository.insertBatch([storedArticle])).toBe(1);
+
+    const store = new SqliteContentPipelineStore();
+    await store.saveArticleContent({
+      articleId: storedArticle.id,
+      articleUrl: storedArticle.url,
+      sourceHtml: '<article><ol start="3"><li>Third</li></ol></article>',
+      sourceKind: 'article_page',
+      title: 'Old cleaned structure',
+      byline: null,
+      excerpt: null,
+      cleanedHtml: '<ol><li>Third</li></ol>',
+      cleanedMarkdown: '1. Third'
+    });
+
+    getDatabase().run('DELETE FROM db_version WHERE version >= 9');
+    saveDatabase();
+    closeDatabase();
+    await initDatabase();
+    runMigrations();
+
+    expect(await store.getArticleContentTarget(storedArticle.id)).toMatchObject({
+      sourceHtml: '<article><ol start="3"><li>Third</li></ol></article>',
       sourceKind: 'article_page',
       contentTitle: null,
       cleanedHtml: null,

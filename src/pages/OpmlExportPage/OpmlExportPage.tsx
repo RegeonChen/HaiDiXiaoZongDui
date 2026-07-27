@@ -97,10 +97,10 @@ export function OpmlExportPage({ onToast, onClose }: OpmlExportPageProps) {
         } else {
           onToast('已取消导出', 'info');
         }
+        onClose();
       } else {
         onToast(`OPML 导出失败：${r.kind === 'error' ? r.error : '未知错误'}`, 'error');
       }
-      onClose();
     } catch (e) {
       onToast(`OPML 导出失败：${e instanceof Error ? e.message : String(e)}`, 'error');
     } finally {

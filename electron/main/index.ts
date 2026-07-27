@@ -1950,10 +1950,19 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.feedActions.error = '找不到任何具体 feed 按钮（data-feed-id wrap 内 .feed-list__item）';
             return JSON.stringify(report);
           }
+          const firstFeedId = firstFeedButton.closest('[data-feed-id]')?.getAttribute('data-feed-id') || '';
+          const secondFeedButton = feedWraps
+            .map((wrap) => wrap.querySelector('button.feed-list__item'))
+            .find((button) =>
+              !!button &&
+              button !== firstFeedButton &&
+              button.closest('[data-feed-id]')?.getAttribute('data-feed-id')
+            );
+          const secondFeedId = secondFeedButton?.closest('[data-feed-id]')?.getAttribute('data-feed-id') || '';
           firstFeedButton.click();
           await sleep(300);
 
-          // 3) Action bar 出现 + 2 个按钮
+          // 3) Action bar 出现 + 2 个按钮，并真实执行单源同步
           const actionBar = document.querySelector('[data-testid="article-list__action-bar"]');
           report.feedActions.checks.actionBarVisible = !!actionBar;
           const syncBtn = document.querySelector('[data-testid="feed-action__sync"]');
@@ -1963,7 +1972,143 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.feedActions.checks.syncButtonText = syncBtn ? (syncBtn.textContent || '').includes('同步') : false;
           report.feedActions.checks.markAllReadButtonText = markAllReadBtn ? (markAllReadBtn.textContent || '').includes('全部已读') : false;
 
-          // 4) 切到 all → action bar 不出现
+          const seenSyncStages = new Set();
+          if (syncBtn) syncBtn.click();
+          await sleep(120);
+          if (secondFeedButton) secondFeedButton.click();
+          const syncStart = Date.now();
+          while (Date.now() - syncStart < 3000) {
+            const progressBar = document.querySelector('.sync-progress-bar');
+            const stage = progressBar?.getAttribute('data-sync-stage');
+            if (stage) seenSyncStages.add(stage);
+            if (progressBar?.getAttribute('data-sync-state') === 'done') break;
+            await sleep(30);
+          }
+          report.feedActions.checks.syncActionCompleted =
+            document.querySelector('.sync-progress-bar')?.getAttribute('data-sync-state') === 'done';
+          report.feedActions.checks.syncRealStagesRendered =
+            seenSyncStages.has('parsing') && seenSyncStages.has('saving');
+          report.feedActions.checks.syncSuccessToast =
+            (document.body.textContent || '').includes('同步完成：新增');
+          await waitFor(
+            () => {
+              const button = document.querySelector('[data-testid="feed-action__mark-all-read"]');
+              return !!button && !button.hasAttribute('disabled');
+            },
+            { timeout: 3000 }
+          );
+          const activeFeedId = document.querySelector(
+            '[data-feed-id] button.feed-list__item.is-active'
+          )?.closest('[data-feed-id]')?.getAttribute('data-feed-id') || '';
+          report.feedActions.checks.syncSelectionPreserved =
+            !!secondFeedId && activeFeedId === secondFeedId;
+
+          // 切回第一个 feed，再验证全部已读。
+          const firstFeedButtonAfterSync = document.querySelector(
+            '[data-feed-id="' + firstFeedId + '"] button.feed-list__item'
+          );
+          if (firstFeedButtonAfterSync) firstFeedButtonAfterSync.click();
+          await waitFor(
+            () => document.querySelector(
+              '[data-feed-id="' + firstFeedId + '"] button.feed-list__item'
+            )?.classList.contains('is-active') === true,
+            { timeout: 2000 }
+          );
+          await waitFor(
+            () => {
+              const button = document.querySelector('[data-testid="feed-action__mark-all-read"]');
+              return !!button && !button.hasAttribute('disabled');
+            },
+            { timeout: 2000 }
+          );
+
+          // 4) 真实执行"全部已读"，验证精确计数、确认和数据变化
+          const ds = (window).__JUHE_DS__;
+          report.feedActions.checks.mockDataSourceExposed = !!ds;
+          let unreadBefore = -1;
+          if (ds?.articleCount && firstFeedId) {
+            const beforeResult = await ds.articleCount({ feedId: firstFeedId, isRead: false });
+            unreadBefore = beforeResult.kind === 'ready' ? beforeResult.data : -1;
+          }
+          report.feedActions.checks.unreadBefore = unreadBefore;
+          const markAllReadBtnAfterSync = document.querySelector('[data-testid="feed-action__mark-all-read"]');
+          if (markAllReadBtnAfterSync) markAllReadBtnAfterSync.click();
+          await waitFor(() => !!document.querySelector('.confirm-dialog'), { timeout: 2000 });
+          const confirmMessage = document.querySelector('.confirm-dialog__message')?.textContent || '';
+          report.feedActions.checks.markAllReadConfirmMessage = confirmMessage;
+          report.feedActions.checks.markAllReadConfirmExactCount =
+            unreadBefore > 0 && confirmMessage.includes(String(unreadBefore));
+          const confirmBtn = document.querySelector('.confirm-dialog__btn--primary');
+          if (confirmBtn) confirmBtn.click();
+          let unreadAfter = -1;
+          for (let i = 0; i < 30; i++) {
+            if (ds?.articleCount && firstFeedId) {
+              const afterResult = await ds.articleCount({ feedId: firstFeedId, isRead: false });
+              unreadAfter = afterResult.kind === 'ready' ? afterResult.data : -1;
+            }
+            if (unreadAfter === 0) break;
+            await sleep(50);
+          }
+          report.feedActions.checks.unreadAfter = unreadAfter;
+          await waitFor(
+            () => Array.from(document.querySelectorAll('.article-list__item'))
+              .every((item) => item.classList.contains('is-read')),
+            { timeout: 2000 }
+          );
+          report.feedActions.checks.markAllReadApplied =
+            unreadBefore > 0 &&
+            unreadAfter === 0 &&
+            Array.from(document.querySelectorAll('.article-list__item'))
+              .every((item) => item.classList.contains('is-read'));
+
+          // 5) 真实执行失败同步，验证刷新后的侧栏红点和错误信息
+          const failureFeedId = 'feed-36kr';
+          if (ds?.feedsState) {
+            ds.feedsState = ds.feedsState.map((feed) =>
+              feed.id === failureFeedId
+                ? { ...feed, lastSyncSuccess: true, lastSyncError: null }
+                : feed
+            );
+            window.dispatchEvent(new Event('juhe:refresh'));
+            await waitFor(
+              () => {
+                const wrap = document.querySelector('[data-feed-id="' + failureFeedId + '"]');
+                return !!wrap && !wrap.querySelector('.feed-list__status-dot');
+              },
+              { timeout: 2000 }
+            );
+          }
+          const failureFeedButton = document.querySelector(
+            '[data-feed-id="' + failureFeedId + '"] button.feed-list__item'
+          );
+          if (failureFeedButton) failureFeedButton.click();
+          await waitFor(
+            () => !!document.querySelector('[data-testid="feed-action__sync"]'),
+            { timeout: 2000 }
+          );
+          const failureSyncBtn = document.querySelector('[data-testid="feed-action__sync"]');
+          if (failureSyncBtn) failureSyncBtn.click();
+          await waitFor(
+            () => document.querySelector('.sync-progress-bar')?.getAttribute('data-sync-state') === 'done',
+            { timeout: 2500 }
+          );
+          await waitFor(
+            () => {
+              const button = document.querySelector('[data-testid="feed-action__sync"]');
+              return !!button && !button.hasAttribute('disabled');
+            },
+            { timeout: 2500 }
+          );
+          const failedWrapAfterSync = document.querySelector(
+            '[data-feed-id="' + failureFeedId + '"]'
+          );
+          const failureDot = failedWrapAfterSync?.querySelector('.feed-list__status-dot');
+          report.feedActions.checks.syncFailureRefreshedStatus =
+            !!failureDot && (failureDot.getAttribute('title') || '').includes('503');
+          report.feedActions.checks.syncFailureToast =
+            (document.body.textContent || '').includes('同步失败：');
+
+          // 6) 切到 all → action bar 不出现
           const allTab = Array.from(document.querySelectorAll('.feed-list__virtuals .feed-list__item'))
             .find((b) => (b.textContent || '').includes('所有订阅源'));
           if (allTab) allTab.click();
@@ -1971,7 +2116,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const actionBarAfterAll = document.querySelector('[data-testid="article-list__action-bar"]');
           report.feedActions.checks.actionBarHiddenOnAll = !actionBarAfterAll;
 
-          // 5) 切到 unread → action bar 不出现
+          // 7) 切到 unread → action bar 不出现
           const unreadTab = Array.from(document.querySelectorAll('.feed-list__virtuals .feed-list__item'))
             .find((b) => (b.textContent || '').includes('未读'));
           if (unreadTab) unreadTab.click();
@@ -1979,11 +2124,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const actionBarAfterUnread = document.querySelector('[data-testid="article-list__action-bar"]');
           report.feedActions.checks.actionBarHiddenOnUnread = !actionBarAfterUnread;
 
-          // 6) 切回具体 feed
-          firstFeedButton.click();
+          // 8) 切回具体 feed
+          const currentFirstFeedButton = document.querySelector(
+            '[data-feed-id="' + firstFeedId + '"] button.feed-list__item'
+          );
+          if (currentFirstFeedButton) currentFirstFeedButton.click();
           await sleep(200);
 
-          // 7) 点击第一篇文章 → reader 打开
+          // 9) 点击第一篇文章 → reader 打开
           const firstArticle = document.querySelector('.article-list__item');
           if (firstArticle) firstArticle.click();
           await waitFor(() => !!document.querySelector('.article-reader__title'), { timeout: 3000 });
@@ -1993,11 +2141,37 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           // Phase 4.1.1:articleTagMap 渲染区(空时无 chip)
           const debug = (window).__JUHE_ARTICLE_DEBUG__;
           report.feedActions.checks.articleDebugExposed = !!debug;
-          // 标题前 chips 容器 - 暂时空(无 tag)
+          // 标题前 chips 容器初始为空
           const beforeChips = document.querySelectorAll('.article-reader__title-tag').length;
           report.feedActions.checks.articleTitleChipsEmptyBefore = beforeChips === 0;
 
-          // 8) 切到 tags 页面 → 双栏布局
+          // 10) 在阅读器里新建并应用含分隔符的 tag，验证标题 chip 真正出现
+          const tagManageBtn = document.querySelector('[data-tool="tag-manage"]');
+          if (tagManageBtn) tagManageBtn.click();
+          await waitFor(
+            () => !!document.querySelector('.sticky-tag-manage__create-input'),
+            { timeout: 2000 }
+          );
+          const createTagInput = document.querySelector('.sticky-tag-manage__create-input');
+          if (createTagInput) {
+            const inputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            inputSetter.call(createTagInput, 'Phase411|Tag]');
+            createTagInput.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(50);
+            const createTagForm = createTagInput.closest('form');
+            const createTagButton = createTagForm?.querySelector('button[type="submit"]');
+            if (createTagButton) createTagButton.click();
+          }
+          await waitFor(
+            () => Array.from(document.querySelectorAll('.article-reader__title-tag'))
+              .some((chip) => (chip.textContent || '').includes('Phase411|Tag]')),
+            { timeout: 3000 }
+          );
+          report.feedActions.checks.articleTitleChipRenderedAfter =
+            Array.from(document.querySelectorAll('.article-reader__title-tag'))
+              .some((chip) => (chip.textContent || '').includes('Phase411|Tag]'));
+
+          // 11) 切到 tags 页面 → 双栏布局
           const tagsNav = Array.from(document.querySelectorAll('.app-header__nav-btn'))
             .find((b) => (b.textContent || '').includes('标签'));
           if (tagsNav) tagsNav.click();
@@ -2018,52 +2192,41 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const rightHint = rightPane ? rightPane.querySelector('.tags-page__right-empty') : null;
           report.feedActions.checks.tagsPageRightHintWhenNoSelection = !!rightHint;
 
-          // 9) 通过 UI 创建 tag:填表单 + 提交
-          const nameInput = document.querySelector('[data-testid="tags-page__new-name"]');
-          const colorInput = document.querySelector('[data-testid="tags-page__new-color"]');
-          if (nameInput) {
-            const nameSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-            nameSetter.call(nameInput, 'Phase411Tag');
-            nameInput.dispatchEvent(new Event('input', { bubbles: true }));
-            if (colorInput) {
-              const colorSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-              colorSetter.call(colorInput, '#ff6b35');
-              colorInput.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-            const addBtn = document.querySelector('[data-testid="tags-page__add"]');
-            if (addBtn) addBtn.click();
-            await sleep(500);
-            // 验证新 tag 出现在左栏
-            const tagItem = document.querySelector('[data-testid^="tags-page__item-"]');
-            report.feedActions.checks.tagCreatedAndRendered = !!tagItem;
-            if (tagItem) {
-              report.feedActions.checks.tagNameCorrect = (tagItem.textContent || '').includes('Phase411Tag');
-            }
-          }
-
-          // 10) 选中 tag → 右栏 article 列表
+          // 12) 阅读器创建的 tag 出现在左栏；选中后必须显示真实关联文章和精确总数
           const newTagItem = document.querySelector('[data-testid^="tags-page__item-"]');
+          report.feedActions.checks.tagCreatedAndRendered = !!newTagItem;
+          report.feedActions.checks.tagNameCorrect =
+            !!newTagItem && (newTagItem.textContent || '').includes('Phase411|Tag]');
           if (newTagItem) {
             const pickBtn = newTagItem.querySelector('.tags-page__item-pick');
             if (pickBtn) pickBtn.click();
-            await sleep(500);
-            // 右栏显示"该标签下还没有文章" 或 article list（mock 模式没真 article 关联）
-            const articleList = document.querySelector('[data-testid="tags-page__article-list"]');
-            const emptyHint = document.querySelector('.tags-page__right .tags-page__empty');
-            report.feedActions.checks.tagsPageRightAfterSelect = !!articleList || !!emptyHint;
+            await waitFor(
+              () => document.querySelectorAll(
+                '.tags-page__article-list [data-testid^="tags-page__article-"]'
+              ).length > 0,
+              { timeout: 3000 }
+            );
+            const taggedArticles = document.querySelectorAll(
+              '.tags-page__article-list [data-testid^="tags-page__article-"]'
+            );
+            const tagCountText = document.querySelector('[data-testid="tags-page__article-count"]')?.textContent || '';
+            report.feedActions.checks.tagsPageRightShowsLinkedArticle = taggedArticles.length === 1;
+            report.feedActions.checks.tagsPageExactCount = /1\\s*\\/\\s*1/.test(tagCountText);
           }
 
-          // 11) 删 tag → 左栏移除
+          // 13) 删 tag → 左栏移除 + 右栏清空
           const delBtn = Array.from(document.querySelectorAll('[data-testid^="tags-page__item-"] button'))
             .find((b) => (b.textContent || '').includes('删除'));
           if (delBtn) {
             window.confirm = () => true; // mock confirm
             delBtn.click();
             await sleep(400);
-            // 验证 Phase411Tag 已被删除
+            // 验证 Phase411|Tag] 已被删除
             const after = Array.from(document.querySelectorAll('[data-testid^="tags-page__item-"]'));
-            const stillThere = after.some((it) => (it.textContent || '').includes('Phase411Tag'));
+            const stillThere = after.some((it) => (it.textContent || '').includes('Phase411|Tag]'));
             report.feedActions.checks.tagDeletedFromList = !stillThere;
+            report.feedActions.checks.tagsPageRightClearedAfterDelete =
+              !!document.querySelector('.tags-page__right-empty');
           }
         } catch (e) {
           report.feedActions.error = String(e);
@@ -2074,13 +2237,18 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           'firstFeedItemFound', 'actionBarVisible',
           'syncButtonVisible', 'markAllReadButtonVisible',
           'syncButtonText', 'markAllReadButtonText',
+          'syncActionCompleted', 'syncRealStagesRendered', 'syncSuccessToast',
+          'syncSelectionPreserved',
+          'mockDataSourceExposed', 'markAllReadConfirmExactCount', 'markAllReadApplied',
+          'syncFailureRefreshedStatus', 'syncFailureToast',
           'actionBarHiddenOnAll', 'actionBarHiddenOnUnread',
           'articleReaderOpened', 'articleDebugExposed',
-          'articleTitleChipsEmptyBefore',
+          'articleTitleChipsEmptyBefore', 'articleTitleChipRenderedAfter',
           'tagsPageOpened', 'tagsPageTwoColumnLayout',
           'tagsPageFormRendered', 'tagsPageRightHintWhenNoSelection',
           'tagCreatedAndRendered', 'tagNameCorrect',
-          'tagsPageRightAfterSelect', 'tagDeletedFromList'
+          'tagsPageRightShowsLinkedArticle', 'tagsPageExactCount',
+          'tagDeletedFromList', 'tagsPageRightClearedAfterDelete'
         ];
         for (const k of mustPass) {
           if (report.feedActions.checks[k] !== true) {
@@ -2193,30 +2361,56 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const m5 = counterAfterTwoOff.match(/已选\\s*(\\d+)/);
           report.opmlExport.checks.selectedTwoOff = m5 ? parseInt(m5[1], 10) === total - 2 : false;
 
-          // 9) hook window.__JUHE_DS__.opmlExport(Phase 4.1.4：mock 模式用 MockDataSource 不走 window.api)
+          // 9) hook window.__JUHE_DS__.opmlExport：先返回应用层错误，验证页面和选择保留
           const ds = (window).__JUHE_DS__;
           report.opmlExport.checks.mockDataSourceExposed = !!ds;
           (window).__JUHE_OPML_EXPORT_CALLS__ = [];
+          let origExport = null;
           if (ds && ds.opmlExport) {
-            const origExport = ds.opmlExport.bind(ds);
+            origExport = ds.opmlExport.bind(ds);
+            ds.opmlExport = async (feedIds) => {
+              (window).__JUHE_OPML_EXPORT_CALLS__.push(feedIds);
+              return { kind: 'error', error: 'SMOKE_EXPORT_FAILED' };
+            };
+          }
+
+          // 10) 第一次点"确认导出" → 返回 error，页面不能关闭、选择不能丢
+          const confirmBtnFinal = document.querySelector('[data-testid="opml-export__confirm"]');
+          report.opmlExport.checks.confirmEnabledWhenSome = confirmBtnFinal && !confirmBtnFinal.hasAttribute('disabled');
+          if (confirmBtnFinal) confirmBtnFinal.click();
+          await sleep(250);
+          const counterAfterError = document.querySelector('[data-testid="opml-export__counter"]')?.textContent || '';
+          const errorSelected = counterAfterError.match(/已选\\s*(\\d+)/);
+          report.opmlExport.checks.pageRetainedAfterError =
+            !!document.querySelector('[data-testid="opml-export-page"]');
+          report.opmlExport.checks.selectionRetainedAfterError =
+            errorSelected ? parseInt(errorSelected[1], 10) === total - 2 : false;
+          report.opmlExport.checks.errorToastRendered =
+            (document.body.textContent || '').includes('SMOKE_EXPORT_FAILED');
+
+          // 11) 改回成功实现并再次确认 → 回到 reader
+          if (ds && origExport) {
             ds.opmlExport = async (feedIds) => {
               (window).__JUHE_OPML_EXPORT_CALLS__.push(feedIds);
               return origExport(feedIds);
             };
           }
-
-          // 10) 点"确认导出"
-          const confirmBtnFinal = document.querySelector('[data-testid="opml-export__confirm"]');
-          report.opmlExport.checks.confirmEnabledWhenSome = confirmBtnFinal && !confirmBtnFinal.hasAttribute('disabled');
-          if (confirmBtnFinal) confirmBtnFinal.click();
-          await sleep(400);
-          // 验证回到 reader
+          await waitFor(
+            () => {
+              const button = document.querySelector('[data-testid="opml-export__confirm"]');
+              return !!button && !button.hasAttribute('disabled');
+            },
+            { timeout: 2000 }
+          );
+          const retryConfirmBtn = document.querySelector('[data-testid="opml-export__confirm"]');
+          if (retryConfirmBtn) retryConfirmBtn.click();
+          await waitFor(() => !!document.querySelector('.article-list'), { timeout: 2000 });
           report.opmlExport.checks.backToReaderAfterConfirm = !!document.querySelector('.article-list');
-          // 验证 export 被调 + 传了 N-2 个 feedId
+          // 验证 error + retry 共调用两次，重试仍传 N-2 个 feedId
           const calls = (window).__JUHE_OPML_EXPORT_CALLS__;
-          report.opmlExport.checks.opmlExportCalled = calls.length === 1;
-          report.opmlExport.checks.opmlExportFeedIdsCount = calls[0] ? calls[0].length : -1;
-          report.opmlExport.checks.opmlExportFeedIdsCorrect = calls[0] ? calls[0].length === total - 2 : false;
+          report.opmlExport.checks.opmlExportCalled = calls.length === 2;
+          report.opmlExport.checks.opmlExportFeedIdsCount = calls[1] ? calls[1].length : -1;
+          report.opmlExport.checks.opmlExportFeedIdsCorrect = calls[1] ? calls[1].length === total - 2 : false;
         } catch (e) {
           report.opmlExport.error = String(e);
           report.opmlExport.stack = (e instanceof Error) ? e.stack : null;
@@ -2229,6 +2423,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           'noneSelectedAfterToggle', 'confirmDisabledWhenNone',
           'allSelectedAfterSecondToggle', 'selectedDecreaseByOne',
           'selectedTwoOff', 'confirmEnabledWhenSome',
+          'pageRetainedAfterError', 'selectionRetainedAfterError', 'errorToastRendered',
           'backToReaderAfterConfirm', 'mockDataSourceExposed',
           'opmlExportCalled', 'opmlExportFeedIdsCorrect'
         ];

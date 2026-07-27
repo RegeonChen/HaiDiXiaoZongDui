@@ -65,6 +65,135 @@ describe('cleanArticleContent', () => {
     expect(result.cleanedMarkdown).toMatch(/1\.\s+第一项/);
   });
 
+  it('preserves ordered-list numbering and safe task-list states', () => {
+    const result = cleanArticleContent(`
+      <article>
+        <p>${'A sufficiently long article paragraph. '.repeat(12)}</p>
+        <ol start="3">
+          <li>Third item</li>
+          <li>Fourth item<ul><li>Nested bullet</li></ul></li>
+        </ol>
+        <ol reversed type="A">
+          <li value="7">Special numbering</li>
+        </ol>
+        <ul>
+          <li><input type="checkbox" checked onclick="alert(1)">Finished task</li>
+          <li><input type="checkbox">Pending task</li>
+          <li><input type="text" value="must disappear">Ordinary item</li>
+        </ul>
+      </article>
+    `, 'https://example.com/lists');
+
+    expect(result.cleanedHtml).toContain('<ol start="3">');
+    expect(result.cleanedHtml).toMatch(/<ol reversed(?:="")? type="A">/);
+    expect(result.cleanedHtml).toContain('<li value="7">');
+    expect(result.cleanedHtml).toContain('[x] Finished task');
+    expect(result.cleanedHtml).toContain('[ ] Pending task');
+    expect(result.cleanedHtml).not.toContain('type="text"');
+    expect(result.cleanedHtml).not.toContain('onclick');
+    expect(result.cleanedMarkdown).toMatch(/3\.\s+Third item/);
+    expect(result.cleanedMarkdown).toMatch(/4\.\s+Fourth item/);
+    expect(result.cleanedMarkdown).toMatch(/-\s+\[x\]\s+Finished task/i);
+    expect(result.cleanedMarkdown).toMatch(/-\s+\[ \]\s+Pending task/);
+    expect(result.cleanedMarkdown).toMatch(/<ol reversed(?:="")? type="A">/);
+    expect(result.cleanedMarkdown).toContain('<li value="7">Special numbering</li>');
+  });
+
+  it('keeps complex table semantics without generating malformed GFM rows', () => {
+    const result = cleanArticleContent(`
+      <article>
+        <p>${'A sufficiently long article paragraph. '.repeat(12)}</p>
+        <table aria-label="Quarterly totals">
+          <caption>Quarterly totals</caption>
+          <thead>
+            <tr><th scope="col">Region</th><th scope="col">Q1</th><th scope="col">Q2</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row" rowspan="2">East</th><td colspan="2">20</td></tr>
+            <tr><td>9</td><td>11</td></tr>
+          </tbody>
+          <tfoot><tr><th>Total</th><td>9</td><td>11</td></tr></tfoot>
+        </table>
+      </article>
+    `, 'https://example.com/complex-table');
+
+    expect(result.cleanedHtml).toContain('<caption>Quarterly totals</caption>');
+    expect(result.cleanedHtml).toContain('<tfoot>');
+    expect(result.cleanedHtml).toContain('scope="col"');
+    expect(result.cleanedHtml).toContain('rowspan="2"');
+    expect(result.cleanedHtml).toContain('colspan="2"');
+    expect(result.cleanedMarkdown).toContain('Quarterly totals\n\n<table');
+    expect(result.cleanedMarkdown).toContain('<table aria-label="Quarterly totals">');
+    expect(result.cleanedMarkdown).not.toContain('<caption>');
+    expect(result.cleanedMarkdown).toContain('rowspan="2"');
+    expect(result.cleanedMarkdown).not.toContain('| East | 20 |');
+
+    const blocks = splitCleanedHtmlIntoBlocks(result.cleanedHtml);
+    expect(blocks.map((block) => block.tag)).toEqual(['P', 'P', 'TABLE']);
+    expect(blocks[1].html).toBe('<p>Quarterly totals</p>');
+    expect(blocks[2].html).not.toContain('<caption>');
+  });
+
+  it('uses a longer Markdown fence when source code contains backtick fences', () => {
+    const result = cleanArticleContent(`
+      <article>
+        <p>${'A sufficiently long article paragraph. '.repeat(12)}</p>
+        <pre><code class="language-markdown">Before
+\`\`\`js
+console.log("nested");
+\`\`\`
+After</code></pre>
+      </article>
+    `, 'https://example.com/code-fence');
+
+    expect(result.cleanedHtml).toContain('<code class="language-markdown">');
+    expect(result.cleanedMarkdown).toContain('````markdown');
+    expect(result.cleanedMarkdown).toContain('```js');
+    expect(result.cleanedMarkdown).toContain('\n````');
+  });
+
+  it('turns long prose stored in a pre element into paragraphs and headings', () => {
+    const opening = 'This publishing system stores an ordinary essay inside a pre element. '
+      .repeat(12);
+    const ending = 'Readers should see normal paragraphs, and translation should receive separate blocks. '
+      .repeat(10);
+    const result = cleanArticleContent(`
+      <article>
+        <h1>Pre-wrapped essay</h1>
+        <pre>${opening}
+
+## A prose heading
+
+${ending} Read the <a href="/source">original source</a>.</pre>
+      </article>
+    `, 'https://example.com/pre-wrapped-essay');
+
+    expect(result.cleanedHtml).not.toContain('<pre>');
+    expect(result.cleanedHtml).toContain('<h2>A prose heading</h2>');
+    expect(result.cleanedHtml).toContain('<p>This publishing system');
+    expect(result.cleanedHtml).toContain('href="https://example.com/source"');
+    expect(result.cleanedMarkdown).not.toContain('```text');
+    expect(splitCleanedHtmlIntoBlocks(result.cleanedHtml).map((block) => block.tag))
+      .toEqual(['P', 'H2', 'P']);
+  });
+
+  it('keeps long preformatted source code as code when it lacks a code child', () => {
+    const sourceLines = Array.from(
+      { length: 30 },
+      (_, index) => `const value${index} = computeValue(${index});`
+    ).join('\n');
+    const result = cleanArticleContent(`
+      <article>
+        <p>${'A sufficiently long article paragraph. '.repeat(12)}</p>
+        <pre>${sourceLines}</pre>
+      </article>
+    `, 'https://example.com/plain-pre-code');
+
+    expect(result.cleanedHtml).toContain('<pre>');
+    expect(result.cleanedMarkdown).toContain('```text');
+    expect(result.cleanedMarkdown).toContain('const value29');
+  });
+
   it('removes generated table-of-contents blocks before Readability extraction', () => {
     const result = cleanArticleContent(`
       <article>
@@ -197,6 +326,18 @@ describe('splitCleanedHtmlIntoBlocks', () => {
     expect(blocks[0].html.match(/<li>/g)).toHaveLength(2);
     expect(blocks[1].html.match(/<p>/g)).toHaveLength(2);
     expect(blocks[2].html).toContain('<tbody><tr><td>A</td><td>1</td></tr></tbody>');
+  });
+
+  it('keeps description lists intact as atomic blocks', () => {
+    const blocks = splitCleanedHtmlIntoBlocks(
+      '<dl><dt>Term</dt><dd>Definition</dd></dl>'
+    );
+
+    expect(blocks).toEqual([{
+      index: 0,
+      tag: 'DL',
+      html: '<dl><dt>Term</dt><dd>Definition</dd></dl>'
+    }]);
   });
 
   it('unwraps layout containers and preserves top-level inline markup', () => {

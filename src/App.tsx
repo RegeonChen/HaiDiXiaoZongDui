@@ -12,7 +12,7 @@
  *  - ArticleReader 接入 AI 工具栏（摘要/翻译/标签建议/笔记/专题）
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Article, Feed, Tag } from '@shared/types';
+import type { Article, Feed, SyncStage, Tag } from '@shared/types';
 import { useDataSource } from './context/DataSourceContext';
 import { useSelection } from './hooks/useSelection';
 import { usePaneWidths } from './hooks/usePaneWidths';
@@ -49,9 +49,19 @@ type ArticlesState =
   | { kind: 'ready'; data: Article[] }
   | { kind: 'error'; error: string };
 
+const SYNC_STAGE_LABELS: Record<SyncStage, string> = {
+  fetching: '正在抓取',
+  parsing: '正在解析',
+  saving: '正在保存',
+  completed: '已完成',
+  failed: '失败'
+};
+
 export function App() {
   const ds = useDataSource();
   const { selection, selectFeed, selectArticle } = useSelection();
+  const selectedFeedIdRef = useRef(selection.feedId);
+  selectedFeedIdRef.current = selection.feedId;
   const { widths, setSidebar, setList } = usePaneWidths();
 
   const [currentPage, setCurrentPage] = useState<AppPage>('reader');
@@ -94,12 +104,13 @@ export function App() {
   const [counts, setCounts] = useState<{ all: number; unread: number; starred: number }>({ all: 0, unread: 0, starred: 0 });
   // Phase 3.6.2：同步进度（两态：进行中 / 完成；完成后 3 秒自动消失）
   type SyncProgress =
-    | { kind: 'progress'; feedName: string; completed: number; total: number; okCount: number; failCount: number }
+    | { kind: 'progress'; feedName: string; completed: number; total: number; okCount: number; failCount: number; stage?: SyncStage | null }
     | { kind: 'done'; total: number; okCount: number; failCount: number };
   const [syncingProgress, setSyncingProgress] = useState<SyncProgress | null>(null);
   const [failedFeedIds, setFailedFeedIds] = useState<string[]>([]);
   // Phase 3.6.2：3 秒延迟清理计时器 ref
   const syncDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncProgressPollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const pushToast = useCallback((message: string, kind: ToastItem['kind'] = 'info') => {
     toastIdRef.current += 1;
@@ -278,6 +289,10 @@ export function App() {
         clearTimeout(syncDoneTimerRef.current);
         syncDoneTimerRef.current = null;
       }
+      if (syncProgressPollTimerRef.current !== null) {
+        clearInterval(syncProgressPollTimerRef.current);
+        syncProgressPollTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -366,6 +381,14 @@ export function App() {
     const feed = feeds.find((f) => f.id === fid);
     if (!feed || feedActionBusy) return;
     setFeedActionBusy(true);
+    if (syncDoneTimerRef.current !== null) {
+      clearTimeout(syncDoneTimerRef.current);
+      syncDoneTimerRef.current = null;
+    }
+    if (syncProgressPollTimerRef.current !== null) {
+      clearInterval(syncProgressPollTimerRef.current);
+      syncProgressPollTimerRef.current = null;
+    }
     // 启动底部进度条(progress 态,等同步完成切 done)
     setSyncingProgress({
       kind: 'progress',
@@ -373,41 +396,80 @@ export function App() {
       completed: 0,
       total: 1,
       okCount: 0,
-      failCount: 0
+      failCount: 0,
+      stage: 'fetching'
     });
     pushToast(`正在同步「${feed.siteTitle || feed.title}」…`, 'info');
+
+    const pollProgress = async () => {
+      try {
+        const progress = await ds.syncProgress();
+        if (
+          progress.kind === 'ready' &&
+          progress.data.currentFeedId === feed.id &&
+          progress.data.currentStage
+        ) {
+          setSyncingProgress((prev) =>
+            prev?.kind === 'progress'
+              ? { ...prev, stage: progress.data.currentStage?.stage ?? null }
+              : prev
+          );
+        }
+      } catch {
+        // 进度查询失败不应制造未处理 Promise；最终同步结果仍负责展示成功或失败。
+      }
+    };
+
+    const finishProgress = (ok: boolean) => {
+      setSyncingProgress({
+        kind: 'done',
+        total: 1,
+        okCount: ok ? 1 : 0,
+        failCount: ok ? 0 : 1
+      });
+      syncDoneTimerRef.current = setTimeout(() => {
+        setSyncingProgress(null);
+        syncDoneTimerRef.current = null;
+      }, 3000);
+    };
+
     try {
-      const r = await ds.syncFeed(feed.id);
+      const syncPromise = ds.syncFeed(feed.id);
+      void pollProgress();
+      syncProgressPollTimerRef.current = setInterval(() => {
+        void pollProgress();
+      }, 80);
+      const r = await syncPromise;
       if (r.ok) {
         const msg = `同步完成：新增 ${r.newArticles} 篇${r.updatedArticles > 0 ? `，更新 ${r.updatedArticles} 篇` : ''}`;
         pushToast(msg, 'success');
-        setSyncingProgress({ kind: 'done', total: 1, okCount: 1, failCount: 0 });
-        if (syncDoneTimerRef.current !== null) clearTimeout(syncDoneTimerRef.current);
-        syncDoneTimerRef.current = setTimeout(() => {
-          setSyncingProgress(null);
-          syncDoneTimerRef.current = null;
-        }, 3000);
-        await refreshFeeds();
+        finishProgress(true);
+        setFailedFeedIds((prev) => prev.filter((id) => id !== feed.id));
         const result = await ds.articles({});
         if (result.kind === 'ready') {
           setAllArticlesState({ kind: 'ready', data: result.data });
         }
-        // 同步后刷新当前分页 articles（重置 offset=0）
-        await refreshArticles({ feedId: feed.id });
-        void refreshCounts();
       } else {
         pushToast(`同步失败：${r.error ?? '未知错误'}`, 'error');
-        setSyncingProgress({ kind: 'done', total: 1, okCount: 0, failCount: 1 });
-        if (syncDoneTimerRef.current !== null) clearTimeout(syncDoneTimerRef.current);
-        syncDoneTimerRef.current = setTimeout(() => {
-          setSyncingProgress(null);
-          syncDoneTimerRef.current = null;
-        }, 3000);
+        finishProgress(false);
+        setFailedFeedIds((prev) => prev.includes(feed.id) ? prev : [...prev, feed.id]);
       }
     } catch (e) {
       pushToast(`同步出错：${String(e)}`, 'error');
-      setSyncingProgress(null);
+      finishProgress(false);
+      setFailedFeedIds((prev) => prev.includes(feed.id) ? prev : [...prev, feed.id]);
     } finally {
+      if (syncProgressPollTimerRef.current !== null) {
+        clearInterval(syncProgressPollTimerRef.current);
+        syncProgressPollTimerRef.current = null;
+      }
+      // 成功和失败都刷新 Feed，保证 lastSyncSuccess / lastSyncError 立即反映到侧栏。
+      await refreshFeeds();
+      // 用户可能在同步期间切换订阅源，不能用旧请求覆盖新选择的文章列表。
+      if (selectedFeedIdRef.current === feed.id) {
+        await refreshArticles({ feedId: feed.id });
+      }
+      void refreshCounts();
       setFeedActionBusy(false);
     }
   }, [selection.feedId, feeds, feedActionBusy, ds, pushToast, refreshFeeds, refreshArticles, refreshCounts]);
@@ -423,22 +485,31 @@ export function App() {
     if (fid === 'all' || fid === 'unread' || fid === 'starred' || fid.startsWith('tag:')) return;
     const feed = feeds.find((f) => f.id === fid);
     if (!feed || feedActionBusy) return;
-    const unreadCount = allArticles.filter((a) => a.feedId === feed.id && !a.isRead).length;
-    if (unreadCount === 0) {
-      pushToast('该订阅源下没有未读文章', 'info');
-      return;
-    }
-    const ok = await confirmRef.current?.open({
-      title: '全部标为已读',
-      message: `确定要把「${feed.siteTitle || feed.title}」下 ${unreadCount} 篇未读文章全部标为已读？`,
-      confirmLabel: '全部已读',
-      cancelLabel: '取消'
-    });
-    if (!ok) return;
     setFeedActionBusy(true);
     try {
+      const unreadCountResult = await ds.articleCount({ feedId: feed.id, isRead: false });
+      if (unreadCountResult.kind !== 'ready') {
+        throw new Error(
+          unreadCountResult.kind === 'error' ? unreadCountResult.error : '未读文章数仍在加载'
+        );
+      }
+      const unreadCount = unreadCountResult.data;
+      if (unreadCount === 0) {
+        pushToast('该订阅源下没有未读文章', 'info');
+        return;
+      }
+      const ok = await confirmRef.current?.open({
+        title: '全部标为已读',
+        message: `确定要把「${feed.siteTitle || feed.title}」下 ${unreadCount} 篇未读文章全部标为已读？`,
+        confirmLabel: '全部已读',
+        cancelLabel: '取消'
+      });
+      if (!ok) return;
       const count = await ds.markAllReadByFeed(feed.id);
-      pushToast(`已标记 ${count} 篇为已读`, 'success');
+      pushToast(
+        count > 0 ? `已标记 ${count} 篇为已读` : '该订阅源下没有未读文章',
+        count > 0 ? 'success' : 'info'
+      );
       // 本地 articles 状态批量更新 isRead=true
       setArticlesState((prev) => {
         if (prev.kind !== 'ready') return prev;
@@ -455,14 +526,16 @@ export function App() {
         };
       });
       // 刷新当前分页 articles + 侧栏计数
-      await refreshArticles({ feedId: feed.id });
+      if (selectedFeedIdRef.current === feed.id) {
+        await refreshArticles({ feedId: feed.id });
+      }
       void refreshCounts();
     } catch (e) {
       pushToast(`标记失败：${e instanceof Error ? e.message : String(e)}`, 'error');
     } finally {
       setFeedActionBusy(false);
     }
-  }, [selection.feedId, feeds, feedActionBusy, allArticles, ds, pushToast, refreshArticles, refreshCounts]);
+  }, [selection.feedId, feeds, feedActionBusy, ds, pushToast, refreshArticles, refreshCounts]);
 
   // Phase 4.1.1:判断当前选中的 feedId 是否显示同步/全部已读按钮
   //   - 仅具体 feed 显示(all/unread/starred/tag: 都不显示,避免误操作)
@@ -1217,10 +1290,13 @@ export function App() {
           role="status"
           aria-live="polite"
           data-sync-state={syncingProgress.kind}
+          data-sync-stage={syncingProgress.kind === 'progress' ? syncingProgress.stage ?? 'starting' : undefined}
         >
           {syncingProgress.kind === 'progress' ? (
             <span className="sync-progress-bar__text">
-              正在同步：{syncingProgress.feedName} 进度：{syncingProgress.completed}/{syncingProgress.total}
+              正在同步：{syncingProgress.feedName}
+              {syncingProgress.stage ? ` · ${SYNC_STAGE_LABELS[syncingProgress.stage]}` : ''}
+              {' '}进度：{syncingProgress.completed}/{syncingProgress.total}
             </span>
           ) : syncingProgress.failCount === 0 ? (
             <span className="sync-progress-bar__text">同步完成：{syncingProgress.okCount}/{syncingProgress.total} 成功</span>

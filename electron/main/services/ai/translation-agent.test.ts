@@ -159,4 +159,26 @@ describe('generateTranslation', () => {
     expect(chunks[1]).toContain('const a = 1;');
     expect(chunks[1]).toContain('const b = 2;');
   });
+
+  it('keeps shorter backtick runs inside a longer fenced block', () => {
+    const source = [
+      'Before.',
+      '',
+      '````markdown',
+      '```js',
+      'console.log("nested");',
+      '```',
+      '',
+      'Still inside the outer block.',
+      '````',
+      '',
+      'After.'
+    ].join('\n');
+    const chunks = splitMarkdownIntoChunks(source, 500);
+
+    expect(chunks).toHaveLength(3);
+    expect(chunks[1]).toContain('```js');
+    expect(chunks[1]).toContain('Still inside the outer block.');
+    expect(chunks[2]).toBe('After.');
+  });
 });

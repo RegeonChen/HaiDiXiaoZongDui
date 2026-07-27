@@ -10,10 +10,8 @@
  *   6) 点"全选" → N/N
  *   7) 取消勾选 1 项 → N-1/N
  *   8) 取消勾选 2 项 → N-2/N
- *   9) 拦截 window.api.opml.export 记录调用 → 点"确认导出" → 验证：
- *      - export 被调 1 次
- *      - 传入 feedIds 数组长度为 N-2
- *      - 回到 reader
+ *   9) 拦截 DataSource 导出并返回 error → 页面与 N-2 选择保留
+ *  10) 重试成功 → 两次调用都传入 N-2 个 feedId，随后回到 reader
  *
  * 用法：npm run smoke:opml-export-selection
  * 退出码 0 = 全过

@@ -179,6 +179,12 @@
   border-bottom: 1px solid var(--border-soft);
 }
 
+.tags-page__load-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding-top: 14px;
+}
+
 .tags-page__right-title {
   display: flex;
   align-items: center;

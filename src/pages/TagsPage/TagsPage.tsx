@@ -5,13 +5,15 @@
  *   - 右栏：选中标签下的文章列表（标题 + 来源 + 时间，点击跳到阅读器）
  *   - 实时同步：标签增删 / 选中切换时右栏文章列表即时更新
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Article, Feed, Tag, TagCreateInput } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
 import { parseArticleTitleTags } from '../../utils/article-title-tags';
 import './TagsPage.css';
+
+const TAG_ARTICLE_PAGE_SIZE = 50;
 
 export interface TagsPageProps {
   onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
@@ -43,8 +45,14 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
   const [newColor, setNewColor] = useState('#3b82f6');
   // Phase 4.1.1:右栏选中标签 + 该标签下文章列表
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
+  const selectedTagIdRef = useRef<string | null>(selectedTagId);
+  selectedTagIdRef.current = selectedTagId;
   const [tagArticles, setTagArticles] = useState<Article[] | null>(null);
   const [tagArticlesLoading, setTagArticlesLoading] = useState(false);
+  const [tagArticlesLoadingMore, setTagArticlesLoadingMore] = useState(false);
+  const [tagArticleTotal, setTagArticleTotal] = useState(0);
+  const [tagArticlesError, setTagArticlesError] = useState<string | null>(null);
+  const [tagArticlesReloadKey, setTagArticlesReloadKey] = useState(0);
   // Phase 4.1.1:右栏文章列表需要 feed 标题映射
   const [allFeeds, setAllFeeds] = useState<Feed[]>([]);
 
@@ -95,6 +103,8 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
         if (selectedTagId === id) {
           setSelectedTagId(null);
           setTagArticles(null);
+          setTagArticleTotal(0);
+          setTagArticlesError(null);
         }
         await load();
       } catch (err) {
@@ -104,25 +114,82 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
     [ds, load, onToast, selectedTagId]
   );
 
-  // Phase 4.1.1:选中标签变化时拉该标签下所有文章
+  // Phase 4.1.1:选中标签变化时拉第一页文章 + 精确总数
   useEffect(() => {
     if (!selectedTagId) {
       setTagArticles(null);
+      setTagArticleTotal(0);
+      setTagArticlesError(null);
       return;
     }
     let cancelled = false;
+    setTagArticles(null);
     setTagArticlesLoading(true);
+    setTagArticlesLoadingMore(false);
+    setTagArticlesError(null);
     void (async () => {
-      const r = await ds.articles({ tagIds: [selectedTagId] });
+      const filter = { tagIds: [selectedTagId] };
+      const [articlesResult, countResult] = await Promise.all([
+        ds.articles({ ...filter, offset: 0, limit: TAG_ARTICLE_PAGE_SIZE }),
+        ds.articleCount(filter)
+      ]);
       if (cancelled) return;
-      if (r.kind === 'ready') setTagArticles(r.data);
-      else setTagArticles([]);
+      if (articlesResult.kind !== 'ready' || countResult.kind !== 'ready') {
+        const message = articlesResult.kind === 'error'
+          ? articlesResult.error
+          : countResult.kind === 'error'
+            ? countResult.error
+            : '文章仍在加载';
+        setTagArticles([]);
+        setTagArticleTotal(0);
+        setTagArticlesError(message);
+      } else {
+        setTagArticles(articlesResult.data);
+        setTagArticleTotal(countResult.data);
+      }
       setTagArticlesLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [selectedTagId, ds, tags]); // tags 依赖：tag 改名/改色/删除时重新拉
+  }, [selectedTagId, ds, tags, tagArticlesReloadKey]); // tags 依赖：tag 改名/改色/删除时重新拉
+
+  const handleSelectTag = useCallback((tagId: string) => {
+    setTagArticles(null);
+    setTagArticleTotal(0);
+    setTagArticlesError(null);
+    setSelectedTagId(tagId);
+  }, []);
+
+  const handleLoadMoreTagArticles = useCallback(async () => {
+    const tagId = selectedTagId;
+    if (
+      !tagId ||
+      !tagArticles ||
+      tagArticlesLoadingMore ||
+      tagArticles.length >= tagArticleTotal
+    ) {
+      return;
+    }
+    setTagArticlesLoadingMore(true);
+    setTagArticlesError(null);
+    const result = await ds.articles({
+      tagIds: [tagId],
+      offset: tagArticles.length,
+      limit: TAG_ARTICLE_PAGE_SIZE
+    });
+    if (selectedTagIdRef.current !== tagId) return;
+    if (result.kind === 'ready') {
+      setTagArticles((prev) => {
+        if (!prev) return result.data;
+        const seen = new Set(prev.map((article) => article.id));
+        return [...prev, ...result.data.filter((article) => !seen.has(article.id))];
+      });
+    } else {
+      setTagArticlesError(result.kind === 'error' ? result.error : '文章仍在加载');
+    }
+    setTagArticlesLoadingMore(false);
+  }, [ds, selectedTagId, tagArticleTotal, tagArticles, tagArticlesLoadingMore]);
 
   const selectedTag = useMemo(
     () => (tags ?? []).find((t) => t.id === selectedTagId) ?? null,
@@ -184,7 +251,7 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
                   <button
                     type="button"
                     className="tags-page__item-pick"
-                    onClick={() => setSelectedTagId(t.id)}
+                    onClick={() => handleSelectTag(t.id)}
                     title={`查看「${t.name}」下的文章`}
                   >
                     <span
@@ -228,40 +295,63 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
                     aria-hidden="true"
                   />
                   # {selectedTag?.name ?? ''}
-                  <span className="tags-page__right-count">
-                    {tagArticles?.length ?? 0} 篇
+                  <span
+                    className="tags-page__right-count"
+                    data-testid="tags-page__article-count"
+                  >
+                    {tagArticles?.length ?? 0} / {tagArticleTotal} 篇
                   </span>
                 </h2>
               </header>
-              {tagArticles && tagArticles.length === 0 ? (
+              {tagArticlesError ? (
+                <ErrorView
+                  message={tagArticlesError}
+                  onRetry={() => setTagArticlesReloadKey((key) => key + 1)}
+                />
+              ) : tagArticles && tagArticles.length === 0 ? (
                 <p className="tags-page__empty">该标签下还没有文章。</p>
               ) : (
-                <ul className="tags-page__article-list" data-testid="tags-page__article-list">
-                  {tagArticles?.map((a) => {
-                    const { cleanTitle } = parseArticleTitleTags(a.title);
-                    return (
-                      <li key={a.id}>
-                        <button
-                          type="button"
-                          className={`tags-page__article-item ${a.isRead ? 'is-read' : 'is-unread'}`}
-                          onClick={() => onOpenArticle?.(a)}
-                          data-testid={`tags-page__article-${a.id}`}
-                        >
-                          <span className={`tags-page__article-dot ${a.isRead ? 'is-read' : 'is-unread'}`} aria-hidden="true" />
-                          <span className="tags-page__article-title">{cleanTitle}</span>
-                          <span className="tags-page__article-meta">
-                            <span className="tags-page__article-feed">
-                              {feedTitleById.get(a.feedId) ?? '未知'}
+                <>
+                  <ul className="tags-page__article-list" data-testid="tags-page__article-list">
+                    {tagArticles?.map((a) => {
+                      const { cleanTitle } = parseArticleTitleTags(a.title);
+                      return (
+                        <li key={a.id}>
+                          <button
+                            type="button"
+                            className={`tags-page__article-item ${a.isRead ? 'is-read' : 'is-unread'}`}
+                            onClick={() => onOpenArticle?.(a)}
+                            data-testid={`tags-page__article-${a.id}`}
+                          >
+                            <span className={`tags-page__article-dot ${a.isRead ? 'is-read' : 'is-unread'}`} aria-hidden="true" />
+                            <span className="tags-page__article-title">{cleanTitle}</span>
+                            <span className="tags-page__article-meta">
+                              <span className="tags-page__article-feed">
+                                {feedTitleById.get(a.feedId) ?? '未知'}
+                              </span>
+                              <span className="tags-page__article-time">
+                                {formatRelative(a.publishedAt)}
+                              </span>
                             </span>
-                            <span className="tags-page__article-time">
-                              {formatRelative(a.publishedAt)}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {(tagArticles?.length ?? 0) < tagArticleTotal && (
+                    <div className="tags-page__load-more-wrap">
+                      <button
+                        type="button"
+                        className="tags-page__btn"
+                        onClick={() => void handleLoadMoreTagArticles()}
+                        disabled={tagArticlesLoadingMore}
+                        data-testid="tags-page__load-more"
+                      >
+                        {tagArticlesLoadingMore ? '正在加载…' : '加载更多'}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

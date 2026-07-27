@@ -34,7 +34,8 @@ import type {
   Language,
   SummaryDetailLevel,
   AITranslationProgressEvent,
-  SyncProgress
+  SyncProgress,
+  ArticleFilter
 } from '@shared/types';
 import type {
   DataSource,
@@ -159,17 +160,17 @@ export class IpcDataSource implements FullDataSource {
     return unwrap(await window.api.feed.list());
   }
 
-  async articles(filter: {
-    feedId?: string;
-    isRead?: boolean;
-    isStarred?: boolean;
-    tagIds?: string[];
-    search?: string;
-  }): Promise<DataSourceState<Article[]>> {
+  async articles(filter: ArticleFilter): Promise<DataSourceState<Article[]>> {
     const r = await window.api.article.list(filter);
     if (!r.success) return toError(r);
     this._lastArticleTotal = r.data.total;
     return { kind: 'ready', data: r.data.items };
+  }
+
+  async articleCount(filter: ArticleFilter): Promise<DataSourceState<number>> {
+    const r = await window.api.article.list({ ...filter, offset: 0, limit: 1 });
+    if (!r.success) return toError(r);
+    return { kind: 'ready', data: r.data.total };
   }
 
   // Phase 3.7.3：按 ID 获取单篇文章（搜索跳转保底）

@@ -8,6 +8,15 @@
 
 const TAG_TITLE_PREFIX_RE = /^(?:\[tag:([^\]|]+)\|([^\]]+)\]\s*)+/;
 
+function decodeTagName(value: string): string {
+  // 与主进程的最小转义一一对应；先还原分隔符，最后还原百分号，
+  // 避免把旧标签名里本来就存在的 "%20" 等文本误解码。
+  return value
+    .replace(/%7C/gi, '|')
+    .replace(/%5D/gi, ']')
+    .replace(/%25/gi, '%');
+}
+
 export interface ParsedTitleTag {
   name: string;
   /** 颜色，'inherit' 表示用前端默认色。null/undefined 同义 */
@@ -36,7 +45,7 @@ export function parseArticleTitleTags(title: string): ParsedArticleTitle {
   const singleTagRe = /\[tag:([^|]+)\|([^\]]+)\]/g;
   let m: RegExpExecArray | null = singleTagRe.exec(prefix);
   while (m !== null) {
-    const name = m[1].trim();
+    const name = decodeTagName(m[1].trim());
     const colorRaw = m[2].trim();
     // 'inherit' 是后端在 color 为 null 时存的占位符；前端解析为 null（用 var(--accent) 兜底）
     const color: string | null = colorRaw && colorRaw !== 'inherit' ? colorRaw : null;

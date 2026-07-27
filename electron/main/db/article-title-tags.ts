@@ -6,6 +6,14 @@ import type { Tag } from '../../../shared/types';
  */
 const TAG_TITLE_PREFIX_RE = /^(?:\[tag:[^\]\r\n]+\]\s*)+/;
 
+function encodeTagName(name: string): string {
+  // 只转义会破坏内部标记语法的字符，保持普通中文/英文标题与旧数据格式兼容。
+  return name
+    .replace(/%/g, '%25')
+    .replace(/\|/g, '%7C')
+    .replace(/\]/g, '%5D');
+}
+
 export function stripArticleTitleTags(title: string): string {
   return title.replace(TAG_TITLE_PREFIX_RE, '').trim();
 }
@@ -14,7 +22,11 @@ export function buildTaggedArticleTitle(title: string, tags: Tag[]): string {
   const cleanTitle = stripArticleTitleTags(title);
   if (tags.length === 0) return cleanTitle;
   const prefix = tags
-    .map((tag) => `[tag:${tag.name}|${tag.color ?? 'inherit'}]`)
+    .map((tag) => {
+      const name = encodeTagName(tag.name);
+      const color = tag.color ?? 'inherit';
+      return `[tag:${name}|${color}]`;
+    })
     .join(' ');
   return `${prefix} ${cleanTitle}`;
 }
