@@ -3,7 +3,7 @@
  *
  * 验证（mock 模式 MOCK_ARTICLES 10 篇）：
  *   1) article-list__count testid 存在 + 显示 "10"（mock total=10, articles.length=10,不显示斜杠）
- *   2) hasMore=false 时"加载更多"按钮不在 DOM（mock PAGE_SIZE=50 > 10）
+ *   2) hasMore=false 时滚动哨兵不在 DOM（mock PAGE_SIZE=50 > 10）
  *   3) 切到"星标文章"虚拟分类 → count = 3（mock 3 篇 isStarred=true）
  *   4) 切回"所有订阅源" → count = 10（验证 articleOffsetRef 重置 + offset=0）
  *   5) 搜索解耦：SearchBar 输入"Rust" → 等下拉 → 点第一项 → reader 打开

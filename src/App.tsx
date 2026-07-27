@@ -73,7 +73,7 @@ export function App() {
   // 从专题图打开的文章可能不在当前分页的前 50 条，用独立快照保证阅读器仍能立即显示。
   const [externalSelectedArticle, setExternalSelectedArticle] = useState<Article | null>(null);
   // Phase 3.7.1:文章列表分页
-  // offset/limit 用于追加加载;total 用于"加载更多"按钮判断 hasMore + 显示 "10 / 433"
+  // offset/limit 用于追加加载；total 用于判断 hasMore + 显示 "10 / 433"
   // 切换筛选条件时由 refreshArticles 重置 offset = 0
   // **重要:articleOffset 用 ref 不用 state**
   //   - state 模式:setArticleOffset 会让 refreshArticles 引用变化(deps 包含 offset)→
@@ -168,7 +168,7 @@ export function App() {
           setArticlesState({ kind: 'ready', data: result.data });
           articleOffsetRef.current = result.data.length;
         }
-        // Phase 3.7.1:同步刷新 total(用于"加载更多"按钮 + 显示 "10 / 433")
+        // Phase 3.7.1:同步刷新 total（用于自动分页 + 显示 "10 / 433"）
         setArticleTotal(ds.lastArticleTotal());
       } else if (result.kind === 'error') {
         setArticlesState({ kind: 'error', error: result.error });
@@ -182,7 +182,7 @@ export function App() {
     [ds]
   );
 
-  // Phase 3.7.1:加载更多按钮回调
+  // Phase 3.7.1:滚动到底自动加载下一页
   const handleLoadMore = useCallback(async () => {
     // 用当前的 selection.feedId 复用筛选
     const filter: Parameters<typeof refreshArticles>[0] = {};
@@ -1163,7 +1163,7 @@ export function App() {
           selection.feedId === 'unread' ? '所有文章都已读完' :
           '还没有匹配的文章'
         }
-        // Phase 3.7.1:分页"加载更多"按钮
+        // Phase 3.7.1:分页滚动自动加载
         total={articleTotal}
         hasMore={articleTotal > articles.length}
         onLoadMore={handleLoadMore}
