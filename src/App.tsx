@@ -704,6 +704,8 @@ export function App() {
     }
     setSyncingProgress(null);
     const failedIds: string[] = [];
+    // 失败源详情：{ name, error } — toast 用 \n 分隔多行展示
+    const failedFeedErrors: Array<{ name: string; error: string }> = [];
     let okCount = 0;
     let failCount = 0;
     const total = feeds.length;
@@ -727,7 +729,15 @@ export function App() {
         });
         const r = await ds.syncFeed(f.id);
         if (r.ok) okCount += 1;
-        else { failCount += 1; failedIds.push(f.id); }
+        else {
+          failCount += 1;
+          failedIds.push(f.id);
+          // 收集失败源名称和具体错误原因(后端 diagnosticErrorMessage 已规范化文本)
+          failedFeedErrors.push({
+            name: f.siteTitle || f.title || f.url,
+            error: r.message || r.error || '未知错误'
+          });
+        }
       }
       // Phase 3.6.2：完成态保留 3 秒让用户看到结果，PLAN 明确要求
       setSyncingProgress({ kind: 'done', total, okCount, failCount });
@@ -742,7 +752,17 @@ export function App() {
       if (failCount === 0) {
         pushToast(`同步完成：${okCount}/${total} 成功`, 'success');
       } else {
-        pushToast(`同步部分完成：成功 ${okCount}，失败 ${failCount}。未成功同步的订阅源已用红点标出`, 'error');
+        // 多行 toast：汇总 + 逐条失败源（Toast CSS white-space: pre-line 让 \n 换行）
+        // 失败太多时(>5)只显示前 5 条 + "...还有 N 个"避免 toast 过长
+        const MAX_DETAILS = 5;
+        const detailLines = failedFeedErrors
+          .slice(0, MAX_DETAILS)
+          .map((e) => `· ${e.name}：${e.error}`);
+        if (failedFeedErrors.length > MAX_DETAILS) {
+          detailLines.push(`…还有 ${failedFeedErrors.length - MAX_DETAILS} 个失败源`);
+        }
+        const message = `同步部分完成：成功 ${okCount}，失败 ${failCount}。未成功同步的订阅源已用红点标出\n${detailLines.join('\n')}`;
+        pushToast(message, 'error');
       }
 
       // 3 秒后清空进度条

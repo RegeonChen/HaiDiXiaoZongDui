@@ -189,6 +189,14 @@
   cursor: not-allowed;
 }
 
+/* Phase 自动加载:末尾哨兵元素(0 高度,IntersectionObserver 监听进入视口) */
+.article-list__sentinel {
+  height: 1px;
+  width: 100%;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
 /* Phase 4.1.1:标题前彩色标签 chips（与 ArticleReader 标题前 chips 风格一致） */
 .article-list__row1 {
   display: flex;

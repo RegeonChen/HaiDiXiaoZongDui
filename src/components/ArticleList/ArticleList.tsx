@@ -6,8 +6,10 @@
  *  - 底部：Phase 3.7.1"加载更多"按钮(hasMore 时显示)
  *  - Phase 4.1.1：标题前彩色标签 chips（从 article.title 解析 tag prefix）
  *  - Phase 4.1.1：顶部 action bar slot（同步 / 全部已读按钮）
+ *  - Phase 自动加载：滚动到底部自动追加 50 篇，无需点按钮
+ *    （IntersectionObserver + 末尾哨兵元素，保留按钮作为兜底）
  */
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { Article, Feed } from '@shared/types';
 import { EmptyView } from '../StatusView/EmptyView';
 import { parseArticleTitleTags } from '../../utils/article-title-tags';
@@ -59,6 +61,31 @@ function formatAbsolute(iso: string | null): string {
 }
 
 export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filterLabel, filterHint, total, hasMore, onLoadMore, loadingMore, actionBar }: ArticleListProps) {
+  // Phase 自动加载:IntersectionObserver 监听末尾哨兵
+  //   哨兵进入视口(用户滚到底)→ 自动调 onLoadMore()
+  //   保留"加载更多"按钮作为兜底(observer 失效 / 键盘 a11y 时仍可手动触发)
+  //   关键依赖:hasMore / loadingMore — 状态变化时重新 attach observer
+  //   (root = ul 滚动容器,rootMargin=200px 提前触发让用户无感加载)
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
+  useEffect(() => {
+    if (!hasMore || !onLoadMore || loadingMore) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting) {
+          // 二次保护:loadingMore 可能在 observer callback 之前变化
+          onLoadMoreRef.current?.();
+        }
+      },
+      { root: el.parentElement, rootMargin: '0px 0px 200px 0px', threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, onLoadMore, loadingMore, articles.length]);
   const feedTitleById = useMemo(() => {
     const m = new Map<string, string>();
     for (const f of feeds) m.set(f.id, f.siteTitle || f.title);
@@ -140,7 +167,17 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filt
           })
         )}
       </ul>
-      {/* Phase 3.7.1:加载更多按钮(hasMore 时显示) */}
+      {/* Phase 自动加载:末尾哨兵元素(0 高度,IntersectionObserver 监听)
+          进入视口时触发 onLoadMore(),让用户无感追加 50 篇 */}
+      {hasMore && onLoadMore && (
+        <div
+          ref={sentinelRef}
+          className="article-list__sentinel"
+          data-testid="article-list__sentinel"
+          aria-hidden="true"
+        />
+      )}
+      {/* Phase 3.7.1:加载更多按钮(hasMore 时显示,observer 失败时的兜底入口) */}
       {hasMore && onLoadMore && (
         <div className="article-list__load-more-wrap">
           <button

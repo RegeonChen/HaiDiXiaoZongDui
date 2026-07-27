@@ -21,6 +21,9 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   max-width: 480px;
   animation: toastIn 200ms ease;
+  /* Phase 同步失败汇总:支持 \n 多行换行,展示"汇总\n· 源A:错误\n· 源B:错误"格式 */
+  white-space: pre-line;
+  line-height: 1.5;
 }
 
 @keyframes toastIn {
