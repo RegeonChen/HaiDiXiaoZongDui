@@ -116,7 +116,7 @@ export function SearchBar({ feeds, onSelect, onClear }: SearchBarProps) {
       <input
         type="search"
         className="search-bar__input"
-        placeholder="🔍 搜索文章标题或正文…"
+        placeholder="搜索文章标题或正文…"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);

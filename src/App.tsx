@@ -39,6 +39,7 @@ import { LogsPage } from './pages/LogsPage/LogsPage';
 import { OpmlExportPage } from './pages/OpmlExportPage/OpmlExportPage';
 import { GeneralSettingsModal } from './components/GeneralSettingsModal/GeneralSettingsModal';
 import './index.css';
+import './styles/workbench-polish.css';
 
 type FeedsState =
   | { kind: 'loading' }
@@ -71,8 +72,6 @@ export function App() {
   const appearance = useAppearance(effectiveTheme);
 
   const [currentPage, setCurrentPage] = useState<AppPage>('reader');
-  // Phase 3.4.4.4：通用设置弹窗（独立 state，不走 page 切换）
-  const [generalModalOpen, setGeneralModalOpen] = useState(false);
   const [feedsState, setFeedsState] = useState<FeedsState>({ kind: 'loading' });
   const [articlesState, setArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   const [allArticlesState, setAllArticlesState] = useState<ArticlesState>({ kind: 'loading' });
@@ -1119,6 +1118,11 @@ export function App() {
     return Promise.resolve({ ok: true, message: 'navigated' });
   }, []);
 
+  const handleWorkbenchFeedSelect = useCallback((id: string) => {
+    selectFeed(id);
+    setCurrentPage('reader');
+  }, [selectFeed]);
+
   // ----- 渲染三栏（reader 页面） -----
   const feedsSlot =
     feedsState.kind === 'loading' ? (
@@ -1130,7 +1134,7 @@ export function App() {
         feeds={feeds}
         articles={allArticles}
         selected={selection.feedId}
-        onSelect={selectFeed}
+        onSelect={handleWorkbenchFeedSelect}
         onDeleteFeed={handleDeleteFeed}
         allCount={counts.all}
         unreadCount={counts.unread}
@@ -1249,6 +1253,16 @@ export function App() {
   // Phase 3.4.4.4：nav 7 项 — general 弹窗 / ai 子页面 / 5 个原 page
   let pageSlot: JSX.Element;
   switch (currentPage) {
+    case 'general':
+      pageSlot = (
+        <GeneralSettingsModal
+          open
+          embedded
+          onClose={() => setCurrentPage('reader')}
+          onToast={pushToast}
+        />
+      );
+      break;
     case 'ai':
       pageSlot = <SettingsPage onToast={pushToast} />;
       break;
@@ -1270,10 +1284,8 @@ export function App() {
     case 'opml-export':
       pageSlot = <OpmlExportPage onToast={pushToast} onClose={() => setCurrentPage('reader')} />;
       break;
-    case 'general':
     case 'reader':
     default:
-      // 'general' 走弹窗不走 page slot
       pageSlot = <></>;
       break;
   }
@@ -1294,15 +1306,7 @@ export function App() {
         onResizeSidebar={setSidebar}
         onResizeList={setList}
         currentPage={currentPage}
-        onPageChange={(p) => {
-          if (p === 'general') {
-            setGeneralModalOpen(true);
-            setCurrentPage('reader'); // 保持 reader 视图
-            return;
-          }
-          setGeneralModalOpen(false);
-          setCurrentPage(p);
-        }}
+        onPageChange={setCurrentPage}
         pageSlot={pageSlot}
         searchSlot={<SearchBar feeds={feeds} onSelect={handleSearchSelect} />}
         // Phase 4.2.1:左栏折叠状态
@@ -1354,11 +1358,6 @@ export function App() {
           )}
         </div>
       )}
-      <GeneralSettingsModal
-        open={generalModalOpen}
-        onClose={() => setGeneralModalOpen(false)}
-        onToast={pushToast}
-      />
     </>
   );
 }

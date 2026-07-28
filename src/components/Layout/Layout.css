@@ -1,199 +1,291 @@
-/* Mercury 风格 + 三栏拖拽 */
+/* IDE 风格应用外壳：顶部命令栏 + Activity Bar + 持久工作区 */
 .app-layout {
   display: flex;
   flex-direction: column;
   height: 100vh;
   min-height: 0;
+  overflow: hidden;
   background: var(--bg);
   color: var(--fg);
 }
 
-/* ----- Header 紧凑 ----- */
+/* ----- 顶部命令栏 ----- */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
-  height: 44px;
+  height: 48px;
+  padding: 0 12px 0 14px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--toolbar-bg, var(--bg-elev));
+  box-shadow: 0 1px 0 rgb(0 0 0 / 2%);
   flex-shrink: 0;
-  gap: 8px;
+  gap: 16px;
+  position: relative;
+  z-index: 80;
 }
 
-.app-header__left {
+.app-header__left,
+.app-header__right,
+.app-header__identity {
   display: flex;
   align-items: center;
-  gap: 10px;
   min-width: 0;
 }
 
-.app-header__logo {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.app-header__logo-svg {
-  display: block;
-  color: var(--fg);
-}
-
-.app-header__logo-btn:hover .app-header__logo-svg {
-  color: var(--accent);
-}
-
-.app-header__title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.app-header__phase {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 500;
-  letter-spacing: 0.02em;
+.app-header__left {
+  gap: 10px;
+  flex: 1 1 240px;
 }
 
 .app-header__right {
-  display: flex;
-  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+}
+
+.app-header__identity {
+  gap: 8px;
+  overflow: hidden;
 }
 
 .app-header__logo-btn {
   appearance: none;
-  border: none;
-  background: transparent;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
   padding: 0;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  color: inherit;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 
-.app-header__nav {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--bg-elev);
+.app-header__logo-btn:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--accent-soft);
+}
+
+.app-header__logo-svg {
+  display: block;
+}
+
+.app-header__title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 650;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
+.app-header__crumb-separator {
+  color: var(--border-strong, var(--border));
+}
+
+.app-header__crumb {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-header__search {
   display: inline-flex;
   align-items: center;
-  flex-shrink: 0;
+  width: min(34vw, 420px);
+  min-width: 220px;
 }
 
+.app-header__search .search-bar {
+  width: 100%;
+}
+
+.app-header__add-btn,
+.app-header__sync-btn {
+  appearance: none;
+  min-height: 29px;
+  border-radius: 6px;
+  padding: 4px 11px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.app-header__add-btn {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.app-header__add-btn:hover {
+  background: var(--accent-hover, #3f7ee8);
+  border-color: var(--accent-hover, #3f7ee8);
+}
+
+.app-header__sync-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.app-header__sync-btn:hover:not(:disabled) {
+  border-color: var(--border-strong, var(--muted));
+  background: var(--bg-elev-hover);
+}
+
+.app-header__sync-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ----- 工作台骨架 ----- */
+.app-workbench {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.activity-bar {
+  display: flex;
+  flex: 0 0 48px;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--activity-bg, color-mix(in srgb, var(--bg-elev) 80%, var(--bg)));
+  padding: 6px 5px;
+}
+
+.activity-bar__reader,
 .app-header__nav-btn {
   appearance: none;
-  border: 1px solid transparent;
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 7px;
   background: transparent;
-  color: var(--fg-soft);
-  font-size: 14px;
-  padding: 2px 6px;
-  border-radius: 3px;
+  color: var(--muted);
+  padding: 0;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
-  height: 22px;
-  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
-  position: relative;
+  transition: background 110ms ease, color 110ms ease;
 }
 
+.activity-bar__reader:hover,
 .app-header__nav-btn:hover {
-  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
+  background: var(--bg-elev-hover);
   color: var(--fg);
 }
 
+.activity-bar__reader::before,
+.app-header__nav-btn::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: -5px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: transparent;
+}
+
+.activity-bar__reader.is-active,
 .app-header__nav-btn.is-active {
   background: var(--accent-soft);
   color: var(--accent);
-  border-color: var(--accent);
+}
+
+.activity-bar__reader.is-active::before,
+.app-header__nav-btn.is-active::before {
+  background: var(--accent);
+}
+
+.activity-bar__label,
+.app-header__nav-label {
+  position: absolute;
+  left: 46px;
+  z-index: 120;
+  display: none;
+  width: max-content;
+  max-width: 180px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-md);
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.activity-bar__reader:hover .activity-bar__label,
+.app-header__nav-btn:hover .app-header__nav-label {
+  display: block;
+}
+
+.activity-bar__separator {
+  height: 1px;
+  margin: 6px 7px;
+  background: var(--border);
+}
+
+.app-header__nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
 
 .app-header__nav-icon {
-  font-size: 14px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* Phase 4.2.1:AI 入口粗体 "AI" 字母(三主题协调)
-   - 浅色/深色:var(--fg-soft) 文字色,active 态 var(--accent)
-   - 极重字重(800) + 负字距(letter-spacing -0.04em)让两字母紧凑如一个 logo
-   - 与周围 unicode 字符大小一致(14px) */
-.app-header__nav-icon--ai {
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-style: normal;
-  color: inherit;
-  display: inline-block;
-  line-height: 1;
-  /* 视觉对齐补偿:粗体字母 baseline 比 emoji 略低,微调让两字母视觉居中 */
-  transform: translateY(-0.5px);
-}
-
-.app-header__nav-btn.is-active .app-header__nav-icon--ai {
-  color: var(--accent);
-}
-
-/* Phase 4.2.1:专题入口 SVG 图标(三主题协调)
-   - 16x16 viewBox,渲染尺寸 14x14 与其他图标一致
-   - stroke 颜色继承 currentColor(由 nav-btn 文字色决定)
-   - 中心圆点稍大(1.6r)凸显"汇聚"焦点 */
-.app-header__nav-icon--topics {
-  display: block;
-  color: var(--fg-soft);
-}
-
-.app-header__nav-btn:hover .app-header__nav-icon--topics {
-  color: var(--fg);
-}
-
-.app-header__nav-btn.is-active .app-header__nav-icon--topics {
-  color: var(--accent);
-}
-
-/* Phase 4.2.1:隐藏左栏按钮(应用名"聚合拾遗"右侧)
-   - 与现有 nav-btn 视觉一致(同样 22px 高 + 3px border-radius)
-   - icon 随状态切换:展开时显示 ◀(点击会向左折叠),隐藏时显示 ▶(点击会展开)
-   - 多语言 tooltip 由 inline 传入(中:隐藏左栏 / 显示左栏;英:Hide Sidebar / Show Sidebar) */
 .app-header__sidebar-toggle {
   appearance: none;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   border: 1px solid transparent;
-  background: transparent;
-  color: var(--fg-soft);
-  font-size: 12px;
-  padding: 0 5px;
-  height: 22px;
-  border-radius: 3px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  padding: 0;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
   font-family: inherit;
-  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+  font-size: 10px;
+  transition: background 110ms ease, border-color 110ms ease, color 110ms ease;
 }
 
 .app-header__sidebar-toggle:hover {
-  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
+  border-color: var(--border);
+  background: var(--bg-elev-hover);
   color: var(--fg);
 }
 
 .app-header__sidebar-toggle.is-hidden {
-  /* 隐藏态按钮颜色稍亮,提示"当前是折叠的,点这里展开" */
   color: var(--accent);
 }
 
@@ -201,113 +293,41 @@
   background: var(--accent-soft);
 }
 
-.app-header__nav-label {
-  display: none;
+.workbench-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
 }
 
-.app-page {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: auto;
-  background: var(--bg);
-  color: var(--fg);
+.workbench-icon--ai {
+  width: auto;
+  height: auto;
+  font-size: 10px;
+  line-height: 1;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: -0.04em;
 }
 
-.app-page__header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 18px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elev);
-  flex-shrink: 0;
+.app-header__nav-icon--topics {
+  color: inherit;
 }
 
-.app-page__back-btn {
-  appearance: none;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-family: inherit;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  transition: background 100ms ease;
-}
-
-.app-page__back-btn:hover {
-  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
-}
-
-.app-page__title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg-soft);
-}
-
-.app-header__add-btn {
-  appearance: none;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: white;
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: filter 120ms ease;
-}
-
-.app-header__add-btn:hover {
-  filter: brightness(1.08);
-}
-
-.app-header__sync-btn {
-  appearance: none;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: filter 120ms ease;
-}
-
-.app-header__sync-btn:hover:not(:disabled) {
-  filter: brightness(0.95);
-}
-
-.app-header__sync-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* ----- Main grid 拖拽列 ----- */
+/* ----- 阅读三栏 ----- */
 .app-main {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   display: grid;
-  /* grid-template-columns 由 inline style 注入（百分比） */
   grid-auto-rows: 1fr;
   overflow: hidden;
-  /* Phase 4.2.1:左栏折叠时 grid-template-columns inline style 改变,
-     加 220ms transition 让中/右栏平滑扩展 */
+  background: var(--workspace-bg, var(--bg));
   transition: grid-template-columns 220ms ease;
 }
 
-/* Phase 4.2.1:左栏折叠时 main 加 is-sidebar-hidden class,
-   CSS 不用做特殊处理(完全靠 inline grid-template-columns + conditional render
-   aside + ResizeHandle),但保留 class 钩子供 smoke 探针检测 */
 .app-main.is-sidebar-hidden {
-  /* 占位,实际 grid 由 inline style 控制 */
+  background: var(--workspace-bg, var(--bg));
 }
 
 .pane {
@@ -319,12 +339,10 @@
 }
 
 .pane-feeds {
-  border-right: none; /* 由 resize-handle 视觉承担分隔 */
-  background: var(--bg-elev);
+  background: var(--sidebar-bg, var(--bg-elev));
 }
 
 .pane-list {
-  border-right: none;
   background: var(--bg);
 }
 
@@ -332,9 +350,181 @@
   background: var(--bg);
 }
 
-/* ----- 响应式：< 960 时压缩 ----- */
-@media (max-width: 960px) {
-  .app-header__phase {
+/* ----- 二级页面：保留 Activity Bar + 订阅源侧栏，只替换工作区 ----- */
+.app-secondary {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: clamp(220px, 20vw, 330px) minmax(0, 1fr);
+  overflow: hidden;
+  transition: grid-template-columns 220ms ease;
+}
+
+.app-secondary.is-sidebar-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-secondary__sidebar {
+  border-right: 1px solid var(--border);
+}
+
+.app-page {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--workspace-bg, var(--bg));
+  color: var(--fg);
+}
+
+.app-page__tabbar {
+  display: flex;
+  align-items: flex-end;
+  height: 37px;
+  flex: 0 0 37px;
+  border-bottom: 1px solid var(--border);
+  background: var(--tabbar-bg, color-mix(in srgb, var(--bg-elev) 82%, var(--bg)));
+  padding-left: 8px;
+}
+
+.app-page__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 37px;
+  min-width: 148px;
+  max-width: 240px;
+  padding: 0 7px 0 12px;
+  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.app-page__tab::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+.app-page__tab .workbench-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.app-page__tab-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-page__tab-close {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+.app-page__tab-close:hover {
+  background: var(--bg-elev-hover);
+  color: var(--fg);
+}
+
+.app-page__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 40px;
+  flex: 0 0 40px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg);
+}
+
+.app-page__heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-page__heading .workbench-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+}
+
+.app-page__context {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.app-page__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-elev) 32%, transparent), transparent 120px),
+    var(--workspace-bg, var(--bg));
+}
+
+@media (max-width: 1120px) {
+  .app-header__search {
+    width: min(30vw, 340px);
+    min-width: 190px;
+  }
+
+  .app-header__add-btn,
+  .app-header__sync-btn {
+    padding-inline: 8px;
+  }
+
+  .app-secondary {
+    grid-template-columns: clamp(205px, 22vw, 280px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .app-header__title,
+  .app-header__crumb-separator,
+  .app-header__crumb,
+  .app-page__context {
     display: none;
+  }
+
+  .app-header__search {
+    width: min(36vw, 300px);
+  }
+
+  .app-header__add-btn {
+    font-size: 0;
+  }
+
+  .app-header__add-btn::after {
+    content: '+';
+    font-size: 16px;
   }
 }

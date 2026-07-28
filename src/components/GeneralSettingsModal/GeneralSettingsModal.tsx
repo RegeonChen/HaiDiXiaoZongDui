@@ -26,6 +26,7 @@ import './GeneralSettingsModal.css';
 
 export interface GeneralSettingsModalProps {
   open: boolean;
+  embedded?: boolean;
   onClose: () => void;
   onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
 }
@@ -41,7 +42,7 @@ const VISUAL_THEMES: Array<{ id: 'classic' | 'paper'; label: string; description
   { id: 'paper', label: '纸质', description: '暖黄护眼（深色模式下与经典一致）' }
 ];
 
-export function GeneralSettingsModal({ open, onClose, onToast }: GeneralSettingsModalProps) {
+export function GeneralSettingsModal({ open, embedded = false, onClose, onToast }: GeneralSettingsModalProps) {
   // 必须在所有 hooks 之前
   const { effective: effectiveTheme } = useTheme();
   const appearance = useAppearance(effectiveTheme);
@@ -90,17 +91,19 @@ export function GeneralSettingsModal({ open, onClose, onToast }: GeneralSettings
     onToast(ok ? '阅读宽度已更新' : '更新失败', ok ? 'success' : 'error');
   };
 
-  return (
-    <div className="general-modal__backdrop" onClick={onClose}>
-      <div
-        className="general-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="general-modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
+  const panel = (
+    <div
+      className={`general-modal ${embedded ? 'general-modal--embedded' : ''}`}
+      role={embedded ? 'region' : 'dialog'}
+      aria-modal={embedded ? undefined : true}
+      aria-labelledby="general-modal-title"
+      onClick={(e) => e.stopPropagation()}
+    >
         <div className="general-modal__header">
-          <h2 id="general-modal-title" className="general-modal__title">通用设置</h2>
+          <div>
+            <h2 id="general-modal-title" className="general-modal__title">通用设置</h2>
+            <p className="general-modal__subtitle">调整界面外观与阅读排版，修改会立即生效。</p>
+          </div>
           <button
             type="button"
             className="general-modal__close"
@@ -218,10 +221,17 @@ export function GeneralSettingsModal({ open, onClose, onToast }: GeneralSettings
 
         <div className="general-modal__footer">
           <button type="button" className="general-modal__btn" onClick={onClose}>
-            完成
+            返回阅读
           </button>
         </div>
-      </div>
+    </div>
+  );
+
+  if (embedded) return panel;
+
+  return (
+    <div className="general-modal__backdrop" onClick={onClose}>
+      {panel}
     </div>
   );
 }

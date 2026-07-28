@@ -3694,7 +3694,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.phase42.checks.dataSidebarVisibleTrueAfterRestore = document.documentElement.getAttribute('data-sidebar-visible') === 'true';
           }
 
-          // 7) 打开通用设置弹窗(点击"通用"按钮)
+          // 7) 打开通用设置工作区(点击"通用"按钮)
           const generalBtn = Array.from(document.querySelectorAll('.app-header__nav-btn'))
             .find((b) => (b.getAttribute('data-page') || '') === 'general');
           if (generalBtn) generalBtn.click();
@@ -3730,13 +3730,6 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               report.phase42.checks.feedListFontSizeIs20 = computed.fontSize === '20px';
               report.phase42.checks.feedListActualFontSize = computed.fontSize;
             }
-            // ArticleList 根容器 computed fontSize 也应是 20px
-            const articleList = document.querySelector('.article-list');
-            if (articleList) {
-              const computed = getComputedStyle(articleList);
-              report.phase42.checks.articleListFontSizeIs20 = computed.fontSize === '20px';
-              report.phase42.checks.articleListActualFontSize = computed.fontSize;
-            }
             // 验证子元素 em 缩放:.feed-list__item 实际字体大小 = 20 * 0.93 ≈ 18.6px
             const feedItem = document.querySelector('.feed-list__item');
             if (feedItem) {
@@ -3748,10 +3741,18 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             }
           }
 
-          // 10) 关闭弹窗
+          // 10) 关闭设置工作区并返回阅读。IDE 工作台结构下，设置页打开时
+          // ArticleList 会被工作区页签替换，因此回到阅读后再验证中栏字号。
           const closeBtn = document.querySelector('.general-modal__close');
           if (closeBtn) closeBtn.click();
+          await waitFor(() => !!document.querySelector('.article-list'), { timeout: 3000 });
           await sleep(150);
+          const articleList = document.querySelector('.article-list');
+          if (articleList) {
+            const computed = getComputedStyle(articleList);
+            report.phase42.checks.articleListFontSizeIs20 = computed.fontSize === '20px';
+            report.phase42.checks.articleListActualFontSize = computed.fontSize;
+          }
 
           // 11) ArticleReader 不引用 --ui-font-size(默认 var(--font-size)=16)
           //     - 但具体文章的 reader 是 article-reader 内的 reader__body 等

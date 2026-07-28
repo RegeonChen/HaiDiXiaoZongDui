@@ -1,15 +1,8 @@
 /**
- * 三栏布局（Mercury 风格 + 拖拽 + 页面入口）
+ * IDE 风格应用工作台
  *
- *  ┌────────────────────────────────────────────────────────────┐
- *  │ ⊞   聚合拾遗   [⚙ # ✎ ☷ ★ 📋] [icons...] [search]         │
- *  ├─────────┬────────────┬─────────────────────────────────────┤
- *  │ Feeds   │ Articles   │ Reader                              │
- *  └─────────┴────────────┴─────────────────────────────────────┘
- *     ←─drag─→   ←─drag─→
- *
- * 三栏宽度：百分比 + 拖拽手柄实时调整 + localStorage 持久化
- * 页面切换：currentPage = 'reader' 显示三栏；其他显示对应 page
+ * 阅读页保留三栏拖拽；设置、标签、文摘等二级页面只替换中央工作区，
+ * Activity Bar 与订阅源侧栏保持在同一应用上下文中。
  */
 import { ReactNode, useCallback, useRef } from 'react';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
@@ -23,7 +16,6 @@ export interface LayoutProps {
   feedsSlot: ReactNode;
   articlesSlot: ReactNode;
   readerSlot: ReactNode;
-  /** 顶栏：feed 操作 + 同步 + 主题 */
   onAddFeed?: () => void;
   onSyncAll?: () => void;
   syncing?: boolean;
@@ -33,33 +25,125 @@ export interface LayoutProps {
     result?: { feedsImported: number; feedsSkipped: number; errors: string[] } | null;
   }>;
   onOpmlExport?: () => Promise<{ ok: boolean; message: string }>;
-  /** 三栏宽度（百分比） */
   sidebarPercent: number;
   listPercent: number;
   onResizeSidebar: (percent: number) => void;
   onResizeList: (percent: number) => void;
-  /** 当前页面（Phase 3 Integration 6 个 pages + reader） */
   currentPage: AppPage;
   onPageChange: (page: AppPage) => void;
-  /** 页面渲染插槽（reader 之外的页面） */
   pageSlot?: ReactNode;
-  /** Phase 3.4.4.3：顶栏搜索槽 */
   searchSlot?: ReactNode;
-  /**
-   * Phase 4.2.1:左栏（订阅源侧栏）是否可见
-   * - true  → 三栏布局(订阅源 / 文章列表 / 阅读区)
-   * - false → 折叠左栏,只显示文章列表 + 阅读区
-   *          此时第一个 ResizeHandle 隐藏,grid columns 重新计算
-   */
+  /** Phase 4.2.1：订阅源侧栏可见性与持久化切换。 */
   sidebarVisible?: boolean;
-  /** Phase 4.2.1:切换左栏可见性的回调(顶栏"隐藏左栏 / 显示左栏"按钮触发) */
   onToggleSidebar?: () => void;
-  /**
-   * Phase 4.2.1:隐藏左栏按钮的 tooltip 文案(由 App.tsx 根据 useAppearance.language 传)
-   *   - 展开时:"隐藏左栏" / "Hide Sidebar"
-   *   - 隐藏时:"显示左栏" / "Show Sidebar"
-   */
   sidebarToggleTitle?: string;
+}
+
+type WorkbenchIconName =
+  | 'reader'
+  | 'general'
+  | 'ai'
+  | 'tags'
+  | 'notes'
+  | 'digests'
+  | 'topics'
+  | 'logs'
+  | 'export';
+
+function WorkbenchIcon({
+  name,
+  navigation = false
+}: {
+  name: WorkbenchIconName;
+  navigation?: boolean;
+}) {
+  if (name === 'ai') {
+    return (
+      <strong
+        className="workbench-icon workbench-icon--ai app-header__nav-icon--ai"
+        aria-hidden="true"
+        data-testid={navigation ? 'app-header__nav-icon-ai' : undefined}
+      >
+        AI
+      </strong>
+    );
+  }
+
+  if (name === 'topics') {
+    return (
+      <svg
+        className="workbench-icon app-header__nav-icon--topics"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        data-testid={navigation ? 'app-header__nav-icon-topics' : undefined}
+      >
+        <circle cx="5" cy="6" r="1.8" fill="currentColor" stroke="none" />
+        <circle cx="5" cy="18" r="1.8" fill="currentColor" stroke="none" />
+        <circle cx="19" cy="12" r="2.2" fill="currentColor" stroke="none" />
+        <path d="m6.7 6.8 10.2 4.3" />
+        <path d="m6.7 17.2 10.2-4.3" />
+      </svg>
+    );
+  }
+
+  const paths: Record<Exclude<WorkbenchIconName, 'ai' | 'topics'>, ReactNode> = {
+    reader: (
+      <>
+        <path d="M4 5.5h16v13H4z" />
+        <path d="M4 8.5h16M8 8.5v10" />
+      </>
+    ),
+    general: (
+      <>
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 4.2 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H2.4v-4h.1A1.7 1.7 0 0 0 4.2 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06L6.66 3.8l.06.06A1.7 1.7 0 0 0 8.6 4.2a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1v-.1h4v.1a1.7 1.7 0 0 0 1 1.7 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 8.6a1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1.1.4h.1v4h-.1a1.7 1.7 0 0 0-1.7 1z" />
+      </>
+    ),
+    tags: <path d="M5 8h14M4 16h14M9 3 7 21M17 3l-2 18" />,
+    notes: (
+      <>
+        <path d="M5 3.5h10l4 4V21H5z" />
+        <path d="M15 3.5V8h4M8 12h8M8 16h6" />
+      </>
+    ),
+    digests: (
+      <>
+        <path d="M6 5h14v15H6zM3 8v12h14" />
+        <path d="M9 9h8M9 13h8M9 17h5" />
+      </>
+    ),
+    logs: (
+      <>
+        <path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />
+      </>
+    ),
+    export: (
+      <>
+        <path d="M12 3v12M8 11l4 4 4-4" />
+        <path d="M5 17v4h14v-4" />
+      </>
+    )
+  };
+
+  return (
+    <svg
+      className="workbench-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths[name]}
+    </svg>
+  );
 }
 
 export function Layout({
@@ -83,25 +167,19 @@ export function Layout({
   onToggleSidebar,
   sidebarToggleTitle
 }: LayoutProps) {
-  // 拖拽用：ref 到 main 容器，取真实宽度
   const mainRef = useRef<HTMLElement>(null);
-
-  // 用 ref 存当前值以避免 mousemove 闭包过期（stale closure）导致拖拽抖动
   const sidebarRef = useRef(sidebarPercent);
   sidebarRef.current = sidebarPercent;
   const listRef = useRef(listPercent);
   listRef.current = listPercent;
 
-  // 拖拽 sidebar 时，sidebar% 改而 list% 跟着反向变（总和保持）
   const handleSidebarDrag = useCallback(
     (deltaPx: number) => {
       const total = mainRef.current?.clientWidth ?? 0;
       if (total === 0) return;
       const deltaPercent = (deltaPx / total) * 100;
-      // 为阅读区保留至少 20%，避免 sidebar + list + reader 超过 100%。
       const maxSidebar = Math.min(40, 80 - listRef.current);
-      const next = Math.max(10, Math.min(maxSidebar, sidebarRef.current + deltaPercent));
-      onResizeSidebar(next);
+      onResizeSidebar(Math.max(10, Math.min(maxSidebar, sidebarRef.current + deltaPercent)));
     },
     [onResizeSidebar]
   );
@@ -112,50 +190,35 @@ export function Layout({
       if (total === 0) return;
       const deltaPercent = (deltaPx / total) * 100;
       const maxList = Math.min(50, 80 - sidebarRef.current);
-      const next = Math.max(15, Math.min(maxList, listRef.current + deltaPercent));
-      onResizeList(next);
+      onResizeList(Math.max(15, Math.min(maxList, listRef.current + deltaPercent)));
     },
     [onResizeList]
   );
 
-  // 阅读区宽度 = 100% - sidebar - list(左栏折叠时把 list 拉到 0,只让 list 跟随 listPercent)
   const readerPercent = 100 - sidebarPercent - listPercent;
-  // Phase 4.2.1:左栏折叠时,grid template 改为只显示 list + 1 个分隔条 + reader
-  //   原:`${sidebarPercent}fr 4px ${listPercent}fr 4px ${readerPercent}fr`
-  //   折:`${listPercent}fr 4px ${readerPercent}fr`
   const gridTemplateColumns = sidebarVisible
     ? `${sidebarPercent}fr 4px ${listPercent}fr 4px ${readerPercent}fr`
     : `${listPercent}fr 4px ${readerPercent}fr`;
 
-  // Mercury 风格顶栏入口：icon-only + tooltip
-  // Phase 3.4.4.4：nav 7 项 — general 弹窗 / ai 子页面 / 5 个原 page
-  // Phase 4.2.1：AI 入口图标改为粗体 "AI" 字母（iconType='ai-bold'），
-  //   专题入口图标改为多源聚合 SVG（iconType='topics-svg'），
-  //   其余 5 项保留原 unicode icon。
-  type NavItem = {
-    id: AppPage;
-    label: string;
-    icon: string;
-    title: string;
-    opensModal?: boolean;
-    /** Phase 4.2.1：特殊图标类型 — ai-bold 渲染为粗体字母，topics-svg 渲染为多源聚合 SVG */
-    iconType?: 'ai-bold' | 'topics-svg';
-  };
-  const navItems: NavItem[] = [
-    { id: 'general', label: '通用', icon: '⚙', title: '通用设置（语言 / 字体 / 视觉 / 系统字号 / 正文字号 / 阅读宽度）', opensModal: true },
-    { id: 'ai', label: 'AI', icon: 'AI', title: 'AI 设置（Provider / 默认值）', iconType: 'ai-bold' },
-    { id: 'tags', label: '标签', icon: '#', title: '标签管理' },
-    { id: 'notes', label: '笔记', icon: '✎', title: '笔记' },
-    { id: 'digests', label: '文摘', icon: '☷', title: '文摘导出' },
-    { id: 'topics', label: '专题', icon: '⊙', title: '专题演化图（多源聚合 / 时间 / 发展方向 / 来源文章）', iconType: 'topics-svg' },
-    { id: 'logs', label: '日志', icon: '☰', title: '本地日志' }
+  // 顺序保持不变，兼容既有 UI smoke。
+  const navItems: Array<{ id: AppPage; label: string; icon: WorkbenchIconName; title: string }> = [
+    { id: 'general', label: '通用设置', icon: 'general', title: '通用设置' },
+    { id: 'ai', label: 'AI 设置', icon: 'ai', title: 'AI Provider 与默认值' },
+    { id: 'tags', label: '标签管理', icon: 'tags', title: '标签管理' },
+    { id: 'notes', label: '笔记', icon: 'notes', title: '笔记' },
+    { id: 'digests', label: '文摘', icon: 'digests', title: '文摘整理与导出' },
+    { id: 'topics', label: '专题', icon: 'topics', title: '专题追踪' },
+    { id: 'logs', label: '本地日志', icon: 'logs', title: '本地日志' }
   ];
+
+  const pageMeta = currentPage === 'opml-export'
+    ? { label: '导出 OPML', icon: 'export' as WorkbenchIconName }
+    : navItems.find((item) => item.id === currentPage);
 
   return (
     <div className="app-layout">
       <header className="app-header">
         <div className="app-header__left">
-          {/* Mercury 风格：左侧 4 块网格图标，hover 提示项目名 */}
           <button
             type="button"
             className="app-header__logo-btn"
@@ -180,12 +243,16 @@ export function Layout({
               <rect x="9" y="9" width="5" height="5" rx="0.5" />
             </svg>
           </button>
-          <h1 className="app-header__title">聚合拾遗</h1>
-          {/* Phase 4.2.1:隐藏左栏按钮(应用名右侧)
-              - 仅在 reader 页面显示(子页面没有左栏概念)
-              - 展开时显示 ◀,隐藏时显示 ▶(状态切换用 is-hidden class 改色)
-              - tooltip 文案由 App.tsx 根据 useAppearance.language 传入(中/英) */}
-          {currentPage === 'reader' && onToggleSidebar && (
+          <div className="app-header__identity">
+            <h1 className="app-header__title">聚合拾遗</h1>
+            {currentPage !== 'reader' && (
+              <>
+                <span className="app-header__crumb-separator" aria-hidden="true">/</span>
+                <span className="app-header__crumb">{pageMeta?.label}</span>
+              </>
+            )}
+          </div>
+          {onToggleSidebar && (
             <button
               type="button"
               className={`app-header__sidebar-toggle ${sidebarVisible ? '' : 'is-hidden'}`}
@@ -200,62 +267,7 @@ export function Layout({
           )}
         </div>
         <div className="app-header__right">
-          {/* 页面切换（Phase 3 Integration 新增） */}
           {searchSlot && <div className="app-header__search">{searchSlot}</div>}
-          <nav className="app-header__nav" aria-label="页面导航">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`app-header__nav-btn ${currentPage === item.id ? 'is-active' : ''}`}
-                onClick={() => onPageChange(item.id)}
-                title={item.title}
-                aria-current={currentPage === item.id ? 'page' : undefined}
-                data-page={item.id}
-              >
-                {item.iconType === 'ai-bold' ? (
-                  <strong
-                    className="app-header__nav-icon app-header__nav-icon--ai"
-                    aria-hidden="true"
-                    data-testid={`app-header__nav-icon-${item.id}`}
-                  >
-                    AI
-                  </strong>
-                ) : item.iconType === 'topics-svg' ? (
-                  <svg
-                    className="app-header__nav-icon app-header__nav-icon--topics"
-                    viewBox="0 0 16 16"
-                    width="14"
-                    height="14"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                    data-testid={`app-header__nav-icon-${item.id}`}
-                  >
-                    {/* 三个源点向中心汇聚：左侧两个源、右侧一个中心，模拟"多源聚合" */}
-                    <circle cx="2.5" cy="4" r="1.2" fill="currentColor" stroke="none" />
-                    <circle cx="2.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
-                    <circle cx="13.5" cy="8" r="1.6" fill="currentColor" stroke="none" />
-                    <path d="M 3.5 4 L 12 8" />
-                    <path d="M 3.5 12 L 12 8" />
-                  </svg>
-                ) : (
-                  <span
-                    className="app-header__nav-icon"
-                    aria-hidden="true"
-                    data-testid={`app-header__nav-icon-${item.id}`}
-                  >
-                    {item.icon}
-                  </span>
-                )}
-                <span className="app-header__nav-label">{item.label}</span>
-              </button>
-            ))}
-          </nav>
-
           {currentPage === 'reader' && onAddFeed && (
             <button
               type="button"
@@ -273,7 +285,7 @@ export function Layout({
               onClick={onSyncAll}
               disabled={syncing}
             >
-              {syncing ? '⏳ 同步中…' : '🔄 同步文章'}
+              {syncing ? '同步中…' : '同步文章'}
             </button>
           )}
           {currentPage === 'reader' && onOpmlImport && onOpmlExport && (
@@ -283,44 +295,87 @@ export function Layout({
         </div>
       </header>
 
-      {currentPage === 'reader' ? (
-        <main
-          ref={mainRef}
-          className={`app-main ${sidebarVisible ? '' : 'is-sidebar-hidden'}`}
-          style={{
-            gridTemplateColumns
-          }}
-        >
-          {/* Phase 4.2.1:左栏折叠时,aside 和它前面的 ResizeHandle 不渲染
-              - 让中栏和右栏自然扩展(中栏用 listPercent 宽度,reader 跟随剩余空间)
-              - ResizeHandle 隐藏 = 避免拖出隐藏态下的异常宽度 */}
-          {sidebarVisible && <aside className="pane pane-feeds">{feedsSlot}</aside>}
-          {sidebarVisible && (
-            <ResizeHandle onDrag={handleSidebarDrag} ariaLabel="调整订阅源栏宽度" />
-          )}
-          <section className="pane pane-list">{articlesSlot}</section>
-          <ResizeHandle onDrag={handleListDrag} ariaLabel="调整文章列表宽度" />
-          <section className="pane pane-reader">{readerSlot}</section>
-        </main>
-      ) : (
-        <main className="app-page" data-page={currentPage}>
-          {/* Phase 3.4.4.1：6 page 顶部"← 返回阅读"按钮 + 当前页标题 */}
-          <div className="app-page__header">
-            <button
-              type="button"
-              className="app-page__back-btn"
-              onClick={() => onPageChange('reader')}
-              title="返回阅读主界面"
-            >
-              ← 返回阅读
-            </button>
-            <span className="app-page__title">
-              {navItems.find((n) => n.id === currentPage)?.label ?? ''}
-            </span>
+      <div className="app-workbench">
+        <aside className="activity-bar" aria-label="功能导航">
+          <button
+            type="button"
+            className={`activity-bar__reader ${currentPage === 'reader' ? 'is-active' : ''}`}
+            onClick={() => onPageChange('reader')}
+            title="阅读工作区"
+            aria-current={currentPage === 'reader' ? 'page' : undefined}
+          >
+            <WorkbenchIcon name="reader" />
+            <span className="activity-bar__label">阅读</span>
+          </button>
+          <div className="activity-bar__separator" />
+          <nav className="app-header__nav" aria-label="页面导航">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`app-header__nav-btn ${currentPage === item.id ? 'is-active' : ''}`}
+                onClick={() => onPageChange(item.id)}
+                title={item.title}
+                aria-current={currentPage === item.id ? 'page' : undefined}
+                data-page={item.id}
+                data-page-key={item.id}
+              >
+                <span className="app-header__nav-icon" aria-hidden="true">
+                  <WorkbenchIcon name={item.icon} navigation />
+                </span>
+                <span className="app-header__nav-label">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        {currentPage === 'reader' ? (
+          <main
+            ref={mainRef}
+            className={`app-main ${sidebarVisible ? '' : 'is-sidebar-hidden'}`}
+            style={{ gridTemplateColumns }}
+          >
+            {sidebarVisible && <aside className="pane pane-feeds">{feedsSlot}</aside>}
+            {sidebarVisible && (
+              <ResizeHandle onDrag={handleSidebarDrag} ariaLabel="调整订阅源栏宽度" />
+            )}
+            <section className="pane pane-list">{articlesSlot}</section>
+            <ResizeHandle onDrag={handleListDrag} ariaLabel="调整文章列表宽度" />
+            <section className="pane pane-reader">{readerSlot}</section>
+          </main>
+        ) : (
+          <div className={`app-secondary ${sidebarVisible ? '' : 'is-sidebar-hidden'}`}>
+            {sidebarVisible && (
+              <aside className="pane pane-feeds app-secondary__sidebar">{feedsSlot}</aside>
+            )}
+            <main className="app-page" data-page={currentPage}>
+              <div className="app-page__tabbar" role="tablist" aria-label="工作区标签页">
+                <div className="app-page__tab is-active" role="tab" aria-selected="true">
+                  {pageMeta && <WorkbenchIcon name={pageMeta.icon} />}
+                  <span className="app-page__tab-label">{pageMeta?.label ?? '工作区'}</span>
+                  <button
+                    type="button"
+                    className="app-page__tab-close"
+                    onClick={() => onPageChange('reader')}
+                    title="关闭并返回阅读"
+                    aria-label={`关闭${pageMeta?.label ?? '当前页'}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div className="app-page__toolbar">
+                <div className="app-page__heading">
+                  {pageMeta && <WorkbenchIcon name={pageMeta.icon} />}
+                  <span>{pageMeta?.label ?? '工作区'}</span>
+                </div>
+                <span className="app-page__context">聚合拾遗工作区</span>
+              </div>
+              <div className="app-page__content">{pageSlot}</div>
+            </main>
           </div>
-          {pageSlot}
-        </main>
-      )}
+        )}
+      </div>
     </div>
   );
 }

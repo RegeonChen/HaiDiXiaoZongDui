@@ -6,15 +6,26 @@
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: #f7f7f9;
+  --bg: #f8f9fb;
   --bg-elev: #ffffff;
-  --bg-elev-hover: #eef0f4;
-  --fg: #1f1f23;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --border-soft: #f0f1f3;
-  --accent: #4f8cff;
-  --accent-soft: #e8f0ff;
+  --bg-elev-hover: #f0f3f7;
+  --workspace-bg: #fbfcfd;
+  --toolbar-bg: #f7f8fa;
+  --sidebar-bg: #f5f6f8;
+  --activity-bg: #f0f2f5;
+  --tabbar-bg: #f1f3f6;
+  --fg: #20232a;
+  --fg-soft: #555d6d;
+  --muted: #727b8c;
+  --border: #dde1e7;
+  --border-soft: #eaedf1;
+  --border-strong: #c6ccd5;
+  --accent: #4b7ff7;
+  --accent-hover: #386bea;
+  --accent-soft: #e8efff;
+  --focus-ring: rgb(75 127 247 / 22%);
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 5%);
+  --shadow-md: 0 8px 24px rgb(16 24 40 / 14%);
   --ok: #16a34a;
   --err: #dc2626;
   --warn: #d97706;
@@ -30,15 +41,26 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #1a1a1e;
-  --bg-elev: #232328;
-  --bg-elev-hover: #2c2c33;
-  --fg: #e6e6ea;
-  --muted: #9aa0a6;
-  --border: #2f2f36;
-  --border-soft: #26262c;
-  --accent: #6ea8fe;
-  --accent-soft: #1f3354;
+  --bg: #181a1f;
+  --bg-elev: #202329;
+  --bg-elev-hover: #292d35;
+  --workspace-bg: #1b1e24;
+  --toolbar-bg: #1d2026;
+  --sidebar-bg: #1e2127;
+  --activity-bg: #191c21;
+  --tabbar-bg: #181b20;
+  --fg: #e7e9ee;
+  --fg-soft: #b4bac5;
+  --muted: #9098a7;
+  --border: #303540;
+  --border-soft: #282d36;
+  --border-strong: #454c59;
+  --accent: #78a1ff;
+  --accent-hover: #8baeff;
+  --accent-soft: #223558;
+  --focus-ring: rgb(120 161 255 / 26%);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 18%);
+  --shadow-md: 0 10px 30px rgb(0 0 0 / 32%);
   --ok: #4ade80;
   --err: #f87171;
   --warn: #fbbf24;
@@ -47,7 +69,9 @@
   --reading-width: 800px;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 html, body, #root {
   margin: 0;
@@ -59,6 +83,7 @@ html, body, #root {
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 #root {
@@ -70,14 +95,35 @@ button {
   font-family: inherit;
 }
 
+button,
+input,
+select,
+textarea {
+  outline: none;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
 a {
   color: inherit;
 }
 
 /* 滚动条简化（Webkit / Chromium） */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 
 ::-webkit-scrollbar-track {
@@ -85,26 +131,30 @@ a {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
   border-radius: 999px;
-  border: 2px solid var(--bg);
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
+  background: color-mix(in srgb, var(--muted) 72%, transparent);
+  background-clip: content-box;
 }
 
 /* Phase 3.6.2：同步进度条（进行中/完成两态） */
 .sync-progress-bar {
   position: fixed;
   bottom: 0;
-  left: 0;
-  right: 0;
+  left: 48px;
+  right: 12px;
   z-index: 1000;
   background: var(--accent);
   color: #fff;
-  padding: 10px 24px;
-  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 8px 8px 0 0;
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
   font-weight: 500;
   text-align: center;
   animation: sync-progress-in 0.2s ease;
