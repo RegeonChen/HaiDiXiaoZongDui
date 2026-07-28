@@ -145,12 +145,15 @@
   padding: 4px 0;
 }
 
+/* 订阅源组标题 / 折叠 toggle / 箭头 / 计数 badge
+   字号与 .feed-list__item(0.93em)对齐,靠 font-weight 600(比 item 的 500 重一档) +
+   letter-spacing 0.04em 做"标题"区分,不再用 uppercase(避免中文组名"未分组"被强行大写感)
+   + 不再用 muted 颜色(用 var(--fg)让组名更可读,与订阅源"同等地位"分类) */
 .feed-list__group-title {
   padding: 6px 16px 4px;
-  font-size: 0.71em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.93em;  /* 与 .feed-list__item 一致(根=14 时 ≈13px) */
+  color: var(--fg);
+  letter-spacing: 0.04em;
   font-weight: 600;
 }
 
@@ -167,10 +170,9 @@
   appearance: none;
   border: none;
   background: transparent;
-  color: var(--muted);
-  font-size: 0.71em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: var(--fg);
+  font-size: 0.93em;  /* 与 .feed-list__item 一致(根=14 时 ≈13px) */
+  letter-spacing: 0.04em;
   font-weight: 600;
   flex: 1;
   display: flex;
@@ -185,15 +187,16 @@
 
 .feed-list__group-toggle:hover {
   background: var(--bg);
-  color: var(--fg);
+  color: var(--accent);
 }
 
 .feed-list__group-arrow {
-  font-size: 0.64em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
+  font-size: 0.79em;  /* 略小于组名字号(保持箭头视觉更"轻"),根=14 时 ≈11px */
   width: 10px;
   display: inline-block;
   text-align: center;
   flex-shrink: 0;
+  color: var(--muted);
 }
 
 .feed-list__group-name {
@@ -201,7 +204,7 @@
 }
 
 .feed-list__group-count {
-  font-size: 0.64em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
+  font-size: 0.71em;  /* 计数 badge 略小,根=14 时 ≈10px,与 group-arrow 协调 */
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -209,6 +212,8 @@
   line-height: 1.4;
   min-width: 18px;
   text-align: center;
+  color: var(--muted);
+  font-weight: 500;
 }
 
 .feed-list__group.is-collapsed > .feed-list__group-title + .feed-list__group-empty,
