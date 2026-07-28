@@ -1756,10 +1756,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       })()
     `;
   } else if (smokeSearchPagination) {
-    // Phase 3.7.1 smoke: 搜索解耦（onSelect 传 Article）+ 文章列表分页（hasMore 按钮 + 计数 testid）
+    // Phase 3.7.1 smoke: 搜索解耦（onSelect 传 Article）+ 文章列表分页（滚动哨兵 + 计数 testid）
     // 走 mock 模式（MOCK_ARTICLES 10 篇）：
     //   - 验证 article-list__count testid 存在 + 显示数字
-    //   - 验证 hasMore=false 时"加载更多"按钮不显示（mock 模式 total=10, PAGE_SIZE=50）
+    //   - 验证 hasMore=false 时滚动哨兵不显示（mock 模式 total=10, PAGE_SIZE=50）
     //   - 切到 starred tab → count = 3（mock 数据 3 篇已加星标）
     //   - 切回 all tab → count = 10（验证 articleOffsetRef 重置 + refreshArticles offset=0）
     //   - 搜索解耦：SearchBar 输入"Rust" → 下拉 → 点第一项 → reader 打开
@@ -1796,9 +1796,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.searchPagination.checks.allCountShows10 = allCountText === '10';
           report.searchPagination.checks.allCountText = allCountText;
 
-          // 3) Phase 3.7.1:hasMore=false 时"加载更多"按钮不在 DOM
-          const loadMoreBtn = document.querySelector('[data-testid="article-list__load-more"]');
-          report.searchPagination.checks.loadMoreButtonHidden = !loadMoreBtn;
+          // 3) Phase 3.7.1:hasMore=false 时滚动哨兵不在 DOM
+          const paginationSentinel = document.querySelector('[data-testid="article-list__sentinel"]');
+          report.searchPagination.checks.paginationSentinelHidden = !paginationSentinel;
 
           // 4) 切到"星标文章"虚拟分类 → 期望 count = 3（mock 3 篇已加星标）
           const virtualItems = Array.from(
@@ -1889,7 +1889,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         }
 
         const spChecks = [
-          'countTestidExists', 'allCountShows10', 'loadMoreButtonHidden',
+          'countTestidExists', 'allCountShows10', 'paginationSentinelHidden',
           'starredCountIs3', 'allCountBackTo10',
           'searchInputExists', 'searchDropdownRendered',
           'searchDecoupleReaderOpened', 'searchDecoupleTitleMatches'

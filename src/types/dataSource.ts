@@ -46,7 +46,7 @@ export interface DataSource {
    */
   getArticle(id: string): Promise<DataSourceState<Article>>;
   /**
-   * Phase 3.7.1:上次 articles 查询的匹配总数(分页 "加载更多" 按钮判断 hasMore 用)。
+   * Phase 3.7.1:上次 articles 查询的匹配总数（滚动分页判断 hasMore 用）。
    * 实现说明:IPC 后端 article:list result 已经包含 total 字段,实现内部从 IPC 拿;
    * Mock 模式在 articlesState 里按 filter 数。同步返回,无需额外调用。
    */

@@ -3,13 +3,12 @@
  *  - 顶部：tab 切换 + 标题 + 计数
  *  - 列表项：小字标题 + 来源 / 时间 / 未读圆点
  *  - 选中：灰底 + 左侧 2px 强调线
- *  - 底部：Phase 3.7.1"加载更多"按钮(hasMore 时显示)
  *  - Phase 4.1.1：标题前彩色标签 chips（从 article.title 解析 tag prefix）
  *  - Phase 4.1.1：顶部 action bar slot（同步 / 全部已读按钮）
  *  - Phase 自动加载：滚动到底部自动追加 50 篇，无需点按钮
- *    （IntersectionObserver + 末尾哨兵元素，保留按钮作为兜底）
+ *    （IntersectionObserver + 末尾哨兵元素）
  */
-import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { Article, Feed } from '@shared/types';
 import { EmptyView } from '../StatusView/EmptyView';
 import { parseArticleTitleTags } from '../../utils/article-title-tags';
@@ -27,7 +26,7 @@ export interface ArticleListProps {
   total?: number;
   /** Phase 3.7.1:是否可以加载更多(articles.length < total 时为 true) */
   hasMore?: boolean;
-  /** Phase 3.7.1:点击"加载更多"按钮 */
+  /** 滚动哨兵进入列表可视区时加载下一页 */
   onLoadMore?: () => void;
   /** Phase 3.7.1:正在加载更多(显示 loading 状态) */
   loadingMore?: boolean;
@@ -63,29 +62,47 @@ function formatAbsolute(iso: string | null): string {
 export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filterLabel, filterHint, total, hasMore, onLoadMore, loadingMore, actionBar }: ArticleListProps) {
   // Phase 自动加载:IntersectionObserver 监听末尾哨兵
   //   哨兵进入视口(用户滚到底)→ 自动调 onLoadMore()
-  //   保留"加载更多"按钮作为兜底(observer 失效 / 键盘 a11y 时仍可手动触发)
-  //   关键依赖:hasMore / loadingMore — 状态变化时重新 attach observer
-  //   (root = ul 滚动容器,rootMargin=200px 提前触发让用户无感加载)
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  //   哨兵必须位于 ul 滚动容器内部，root 也必须明确指向 ul；否则哨兵会始终
+  //   位于外层 flex 容器的可见区，导致页面刚打开就连续加载全部文章。
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const sentinelRef = useRef<HTMLLIElement | null>(null);
   const onLoadMoreRef = useRef(onLoadMore);
+  const loadingMoreRef = useRef(Boolean(loadingMore));
+  const loadRequestedRef = useRef(false);
   onLoadMoreRef.current = onLoadMore;
+  loadingMoreRef.current = Boolean(loadingMore);
+
+  const requestLoadMore = useCallback(() => {
+    const loadMore = onLoadMoreRef.current;
+    if (!loadMore || loadingMoreRef.current || loadRequestedRef.current) return;
+    // IntersectionObserver 可能在父组件来得及把 loadingMore 设为 true 前重复回调。
+    // 先同步上锁，保证同一页只请求一次。
+    loadRequestedRef.current = true;
+    loadMore();
+  }, []);
+
+  useEffect(() => {
+    if (!loadingMore) {
+      loadRequestedRef.current = false;
+    }
+  }, [loadingMore, articles.length]);
+
   useEffect(() => {
     if (!hasMore || !onLoadMore || loadingMore) return;
     const el = sentinelRef.current;
-    if (!el) return;
+    const list = listRef.current;
+    if (!el || !list) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        const entry = entries[0];
-        if (entry.isIntersecting) {
-          // 二次保护:loadingMore 可能在 observer callback 之前变化
-          onLoadMoreRef.current?.();
+        if (entries.some((entry) => entry.isIntersecting)) {
+          requestLoadMore();
         }
       },
-      { root: el.parentElement, rootMargin: '0px 0px 200px 0px', threshold: 0 }
+      { root: list, rootMargin: '0px 0px 200px 0px', threshold: 0 }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMore, onLoadMore, loadingMore, articles.length]);
+  }, [hasMore, onLoadMore, loadingMore, articles.length, requestLoadMore]);
   const feedTitleById = useMemo(() => {
     const m = new Map<string, string>();
     for (const f of feeds) m.set(f.id, f.siteTitle || f.title);
@@ -105,7 +122,7 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filt
       </div>
       {/* Phase 4.1.1:中栏顶部操作按钮 slot(同步 / 全部已读) */}
       {actionBar && <div className="article-list__action-bar" data-testid="article-list__action-bar">{actionBar}</div>}
-      <ul className="article-list__items" role="listbox" aria-label="文章列表">
+      <ul ref={listRef} className="article-list__items" role="listbox" aria-label="文章列表">
         {articles.length === 0 ? (
           <li className="article-list__empty-wrap">
             <EmptyView
@@ -166,31 +183,17 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filt
             );
           })
         )}
+        {/* Phase 自动加载：哨兵必须留在真正滚动的 ul 内部。 */}
+        {hasMore && onLoadMore && (
+          <li
+            ref={sentinelRef}
+            className="article-list__sentinel"
+            data-testid="article-list__sentinel"
+            role="presentation"
+            aria-hidden="true"
+          />
+        )}
       </ul>
-      {/* Phase 自动加载:末尾哨兵元素(0 高度,IntersectionObserver 监听)
-          进入视口时触发 onLoadMore(),让用户无感追加 50 篇 */}
-      {hasMore && onLoadMore && (
-        <div
-          ref={sentinelRef}
-          className="article-list__sentinel"
-          data-testid="article-list__sentinel"
-          aria-hidden="true"
-        />
-      )}
-      {/* Phase 3.7.1:加载更多按钮(hasMore 时显示,observer 失败时的兜底入口) */}
-      {hasMore && onLoadMore && (
-        <div className="article-list__load-more-wrap">
-          <button
-            type="button"
-            className="article-list__load-more"
-            onClick={onLoadMore}
-            disabled={loadingMore}
-            data-testid="article-list__load-more"
-          >
-            {loadingMore ? '加载中…' : `加载更多 (${total !== undefined ? total - articles.length : '?'} 篇)`}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
