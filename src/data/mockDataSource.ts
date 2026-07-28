@@ -864,12 +864,39 @@ export class MockDataSource implements DataSource {
 
   // ============== Settings / Log ==============
 
+  // Phase 4.2.1:mock 模式也维护一份 settings(state),让 useAppearance 初次加载就能拿到默认值
+  //   - 之前 mock settingsGet 返回 error → useAppearance 不调 applyToHtml → data-sidebar-visible 属性不写
+  //     → Layout 不知道 sidebarVisible → 隐藏按钮 click 后 UI 不更新
+  //   - 现在 mock 返回 ready + state,settingsUpdate 改 state(并 clone 返回)
+  //   - 与 IPC 后端行为一致:settingsGet 返回 full AppSettings,settingsUpdate 返回更新后结果
+  //   - 不持久化(用户重启 mock 模式会重置)— 这是 mock 模式预期行为
+  private settingsState: AppSettings = {
+    language: 'zh',
+    theme: 'system',
+    fontSize: 16,
+    readingWidth: 800,
+    defaultSummaryLanguage: 'zh',
+    defaultSummaryDetail: 'standard',
+    defaultTranslationTarget: 'zh',
+    defaultProviderId: null,
+    summaryPromptTemplate: null,
+    translationPromptTemplate: null,
+    tagPromptTemplate: null,
+    fontTheme: 'default',
+    visualTheme: 'classic',
+    sidebarPercent: 18,
+    listPercent: 28,
+    systemFontSize: 14,
+    sidebarVisible: true
+  };
+
   async settingsGet(): Promise<DataSourceState<AppSettings>> {
-    return { kind: 'error', error: 'mock 模式无设置' };
+    return { kind: 'ready', data: { ...this.settingsState } };
   }
 
-  async settingsUpdate(_settings: Partial<AppSettings>): Promise<DataSourceState<AppSettings>> {
-    return { kind: 'error', error: 'mock 模式不保存设置' };
+  async settingsUpdate(settings: Partial<AppSettings>): Promise<DataSourceState<AppSettings>> {
+    this.settingsState = { ...this.settingsState, ...settings };
+    return { kind: 'ready', data: { ...this.settingsState } };
   }
 
   async logList(_limit?: number): Promise<DataSourceState<LogEntry[]>> {

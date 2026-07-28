@@ -1,12 +1,16 @@
 /**
  * 字体主题 + 视觉主题 + 多语言 + 排版参数 持久化
  *
- * 与 useTheme 平行：从 settings.fontTheme / visualTheme / fontSize / readingWidth 读，
- * 写到 <html> data-* 属性 + CSS 变量，切换通过 settings:update IPC 持久化到 SQLite。
+ * 与 useTheme 平行：从 settings.fontTheme / visualTheme / fontSize / readingWidth / 
+ * systemFontSize / sidebarVisible 读，写到 <html> data-* 属性 + CSS 变量，
+ * 切换通过 settings:update IPC 持久化到 SQLite。
  *
  * Phase 3.4.4.2：accepts `effectiveTheme`（来自 useTheme 解析后的 'light' | 'dark'），
  * 当 effectiveTheme === 'dark' 时强制忽略 visualTheme='paper'，使用经典色。
  * 这是"纸质主题"在深色模式下与"经典深色"完全一致的关键。
+ *
+ * Phase 4.2.1：新增 systemFontSize（控制左/中栏 UI 字号，独立于正文字号）
+ *   + sidebarVisible（控制左栏折叠状态，写 --sidebar-visible CSS 变量供 Layout 用）
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useDataSource } from '../context/DataSourceContext';
@@ -15,12 +19,18 @@ export interface AppearanceSettings {
   fontTheme: string;
   visualTheme: 'classic' | 'paper';
   language: 'zh' | 'en';
+  /** 系统字号（左/中栏），与正文字号独立 */
+  systemFontSize: number;
+  /** 左栏（订阅源侧栏）是否可见 */
+  sidebarVisible: boolean;
 }
 
 const DEFAULTS: AppearanceSettings = {
   fontTheme: 'default',
   visualTheme: 'classic',
-  language: 'zh'
+  language: 'zh',
+  systemFontSize: 14,
+  sidebarVisible: true
 };
 
 /**
@@ -33,17 +43,22 @@ export const FONT_STACKS: Record<string, string> = {
 };
 
 /**
- * 视觉主题变量。
- * - paper 浅色：暖黄底 + 深棕字
- * - paper 深色：与 classic 深色完全一致（不写 paper 变量 → 走 useTheme 的 dark CSS）
- * 验收 3.4.4.2：纸质 + 深色 == 经典 + 深色。
+ * 应用外观设置到 <html> 元素 + CSS 变量
+ * - 字体主题 → data-font-theme + --font-body
+ * - 视觉主题 → data-visual-theme + paper 浅色暖黄变量
+ * - 正文字号 → --font-size（驱动 ArticleReader 阅读区）
+ * - 系统字号 → --ui-font-size（驱动左/中栏 UI）
+ * - 阅读宽度 → --reading-width
+ * - 侧栏可见 → data-sidebar-visible（"true" / "false"，Layout 用这个属性切换 display）
  */
 function applyToHtml(
   fontTheme: string,
   visualTheme: 'classic' | 'paper',
   effectiveTheme: 'light' | 'dark',
   fontSize?: number,
-  readingWidth?: number
+  readingWidth?: number,
+  systemFontSize?: number,
+  sidebarVisible?: boolean
 ): void {
   if (typeof document === 'undefined') return;
   const html = document.documentElement;
@@ -78,6 +93,15 @@ function applyToHtml(
   if (typeof readingWidth === 'number' && readingWidth >= 320 && readingWidth <= 1600) {
     html.style.setProperty('--reading-width', `${readingWidth}px`);
   }
+  // Phase 4.2.1:系统字号 — 独立 CSS 变量,只影响左/中栏 UI 不影响右栏正文
+  if (typeof systemFontSize === 'number' && systemFontSize >= 10 && systemFontSize <= 24) {
+    html.style.setProperty('--ui-font-size', `${systemFontSize}px`);
+  }
+  // Phase 4.2.1:侧栏可见性 — data-sidebar-visible 属性
+  //   Layout CSS 用 [data-sidebar-visible="false"] 选择器把左栏收起来
+  if (typeof sidebarVisible === 'boolean') {
+    html.setAttribute('data-sidebar-visible', String(sidebarVisible));
+  }
 }
 
 export interface UseAppearanceResult {
@@ -86,12 +110,16 @@ export interface UseAppearanceResult {
   language: 'zh' | 'en';
   fontSize: number;
   readingWidth: number;
+  systemFontSize: number;
+  sidebarVisible: boolean;
   loaded: boolean;
   setFontTheme: (next: string) => Promise<boolean>;
   setVisualTheme: (next: 'classic' | 'paper') => Promise<boolean>;
   setLanguage: (next: 'zh' | 'en') => Promise<boolean>;
   setFontSize: (next: number) => Promise<boolean>;
   setReadingWidth: (next: number) => Promise<boolean>;
+  setSystemFontSize: (next: number) => Promise<boolean>;
+  setSidebarVisible: (next: boolean) => Promise<boolean>;
 }
 
 export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAppearanceResult {
@@ -115,10 +143,16 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
           visualTheme: r.data.visualTheme,
           language: r.data.language,
           fontSize: r.data.fontSize,
-          readingWidth: r.data.readingWidth
+          readingWidth: r.data.readingWidth,
+          systemFontSize: r.data.systemFontSize,
+          sidebarVisible: r.data.sidebarVisible
         };
         setState(next);
-        applyToHtml(next.fontTheme, next.visualTheme, effectiveTheme, next.fontSize, next.readingWidth);
+        applyToHtml(
+          next.fontTheme, next.visualTheme, effectiveTheme,
+          next.fontSize, next.readingWidth,
+          next.systemFontSize, next.sidebarVisible
+        );
       }
       setLoaded(true);
     })();
@@ -130,8 +164,17 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
   // 当 effectiveTheme 在 visualTheme 没变的情况下切换（如用户在 paper 主题下切到深色），
   // 重新应用 CSS 变量（不触发 IPC）
   useEffect(() => {
-    applyToHtml(state.fontTheme, state.visualTheme, effectiveTheme, state.fontSize, state.readingWidth);
-  }, [effectiveTheme, state.fontTheme, state.visualTheme, state.fontSize, state.readingWidth]);
+    applyToHtml(
+      state.fontTheme, state.visualTheme, effectiveTheme,
+      state.fontSize, state.readingWidth,
+      state.systemFontSize, state.sidebarVisible
+    );
+  }, [
+    effectiveTheme,
+    state.fontTheme, state.visualTheme,
+    state.fontSize, state.readingWidth,
+    state.systemFontSize, state.sidebarVisible
+  ]);
 
   const update = useCallback(
     async (
@@ -144,10 +187,16 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
           visualTheme: r.data.visualTheme,
           language: r.data.language,
           fontSize: r.data.fontSize,
-          readingWidth: r.data.readingWidth
+          readingWidth: r.data.readingWidth,
+          systemFontSize: r.data.systemFontSize,
+          sidebarVisible: r.data.sidebarVisible
         };
         setState(next);
-        applyToHtml(next.fontTheme, next.visualTheme, effectiveTheme, next.fontSize, next.readingWidth);
+        applyToHtml(
+          next.fontTheme, next.visualTheme, effectiveTheme,
+          next.fontSize, next.readingWidth,
+          next.systemFontSize, next.sidebarVisible
+        );
         return true;
       }
       return false;
@@ -161,15 +210,15 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
     language: state.language,
     fontSize: state.fontSize,
     readingWidth: state.readingWidth,
+    systemFontSize: state.systemFontSize,
+    sidebarVisible: state.sidebarVisible,
     loaded,
-    // 修复：之前 .then(() => undefined) 把 update 的 boolean 返回值吞掉，
-    // 导致 GeneralSettingsModal.handleFontTheme 等地方 ok 永远 undefined，
-    // toast 无论成败都显示 "切换失败"。
-    // （回归自 097735a：陈冠中已修过但被 working tree reset 冲掉）
     setFontTheme: (next) => update({ fontTheme: next }),
     setVisualTheme: (next) => update({ visualTheme: next }),
     setLanguage: (next) => update({ language: next }),
     setFontSize: (next) => update({ fontSize: next }),
-    setReadingWidth: (next) => update({ readingWidth: next })
+    setReadingWidth: (next) => update({ readingWidth: next }),
+    setSystemFontSize: (next) => update({ systemFontSize: next }),
+    setSidebarVisible: (next) => update({ sidebarVisible: next })
   };
 }

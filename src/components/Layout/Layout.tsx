@@ -45,6 +45,21 @@ export interface LayoutProps {
   pageSlot?: ReactNode;
   /** Phase 3.4.4.3：顶栏搜索槽 */
   searchSlot?: ReactNode;
+  /**
+   * Phase 4.2.1:左栏（订阅源侧栏）是否可见
+   * - true  → 三栏布局(订阅源 / 文章列表 / 阅读区)
+   * - false → 折叠左栏,只显示文章列表 + 阅读区
+   *          此时第一个 ResizeHandle 隐藏,grid columns 重新计算
+   */
+  sidebarVisible?: boolean;
+  /** Phase 4.2.1:切换左栏可见性的回调(顶栏"隐藏左栏 / 显示左栏"按钮触发) */
+  onToggleSidebar?: () => void;
+  /**
+   * Phase 4.2.1:隐藏左栏按钮的 tooltip 文案(由 App.tsx 根据 useAppearance.language 传)
+   *   - 展开时:"隐藏左栏" / "Hide Sidebar"
+   *   - 隐藏时:"显示左栏" / "Show Sidebar"
+   */
+  sidebarToggleTitle?: string;
 }
 
 export function Layout({
@@ -63,7 +78,10 @@ export function Layout({
   currentPage,
   onPageChange,
   pageSlot,
-  searchSlot
+  searchSlot,
+  sidebarVisible = true,
+  onToggleSidebar,
+  sidebarToggleTitle
 }: LayoutProps) {
   // 拖拽用：ref 到 main 容器，取真实宽度
   const mainRef = useRef<HTMLElement>(null);
@@ -100,18 +118,36 @@ export function Layout({
     [onResizeList]
   );
 
-  // 阅读区宽度 = 100% - sidebar - list
+  // 阅读区宽度 = 100% - sidebar - list(左栏折叠时把 list 拉到 0,只让 list 跟随 listPercent)
   const readerPercent = 100 - sidebarPercent - listPercent;
+  // Phase 4.2.1:左栏折叠时,grid template 改为只显示 list + 1 个分隔条 + reader
+  //   原:`${sidebarPercent}fr 4px ${listPercent}fr 4px ${readerPercent}fr`
+  //   折:`${listPercent}fr 4px ${readerPercent}fr`
+  const gridTemplateColumns = sidebarVisible
+    ? `${sidebarPercent}fr 4px ${listPercent}fr 4px ${readerPercent}fr`
+    : `${listPercent}fr 4px ${readerPercent}fr`;
 
   // Mercury 风格顶栏入口：icon-only + tooltip
   // Phase 3.4.4.4：nav 7 项 — general 弹窗 / ai 子页面 / 5 个原 page
-  const navItems: Array<{ id: AppPage; label: string; icon: string; title: string; opensModal?: boolean }> = [
-    { id: 'general', label: '通用', icon: '⚙', title: '通用设置（语言 / 字体 / 视觉 / 字号 / 阅读宽度）', opensModal: true },
-    { id: 'ai', label: 'AI', icon: '✨', title: 'AI 设置（Provider / 默认值）' },
+  // Phase 4.2.1：AI 入口图标改为粗体 "AI" 字母（iconType='ai-bold'），
+  //   专题入口图标改为多源聚合 SVG（iconType='topics-svg'），
+  //   其余 5 项保留原 unicode icon。
+  type NavItem = {
+    id: AppPage;
+    label: string;
+    icon: string;
+    title: string;
+    opensModal?: boolean;
+    /** Phase 4.2.1：特殊图标类型 — ai-bold 渲染为粗体字母，topics-svg 渲染为多源聚合 SVG */
+    iconType?: 'ai-bold' | 'topics-svg';
+  };
+  const navItems: NavItem[] = [
+    { id: 'general', label: '通用', icon: '⚙', title: '通用设置（语言 / 字体 / 视觉 / 系统字号 / 正文字号 / 阅读宽度）', opensModal: true },
+    { id: 'ai', label: 'AI', icon: 'AI', title: 'AI 设置（Provider / 默认值）', iconType: 'ai-bold' },
     { id: 'tags', label: '标签', icon: '#', title: '标签管理' },
     { id: 'notes', label: '笔记', icon: '✎', title: '笔记' },
     { id: 'digests', label: '文摘', icon: '☷', title: '文摘导出' },
-    { id: 'topics', label: '专题', icon: '★', title: '专题演化图（时间 / 发展方向 / 来源文章）' },
+    { id: 'topics', label: '专题', icon: '⊙', title: '专题演化图（多源聚合 / 时间 / 发展方向 / 来源文章）', iconType: 'topics-svg' },
     { id: 'logs', label: '日志', icon: '☰', title: '本地日志' }
   ];
 
@@ -145,6 +181,23 @@ export function Layout({
             </svg>
           </button>
           <h1 className="app-header__title">聚合拾遗</h1>
+          {/* Phase 4.2.1:隐藏左栏按钮(应用名右侧)
+              - 仅在 reader 页面显示(子页面没有左栏概念)
+              - 展开时显示 ◀,隐藏时显示 ▶(状态切换用 is-hidden class 改色)
+              - tooltip 文案由 App.tsx 根据 useAppearance.language 传入(中/英) */}
+          {currentPage === 'reader' && onToggleSidebar && (
+            <button
+              type="button"
+              className={`app-header__sidebar-toggle ${sidebarVisible ? '' : 'is-hidden'}`}
+              onClick={onToggleSidebar}
+              title={sidebarToggleTitle ?? (sidebarVisible ? '隐藏左栏' : '显示左栏')}
+              aria-label={sidebarToggleTitle ?? (sidebarVisible ? '隐藏左栏' : '显示左栏')}
+              aria-pressed={!sidebarVisible}
+              data-testid="app-header__sidebar-toggle"
+            >
+              {sidebarVisible ? '◀' : '▶'}
+            </button>
+          )}
         </div>
         <div className="app-header__right">
           {/* 页面切换（Phase 3 Integration 新增） */}
@@ -160,7 +213,44 @@ export function Layout({
                 aria-current={currentPage === item.id ? 'page' : undefined}
                 data-page={item.id}
               >
-                <span className="app-header__nav-icon" aria-hidden="true">{item.icon}</span>
+                {item.iconType === 'ai-bold' ? (
+                  <strong
+                    className="app-header__nav-icon app-header__nav-icon--ai"
+                    aria-hidden="true"
+                    data-testid={`app-header__nav-icon-${item.id}`}
+                  >
+                    AI
+                  </strong>
+                ) : item.iconType === 'topics-svg' ? (
+                  <svg
+                    className="app-header__nav-icon app-header__nav-icon--topics"
+                    viewBox="0 0 16 16"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    data-testid={`app-header__nav-icon-${item.id}`}
+                  >
+                    {/* 三个源点向中心汇聚：左侧两个源、右侧一个中心，模拟"多源聚合" */}
+                    <circle cx="2.5" cy="4" r="1.2" fill="currentColor" stroke="none" />
+                    <circle cx="2.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+                    <circle cx="13.5" cy="8" r="1.6" fill="currentColor" stroke="none" />
+                    <path d="M 3.5 4 L 12 8" />
+                    <path d="M 3.5 12 L 12 8" />
+                  </svg>
+                ) : (
+                  <span
+                    className="app-header__nav-icon"
+                    aria-hidden="true"
+                    data-testid={`app-header__nav-icon-${item.id}`}
+                  >
+                    {item.icon}
+                  </span>
+                )}
                 <span className="app-header__nav-label">{item.label}</span>
               </button>
             ))}
@@ -196,13 +286,18 @@ export function Layout({
       {currentPage === 'reader' ? (
         <main
           ref={mainRef}
-          className="app-main"
+          className={`app-main ${sidebarVisible ? '' : 'is-sidebar-hidden'}`}
           style={{
-            gridTemplateColumns: `${sidebarPercent}fr 4px ${listPercent}fr 4px ${readerPercent}fr`
+            gridTemplateColumns
           }}
         >
-          <aside className="pane pane-feeds">{feedsSlot}</aside>
-          <ResizeHandle onDrag={handleSidebarDrag} ariaLabel="调整订阅源栏宽度" />
+          {/* Phase 4.2.1:左栏折叠时,aside 和它前面的 ResizeHandle 不渲染
+              - 让中栏和右栏自然扩展(中栏用 listPercent 宽度,reader 跟随剩余空间)
+              - ResizeHandle 隐藏 = 避免拖出隐藏态下的异常宽度 */}
+          {sidebarVisible && <aside className="pane pane-feeds">{feedsSlot}</aside>}
+          {sidebarVisible && (
+            <ResizeHandle onDrag={handleSidebarDrag} ariaLabel="调整订阅源栏宽度" />
+          )}
           <section className="pane pane-list">{articlesSlot}</section>
           <ResizeHandle onDrag={handleListDrag} ariaLabel="调整文章列表宽度" />
           <section className="pane pane-reader">{readerSlot}</section>

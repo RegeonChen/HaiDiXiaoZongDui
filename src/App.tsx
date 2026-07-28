@@ -16,7 +16,8 @@ import type { Article, Feed, SyncStage, Tag } from '@shared/types';
 import { useDataSource } from './context/DataSourceContext';
 import { useSelection } from './hooks/useSelection';
 import { usePaneWidths } from './hooks/usePaneWidths';
-import { ThemeProvider } from './hooks/useTheme';
+import { ThemeProvider, useTheme } from './hooks/useTheme';
+import { useAppearance } from './hooks/useAppearance';
 import { Layout, type AppPage } from './components/Layout/Layout';
 import { FeedList } from './components/FeedList/FeedList';
 import { ArticleList } from './components/ArticleList/ArticleList';
@@ -63,6 +64,11 @@ export function App() {
   const selectedFeedIdRef = useRef(selection.feedId);
   selectedFeedIdRef.current = selection.feedId;
   const { widths, setSidebar, setList } = usePaneWidths();
+  // Phase 4.2.1:useAppearance 接入 → systemFontSize / sidebarVisible
+  //   - useTheme 必须在外层 ThemeProvider 内(由 AppWithProvider 包装)
+  //   - useAppearance 必须在所有条件 return 之前调用(Rules of Hooks)
+  const { effective: effectiveTheme } = useTheme();
+  const appearance = useAppearance(effectiveTheme);
 
   const [currentPage, setCurrentPage] = useState<AppPage>('reader');
   // Phase 3.4.4.4：通用设置弹窗（独立 state，不走 page 切换）
@@ -121,6 +127,23 @@ export function App() {
   const dismissToast = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  // Phase 4.2.1:切换左栏可见性
+  //   - 调 useAppearance.setSidebarVisible(false/true) → IPC 持久化 + applyToHtml 写 data-sidebar-visible
+  //   - 不需要本地 state 镜像(useAppearance 已是权威 state)
+  const handleToggleSidebar = useCallback(() => {
+    void appearance.setSidebarVisible(!appearance.sidebarVisible);
+  }, [appearance]);
+
+  // Phase 4.2.1:多语言 tooltip 文案(根据 useAppearance.language)
+  //   - 展开时:"隐藏左栏" / "Hide Sidebar"
+  //   - 隐藏时:"显示左栏" / "Show Sidebar"
+  const sidebarToggleTitle = useMemo(
+    () => (appearance.language === 'en'
+      ? appearance.sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar'
+      : appearance.sidebarVisible ? '隐藏左栏' : '显示左栏'),
+    [appearance.language, appearance.sidebarVisible]
+  );
 
   // 拉 feeds
   const refreshFeeds = useCallback(async () => {
@@ -1282,6 +1305,10 @@ export function App() {
         }}
         pageSlot={pageSlot}
         searchSlot={<SearchBar feeds={feeds} onSelect={handleSearchSelect} />}
+        // Phase 4.2.1:左栏折叠状态
+        sidebarVisible={appearance.sidebarVisible}
+        onToggleSidebar={handleToggleSidebar}
+        sidebarToggleTitle={sidebarToggleTitle}
       />
       <AddFeedDialog
         open={addDialogOpen}

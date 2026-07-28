@@ -18,6 +18,14 @@
   --ok: #16a34a;
   --err: #dc2626;
   --warn: #d97706;
+  /* Phase 4.2.1:UI 字号(左/中栏)与正文字号(右栏)独立
+     - --font-size:ArticleReader 阅读区正文(默认 16)
+     - --ui-font-size:FeedList + ArticleList UI 字号(默认 14)
+     - --reading-width:阅读区最大宽度
+     - useAppearance.applyToHtml 会基于 settings 覆写这些值 */
+  --ui-font-size: 14px;
+  --font-size: 16px;
+  --reading-width: 800px;
 }
 
 :root[data-theme='dark'] {
@@ -34,6 +42,9 @@
   --ok: #4ade80;
   --err: #f87171;
   --warn: #fbbf24;
+  --ui-font-size: 14px;
+  --font-size: 16px;
+  --reading-width: 800px;
 }
 
 * { box-sizing: border-box; }

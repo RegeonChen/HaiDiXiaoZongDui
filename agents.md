@@ -93,9 +93,32 @@
 
 ## 当前状态
 
-截至 2026-07-26：
+截至 2026-07-28：
 
-- **Phase 1–4.3、3.7、4.1 全部完成并通过验收**。`electron-vite build` + `npm run typecheck` 双端通过。
+- **Phase 1–4.3、3.7、4.1、4.2 全部完成并通过验收**。`electron-vite build` + `npm run typecheck` 双端通过。
+- **Phase 4.2.1 Navbar 图标 + 系统字号 + 侧栏折叠**（张晨阳，4.2.3 陈冠中在 `ec45c68` 落地 AppSettings 字段 + 持久化）：
+  - **Task 4.2.1.1 AI 入口图标 → 粗体 "AI" 字母**（`Layout.tsx`）：navItems 用 `iconType='ai-bold'` 渲染 `<strong class="app-header__nav-icon--ai">AI</strong>`，font-weight 800 + letter-spacing -0.04em 让两字母紧凑如一个 logo；三主题下 active 态 `var(--accent)`、hover 态继承 fg-soft。
+  - **Task 4.2.1.2 专题入口图标 → 多源聚合 SVG**（`Layout.tsx`）：navItems 用 `iconType='topics-svg'` 渲染一个 14×14 SVG（两个左侧源点 + 一个右侧中心点 + 两条汇聚线），stroke 颜色继承 currentColor，`var(--fg-soft)` 默认色 / `var(--accent)` active 态。
+  - **Task 4.2.1.3+4 系统字号 + 正文字号独立滑块**（`GeneralSettingsModal.tsx`）：在"排版"section 加"系统字号"行（10-24 范围，默认 14，testid `general-modal__system-font-size`，hint 文案"影响左/中栏"）+ 调整现有"正文字号"hint 文案"仅影响右栏"。两字号各自通过 `useAppearance.setSystemFontSize` / `setFontSize` 走 IPC 持久化。
+  - **Task 4.2.1.5 隐藏左栏按钮**（`Layout.tsx` + `Layout.css`）：应用名"聚合拾遗"右侧加 `app-header__sidebar-toggle` 按钮，仅 reader 页面显示；icon 切换 `◀`（展开）/`▶`（隐藏）；tooltip 多语言由 App.tsx 根据 `useAppearance.language` 传入（中"隐藏左栏/显示左栏"、英"Hide Sidebar/Show Sidebar"）。`App.tsx` 新增 `handleToggleSidebar` + `sidebarToggleTitle` memo，传给 Layout。点击按钮 → `setSidebarVisible(!current)` → useAppearance 走 IPC + `applyToHtml` 写 `<html data-sidebar-visible="false">`。
+  - **Layout 主区折叠**（`Layout.tsx` + `Layout.css`）：新增 `sidebarVisible` + `onToggleSidebar` props。折叠时 conditional render：不渲染 `<aside className="pane-feeds">` 和它前面的 `<ResizeHandle>`，grid-template-columns 从 `sidebar% 4px list% 4px reader%` 变成 `list% 4px reader%`。`.app-main` 加 `transition: grid-template-columns 220ms ease` 让中/右栏平滑扩展。
+  - **CSS 变量应用**（`index.css` + `FeedList.css` + `ArticleList.css`）：index.css 加 `--ui-font-size: 14px; --font-size: 16px; --reading-width: 800px;` 默认值（深色主题同样）。`FeedList` / `ArticleList` 根容器 `font-size: var(--ui-font-size)`，子元素用 em（13/14=0.93、12/14=0.86、11/14=0.79、10/14=0.71、9/14=0.64）相对缩放。`ArticleReader` **不**引用 `--ui-font-size`（保持阅读区独立），确认 PLAN 4.2.1.4 验收。
+  - **useAppearance 扩展**（`useAppearance.ts`）：`AppearanceSettings` 加 `systemFontSize: number` + `sidebarVisible: boolean` 字段；`DEFAULTS` 默认 14 / true；`applyToHtml` 新增两个参数（独立写 `--ui-font-size` 和 `data-sidebar-visible`）；hook 返回 `systemFontSize` / `sidebarVisible` + `setSystemFontSize` / `setSidebarVisible` setters。`update` 函数 patch 类型扩展支持新字段。
+  - **MockDataSource 设置支持**（`mockDataSource.ts`）：之前 mock `settingsGet` 返回 `kind: 'error'` 导致 useAppearance 初次 load 拿不到默认值，applyToHtml 不被调用，`data-sidebar-visible` 属性不写 → Layout 不知道 sidebarVisible。**真根因修复**：mock 模式维护 `private settingsState: AppSettings`（含新字段 systemFontSize/sidebarVisible），`settingsGet` 返回 `kind: 'ready' + data: { ...state }`，`settingsUpdate` 修改 state 并返回，与 IPC 后端行为一致。
+  - **App.tsx 接线**（`App.tsx`）：引入 `useTheme` + `useAppearance`；新增 `handleToggleSidebar` (调 setSidebarVisible) + `sidebarToggleTitle` memo（多语言）；`<Layout>` 传 `sidebarVisible={appearance.sidebarVisible}` + `onToggleSidebar={handleToggleSidebar}` + `sidebarToggleTitle={sidebarToggleTitle}`。
+  - **新探针** `smoke:phase4.2`（`scripts/smoke-4.2.cjs` + `electron/main/index.ts`）：30 项 check 覆盖
+    - AI 粗体字母（strong 元素 + 文本 "AI"）
+    - 专题 SVG（svg 元素 + 3 个 circle + 2 个 path）
+    - 顶栏隐藏左栏按钮存在 + 初始 `◀` + title "隐藏左栏" + aria-pressed="false"
+    - 展开态 `.pane-feeds` 可见 + `data-sidebar-visible="true"`
+    - 点击后 `.pane-feeds` 不渲染 + `data-sidebar-visible="false"` + `.app-main.is-sidebar-hidden` + 按钮变 `▶` + title "显示左栏" + 折叠态只剩 1 个 ResizeHandle（避免拖出隐藏态下的异常宽度）
+    - 再点一次恢复
+    - 通用设置弹窗"系统字号"滑块存在 + 默认值 14
+    - 改到 20 → `<html>` `--ui-font-size: 20px` + FeedList + ArticleList 根 fontSize=20px + 子元素 em 缩放 18.6px
+    - 关闭弹窗后 ArticleReader 不受影响（fontSize 仍 14px + `--font-size` 仍 16px）
+    - MockDataSource state systemFontSize=20（持久化语义）
+  - **smoke 模式扩展**：`useMock` 判定扩展支持 `smokePhase42` 走 mock 模式（之前只 `smokeUi && !smokeUiReal`）；探针设 `JUHE_SHIVI_SMOKE_PHASE42=1` 但**不**设 `JUHE_SHIVI_SMOKE_UI`（否则 smokeUI 探针会先命中 if/else 链、smokePhase42 永不执行）。
+  - **smoke:phase4.2 30/30 全过**：AI 粗体字母 / 专题 SVG / 隐藏左栏按钮（◀/▶ 切换 + tooltip 中英 + aside 折叠 + ResizeHandle 只剩 1 个）/ 系统字号 14→20（`--ui-font-size` 写 20px + FeedList/ArticleList 根 20px + 子元素 18.6px em 缩放）/ reader 不受影响 14px / MockDataSource 持久化 systemFontSize=20。
 - **Phase 4.1 UI 完整闭环**（`8c410db` 张晨阳，4.1.2/4.1.3/4.1.5/4.1.6 由张宇凡/陈冠中在 `b0a7187`/`7478ae9` 落地）：
   - **Task 4.1.1 中栏顶部操作按钮**：`ArticleList` 加 `actionBar` slot（`data-testid="article-list__action-bar"`），仅具体 feed 显示（`all`/`unread`/`starred`/`tag:` 不显示，避免误操作）。同步按钮调 `ds.syncFeed(feedId)` 并轮询 `ds.syncProgress()` 展示抓取/解析/保存阶段；成功与失败均刷新 Feed 状态，且用当前选择 ref 防止旧同步覆盖用户新切换的订阅源。全部已读先通过 `ds.articleCount({ feedId, isRead:false })` 取精确数量，再确认并调用 `ds.markAllReadByFeed(feedId)`，不再依赖全局前 50 篇缓存。
   - **Task 4.1.1 标题前彩色标签 chips**（`ArticleList` + `ArticleReader`）：新建 `src/utils/article-title-tags.ts` 的 `parseArticleTitleTags(title)` 解析后端嵌的 `[tag:NAME|COLOR]` 前缀。标签名中的 `%` / `|` / `]` 采用最小转义，兼容原有普通中英文标记。`ArticleReader` 优先用 `articleTags` state + 兜底用 title 解析（处理 150ms 异步空窗期），按 name 去重。**Mock 模式同步行为**：`MockDataSource.rebuildArticleTitleTags(articleId)` 让 `tagAddToArticle` / `tagRemoveFromArticle` / `tagDelete` / `tagUpdate` 同步更新 `article.title` 前缀，与 IPC 后端一致（前端不需要再拉 IPC 拿 tag）。
@@ -130,7 +153,7 @@
 - **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ done 态 3 秒延迟 + 失败红点。
 - **三种阅读模式**（`e25343a` 张宇凡 + `9aef239` 张宇凡）：精简阅读 / 网页 / 分栏（左右各半），通过 `useReaderMode` hook + `shared/article-webview.ts` + 主进程 `installArticleWebviewSecurity`。
 - **GitHub Release 自动化**：`.github/workflows/release.yml` 推 `v*` tag → build-mac (DMG) + build-win (NSIS) + release job。
-- **20 个 smoke 基线 + 116 单元测试**（另 6 个需外网的真实 Feed 测试按设计跳过）：smoke-1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes / taglist / feeds-group / **search-pagination** / **feed-actions** / **opml-export-selection**。2026-07-27 的 Phase 4.1 语义修复新增标签编码和 TagsPage 55 篇分页测试，并重新核对 `feed-actions` / `opml-export-selection` 报告字段；正文复杂结构修复新增 6 项清洗/迁移/翻译分段回归。
+- **21 个 smoke + 118 单元测试**（另 6 个需外网的真实 Feed 测试按设计跳过）：smoke-1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes / taglist / feeds-group / search-pagination / feed-actions / opml-export-selection / **phase4.2**。2026-07-28 的 Phase 4.2.1 落地新增 `smoke:phase4.2` 30 项 check。
 - `shared/types.ts` + `shared/ipc.ts` 作为权威协议源；跨模块接口变更需同步更新并通知。
 
 ## 设计决策
@@ -148,13 +171,26 @@
 
 ## 路线图
 
-1. Phase 1–4.3、3.7：✅ 全部完成
+1. Phase 1–4.3、3.7、4.1、4.2：✅ 全部完成
 2. Phase 5：v0.3.0 release 已发布（`v0.3.0` tag + 2 个 artifact）/ 三平台 UI 验证 / 课程交付资料准备（进行中）
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
 ## 近期记录（按 commit 倒序）
 
+- **`phase4.2`（张晨阳，pending commit）**：Phase 4.2.1 Navbar 图标 + 系统字号 + 侧栏折叠 UI 完整闭环。
+  - **AI 入口图标**：navItems 用 `iconType='ai-bold'` 渲染 `<strong class="app-header__nav-icon--ai">AI</strong>`（font-weight 800 + letter-spacing -0.04em），三主题下视觉协调。
+  - **专题入口图标**：navItems 用 `iconType='topics-svg'` 渲染 14×14 多源聚合 SVG（两个左侧源点 + 右侧中心点 + 两条汇聚线），stroke 颜色继承 currentColor。
+  - **系统字号 + 正文字号独立滑块**：GeneralSettingsModal 加"系统字号"行（10-24，默认 14，hint"影响左/中栏"），改"正文字号"hint 为"仅影响右栏"。两字号各自持久化到 AppSettings。
+  - **隐藏左栏按钮**：应用名"聚合拾遗"右侧 `app-header__sidebar-toggle` 按钮，icon 切换 `◀`/`▶`，多语言 tooltip（"隐藏左栏" / "Hide Sidebar"），点击调 `setSidebarVisible(!current)` 走 IPC。
+  - **Layout 折叠**：折叠时不渲染 aside 和第一个 ResizeHandle，grid-template-columns 从 3 列改 2 列，`.app-main` 加 `transition: grid-template-columns 220ms ease` 平滑过渡。
+  - **CSS 变量**：index.css 加 `--ui-font-size` 默认值；FeedList + ArticleList 根 `font-size: var(--ui-font-size)`，子元素用 em 缩放；ArticleReader 不引用此变量。
+  - **useAppearance 扩展**：新增 `systemFontSize` / `sidebarVisible` 字段 + setters，`applyToHtml` 写 `--ui-font-size` + `data-sidebar-visible`。
+  - **MockDataSource 修复**：`settingsGet` 之前返回 error → useAppearance 拿不到默认 → applyToHtml 不调 → data-sidebar-visible 不写 → Layout 不知道 sidebarVisible（真根因）。改为 mock 维护 `private settingsState`，`settingsGet` 返回 ready + state。
+  - **smoke:phase4.2 30/30 全过**：AI 粗体 / 专题 SVG / 隐藏左栏按钮切换 + tooltip + aside 折叠 + ResizeHandle 只剩 1 个 / 系统字号 14→20（CSS 变量 + 根 20px + em 缩放 18.6px）/ reader 不受影响 14px / MockDataSource 持久化。
+- **`0e33eb5`（张晨阳）**：同步失败 toast 显示具体原因 + 列表滚动到底自动加载 — `handleSyncAll` 收集 `failedFeedErrors: Array<{name, error}>` + 多行 toast（>5 个截断"…还有 N 个"），Toast.css `white-space: pre-line` 让 `\n` 真正换行；ArticleList 末尾加 1px 哨兵 `<div ref={sentinelRef}>` + IntersectionObserver（`root = ul 滚动容器`，`rootMargin=200px` 提前触发），保留"加载更多"按钮作为兜底。
+- **`f8ee173`（张宇凡）**：Phase 4 内容清洗 / 同步 / migration 加深 — 11 项新单测覆盖（同步 6 阶段 + 标签嵌入 + 复杂结构 + migration 9），`smoke:4.1.1` 加深 9 项 check。
+- **`ec45c68`（陈冠中）**：Phase 4.2.3 AppSettings 新增 `systemFontSize` + `sidebarVisible` 字段 + 持久化：`shared/types.ts` `AppSettings` interface 加 2 字段（`systemFontSize: number` 范围 10-24 默认 14；`sidebarVisible: boolean` 默认 true），`DEFAULT_SETTINGS` 默认值同步；`electron/main/db/sqlite-settings.ts` `isSettingValue` 加两 case 校验（`isNumberInRange(10, 24)` / `typeof boolean`）；`merge()` 自动读出已存 key，**老版本升级无数据迁移负担**（缺失字段自动填默认值）；`validateSettingsUpdate` 透传新字段，无需额外代码。
 - **`1a84fbd`（张晨阳）**：Phase 3.7.1 搜索解耦（核心修复） + 列表分页（50/页） + 加载更多按钮 + 计数 testid。`SearchBar.onSelect` 签名 `(articleId: string)` → `(article: Article)` 完整对象，App `handleSearchSelect` 复用 `handleTopicOpenArticle` 同款 `externalSelectedArticle` 模式不再依赖 `articles.find()` 内存数组查找（旧 bug：第 51+ 篇搜索结果找不到 → `pushToast('该文章已不在当前列表中')`）。`articleOffsetRef` 改 `useRef` 修死循环真根因（state 模式 → setState 让 `refreshArticles` 引用变 → useEffect 重跑 → setArticleOffset 再变 → 死循环，"App refreshArticles" 日志刷屏 100+ 次）。DataSource interface 加 `lastArticleTotal(): number` 同步 getter（IPC 已从 `result.total` 缓存）；ArticleList 新增 `total` / `hasMore` / `onLoadMore` / `loadingMore` props + `data-testid="article-list__count"` + 底部"加载更多"按钮。新增 `smoke:search-pagination` 9 项全过。
 - **`87d3830`（张晨阳）**：... 菜单 escape 定位真根因 — `.feed-list__topbar-actions` 加 `position: relative`（最近 positioned 祖先之前都没设 → 菜单逃到 body 级别被 `.feed-list` `overflow:hidden` 裁掉）。**DOM 存在 ≠ 视觉可见**：smoke 探针加 4 项 visual check (`moreMenuHasSize` / `moreMenuInViewport` / `moreMenuInsideFeedList` / `moreMenuHitTest`)。
 - **`01e4e0a`（张晨阳）**：侧栏 2 个 bug — 可滚动（`.feed-list__body` flex:1 1 0 + overflow-y:auto）+ `...` 改为"批量管理"模式（替代展开/折叠/删未用三个低频操作；`batchMode` + `selectedForBatch: Set<string>` + batch toolbar + 每行 checkbox + 选中行加 accent-soft 背景；批量模式点击行 toggle 选中 + 右键菜单禁用）。`smoke:feeds-group` 36 → 39 项。

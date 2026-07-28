@@ -5,6 +5,12 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  /* Phase 4.2.1:系统字号 — 根容器继承 var(--ui-font-size)
+     - useAppearance.applyToHtml 在 <html> 上写 --ui-font-size
+     - 改 useAppearance.setSystemFontSize 即时生效
+     - 子元素用 em 相对根字号缩放,保证整体 UI 文字随系统字号变化
+     - ArticleReader 不引用此变量(只受 --font-size 驱动) */
+  font-size: var(--ui-font-size);
 }
 
 /* Bug 1 修复：中间内容包一个可滚动 body,防止侧栏被裁没滚动条
@@ -84,7 +90,7 @@
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.79em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   font-weight: 500;
   padding: 3px 10px;
   border-radius: 3px;
@@ -112,7 +118,7 @@
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.93em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   width: 22px;
   height: 22px;
   border-radius: 3px;
@@ -141,7 +147,7 @@
 
 .feed-list__group-title {
   padding: 6px 16px 4px;
-  font-size: 10px;
+  font-size: 0.71em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -162,7 +168,7 @@
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.71em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 600;
@@ -183,7 +189,7 @@
 }
 
 .feed-list__group-arrow {
-  font-size: 9px;
+  font-size: 0.64em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   width: 10px;
   display: inline-block;
   text-align: center;
@@ -195,7 +201,7 @@
 }
 
 .feed-list__group-count {
-  font-size: 9px;
+  font-size: 0.64em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -335,7 +341,7 @@
   cursor: pointer;
   width: 100%;
   font: inherit;
-  font-size: 13px;
+  font-size: 0.93em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   border-left: 2px solid transparent;
   transition: background 100ms ease, border-color 100ms ease;
 }
@@ -352,7 +358,7 @@
 
 .feed-list__icon {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.86em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   text-align: center;
   width: 18px;
 }
@@ -369,7 +375,7 @@
 }
 
 .feed-list__count {
-  font-size: 10px;
+  font-size: 0.71em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--bg);
@@ -394,7 +400,7 @@
 .feed-list__empty {
   padding: 24px 16px;
   text-align: center;
-  font-size: 12px;
+  font-size: 0.86em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   color: var(--muted);
 }
 
@@ -417,7 +423,7 @@
   gap: 6px;
   padding: 8px 16px;
   border-top: 1px solid var(--border-soft);
-  font-size: 11px;
+  font-size: 0.79em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   color: var(--muted);
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
@@ -437,7 +443,7 @@
   padding: 6px 12px 6px 16px;
   background: var(--accent-soft);
   border-bottom: 1px solid var(--border-soft);
-  font-size: 11px;
+  font-size: 0.79em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   flex-shrink: 0;
 }
 
@@ -452,7 +458,7 @@
   border: 1px solid var(--border);
   background: var(--bg-elev);
   color: var(--fg);
-  font-size: 11px;
+  font-size: 0.79em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   font-family: inherit;
   padding: 3px 8px;
   border-radius: 3px;

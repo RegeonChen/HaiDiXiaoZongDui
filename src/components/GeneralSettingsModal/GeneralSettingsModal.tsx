@@ -1,14 +1,22 @@
 /**
- * 通用设置 Modal（Phase 3.4.4.4）
+ * 通用设置 Modal（Phase 3.4.4.4 + Phase 4.2.1）
  *
  * 顶栏点击"通用"按钮触发；包含：
  *   - 界面语言
  *   - 字体主题（3 套预设）
  *   - 视觉主题（经典 / 纸质）
- *   - 正文字号
- *   - 阅读宽度
+ *   - 排版
+ *     - 系统字号：左栏（FeedList）+ 中栏（ArticleList）文字大小
+ *     - 正文字号：右栏（ArticleReader）阅读区文字大小
+ *     - 阅读宽度：阅读区最大宽度
  *
  * 修改即时生效 + 持久化（通过 useAppearance.setFontTheme 等），不跳转子页面。
+ *
+ * Phase 4.2.1 关键改动：
+ *   - "系统字号"与"正文字号"两个独立滑块
+ *   - 拖动"系统字号"→ 左/中栏文字即时变化，**右栏正文不变**（独立 CSS 变量 --ui-font-size）
+ *   - 拖动"正文字号"→ 仅右栏正文变化（CSS 变量 --font-size，ArticleReader 不引用 --ui-font-size）
+ *   - 各自持久化到 AppSettings，重启后各自保持
  */
 import { useEffect } from 'react';
 import type { Language } from '@shared/types';
@@ -64,7 +72,17 @@ export function GeneralSettingsModal({ open, onClose, onToast }: GeneralSettings
   const handleFontSize = async (n: number) => {
     if (n < 10 || n > 32) return;
     const ok = await appearance.setFontSize(n);
-    onToast(ok ? '字号已更新' : '更新失败', ok ? 'success' : 'error');
+    onToast(ok ? '正文字号已更新' : '更新失败', ok ? 'success' : 'error');
+  };
+  // Phase 4.2.1:系统字号（控制左/中栏 UI 文字，独立于正文字号）
+  //   - 范围 10-24,useAppearance 内部也会校验
+  //   - 调 setSystemFontSize → IPC 持久化 + applyToHtml 写 --ui-font-size
+  //   - FeedList / ArticleList 根容器用 var(--ui-font-size) 渲染
+  //   - ArticleReader 不引用此变量(只受 --font-size 驱动)
+  const handleSystemFontSize = async (n: number) => {
+    if (n < 10 || n > 24) return;
+    const ok = await appearance.setSystemFontSize(n);
+    onToast(ok ? '系统字号已更新' : '更新失败', ok ? 'success' : 'error');
   };
   const handleReadingWidth = async (n: number) => {
     if (n < 320 || n > 1600) return;
@@ -147,17 +165,40 @@ export function GeneralSettingsModal({ open, onClose, onToast }: GeneralSettings
 
           <section className="general-modal__section">
             <h3 className="general-modal__section-title">排版</h3>
-            <div className="general-modal__row">
-              <label className="general-modal__label">正文字号</label>
+            {/* Phase 4.2.1:系统字号 = 左/中栏 UI 字号(独立于正文字号)
+                - 拖动此滑块 → 左栏 + 中栏文字即时变化,右栏阅读区不变
+                - 范围 10-24,默认 14 */}
+            <div className="general-modal__row" data-testid="general-modal__system-font-size-row">
+              <label className="general-modal__label" htmlFor="general-modal__system-font-size-input">
+                系统字号
+              </label>
               <input
+                id="general-modal__system-font-size-input"
+                type="number"
+                className="general-modal__input"
+                min={10}
+                max={24}
+                value={appearance.systemFontSize}
+                onChange={(e) => void handleSystemFontSize(Number(e.target.value))}
+                data-testid="general-modal__system-font-size"
+                title="左栏（订阅源）和中栏（文章列表）的文字大小，不影响右栏阅读区"
+              />
+              <span className="general-modal__hint">px（影响左/中栏）</span>
+            </div>
+            <div className="general-modal__row" data-testid="general-modal__font-size-row">
+              <label className="general-modal__label" htmlFor="general-modal__font-size-input">正文字号</label>
+              <input
+                id="general-modal__font-size-input"
                 type="number"
                 className="general-modal__input"
                 min={12}
                 max={24}
                 value={appearance.fontSize}
                 onChange={(e) => void handleFontSize(Number(e.target.value))}
+                data-testid="general-modal__font-size"
+                title="右栏阅读区文字大小，不影响左/中栏 UI"
               />
-              <span className="general-modal__hint">px</span>
+              <span className="general-modal__hint">px（仅影响右栏）</span>
             </div>
             <div className="general-modal__row">
               <label className="general-modal__label">阅读宽度</label>

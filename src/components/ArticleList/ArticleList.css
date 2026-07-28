@@ -5,6 +5,11 @@
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  /* Phase 4.2.1:系统字号 — 根容器继承 var(--ui-font-size)
+     - useAppearance.applyToHtml 在 <html> 上写 --ui-font-size
+     - 改 useAppearance.setSystemFontSize 即时生效
+     - 子元素用 em 相对根字号缩放,保证整体 UI 文字随系统字号变化 */
+  font-size: var(--ui-font-size);
 }
 
 .article-list__header {
@@ -17,7 +22,7 @@
 }
 
 .article-list__title {
-  font-size: 13px;
+  font-size: 0.93em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   font-weight: 600;
   color: var(--fg);
   overflow: hidden;
@@ -26,7 +31,7 @@
 }
 
 .article-list__count {
-  font-size: 11px;
+  font-size: 0.79em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -94,7 +99,7 @@
 }
 
 .article-list__article-title {
-  font-size: 13px;
+  font-size: 0.93em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -117,7 +122,7 @@
 
 .article-list__star {
   color: var(--warn);
-  font-size: 12px;
+  font-size: 0.86em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   flex-shrink: 0;
 }
 
@@ -125,7 +130,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 0.79em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   color: var(--muted);
 }
 
@@ -147,7 +152,7 @@
   padding: 32px 16px;
   text-align: center;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.86em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
 }
 
 .article-list__empty-wrap {
@@ -157,7 +162,39 @@
   display: block;
 }
 
-/* Phase 自动加载：末尾 1px 哨兵，供 IntersectionObserver 监听进入视口。 */
+/* Phase 3.7.1:加载更多按钮 */
+.article-list__load-more-wrap {
+  padding: 8px 16px 12px;
+  text-align: center;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.article-list__load-more {
+  appearance: none;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 0.86em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
+  font-family: inherit;
+  color: var(--accent);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.article-list__load-more:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.article-list__load-more:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Phase 自动加载:末尾哨兵元素(0 高度,IntersectionObserver 监听进入视口) */
 .article-list__sentinel {
   height: 1px;
   width: 100%;
@@ -182,7 +219,7 @@
 .article-list__title-tag {
   display: inline-block;
   padding: 1px 7px;
-  font-size: 10px;
+  font-size: 0.71em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   font-weight: 600;
   color: #fff;
   border-radius: 9px;
@@ -205,7 +242,7 @@
 .article-list__action-bar .feed-action-btn {
   appearance: none;
   font-family: inherit;
-  font-size: 11px;
+  font-size: 0.79em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   padding: 4px 10px;
   border-radius: 4px;
   border: 1px solid var(--border);

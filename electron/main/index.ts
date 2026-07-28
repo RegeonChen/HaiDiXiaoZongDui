@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 聚合拾遗 — Electron 主进程入口
  * Phase 2: Core Reading Workflow
  *
@@ -152,6 +152,8 @@ const SMOKE_FLAGS = {
   smokeFeedActions: process.env['JUHE_SHIVI_SMOKE_FEED_ACTIONS'] === '1',
   // Phase 4.1.4：OPML 选择性导出子界面（OpmlExportPage 勾选 + 全选 + 确认传 feedIds）
   smokeOpmlExportSelection: process.env['JUHE_SHIVI_SMOKE_OPML_EXPORT_SELECTION'] === '1',
+  // Phase 4.2.1：Navbar 图标(AI 粗体字母 / 专题多源聚合 SVG) + 系统字号滑块 + 隐藏左栏按钮
+  smokePhase42: process.env['JUHE_SHIVI_SMOKE_PHASE42'] === '1',
   seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
   seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
@@ -228,7 +230,8 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
   const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
   // 注意：createMainWindow 在 app.whenReady 之后被调，process.env 可能已被清。
   // smokeUi / smokeUiReal 通过 SMOKE_FLAGS 读（ready 之前 snapshot）。
-  const useMock = SMOKE_FLAGS.smokeUi && !SMOKE_FLAGS.smokeUiReal;
+  // Phase 4.2.1:smokePhase42 探针也走 mock 模式（避免依赖真实 seed 数据）
+  const useMock = (SMOKE_FLAGS.smokeUi || SMOKE_FLAGS.smokePhase42) && !SMOKE_FLAGS.smokeUiReal;
   if (devServerUrl) {
     const url = useMock ? `${devServerUrl}${devServerUrl.includes('?') ? '&' : '?'}mock=1` : devServerUrl;
     await win.loadURL(url);
@@ -276,6 +279,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeSearchPagination = SMOKE_FLAGS.smokeSearchPagination;
   const smokeFeedActions = SMOKE_FLAGS.smokeFeedActions;
   const smokeOpmlExportSelection = SMOKE_FLAGS.smokeOpmlExportSelection;
+  const smokePhase42 = SMOKE_FLAGS.smokePhase42;
   const feedUrl = SMOKE_FLAGS.feedUrl;
   const aiBaseUrl = SMOKE_FLAGS.aiBaseUrl;
   const aiKey = SMOKE_FLAGS.aiKey;
@@ -3565,6 +3569,278 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     rawProbe = rawProbe.replace(/__AI_KEY__/g, JSON.stringify(aiKey));
     rawProbe = rawProbe.replace(/__FEED_URL__/g, JSON.stringify(feedUrl));
     probe = rawProbe;
+  } else if (smokePhase42) {
+    // Phase 4.2.1 smoke: Navbar 图标(AI 粗体字母 + 专题 SVG) + 系统字号滑块 + 隐藏左栏按钮
+    // 走 mock 模式（Mock 5 个 feeds + 10 articles）：
+    //   1) AI 入口图标 = 粗体字母 "AI"（<strong class="app-header__nav-icon--ai">）
+    //   2) 专题入口图标 = SVG 多源聚合（<svg class="app-header__nav-icon--topics">）
+    //   3) 顶栏隐藏左栏按钮存在 + 初始可见（sidebarVisible=true → ◀ + title="隐藏左栏"）
+    //   4) 点隐藏按钮 → aside 不渲染 + .app-main is-sidebar-hidden + data-sidebar-visible="false"
+    //      + 按钮变 ▶ + 只剩 1 个 ResizeHandle（避免拖出隐藏态下的异常宽度）
+    //   5) 再点一次 → 恢复展开
+    //   6) 打开通用设置弹窗 → 系统字号滑块存在 + 当前值=14（默认）
+    //   7) 改系统字号到 20 → <html> --ui-font-size="20px" + FeedList + ArticleList 根 fontSize=20px
+    //   8) 子元素 em 缩放：.feed-list__item 实际 ≈ 18.6px（20 * 0.93）
+    //   9) ArticleReader 不引用 --ui-font-size（--font-size 仍 16px + reader 根不继承 20px）
+    //  10) 持久化：settings.systemFontSize = 20（IPC settings.get 读回）
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { phase42: { ok: false, error: null, checks: {} } };
+        try {
+          // 1) 等主界面
+          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
+          await sleep(200);
+
+          // 2) AI 入口粗体 "AI" 字母
+          const aiIcon = document.querySelector(
+            '[data-testid="app-header__nav-icon-ai"]'
+          );
+          report.phase42.checks.aiIconExists = !!aiIcon;
+          report.phase42.checks.aiIconIsStrong = aiIcon
+            ? aiIcon.tagName.toLowerCase() === 'strong'
+            : false;
+          report.phase42.checks.aiIconTextIsAI = aiIcon
+            ? (aiIcon.textContent || '').trim() === 'AI'
+            : false;
+
+          // 3) 专题入口 SVG 多源聚合
+          const topicsIcon = document.querySelector(
+            '[data-testid="app-header__nav-icon-topics"]'
+          );
+          report.phase42.checks.topicsIconExists = !!topicsIcon;
+          report.phase42.checks.topicsIconIsSvg = topicsIcon
+            ? topicsIcon.tagName.toLowerCase() === 'svg'
+            : false;
+          // SVG 包含"源点"圆圈(>=3 个) + "中心"圆点(>=1 个) + 汇聚线
+          if (topicsIcon) {
+            const circles = topicsIcon.querySelectorAll('circle');
+            const paths = topicsIcon.querySelectorAll('path');
+            report.phase42.checks.topicsIconHasCircles = circles.length >= 3;
+            report.phase42.checks.topicsIconHasConnectingPaths = paths.length >= 2;
+            report.phase42.checks.topicsIconCircleCount = circles.length;
+            report.phase42.checks.topicsIconPathCount = paths.length;
+          }
+
+          // 4) 顶栏隐藏左栏按钮(初始可见 = sidebarVisible=true)
+          const sidebarToggleBtn = document.querySelector(
+            '[data-testid="app-header__sidebar-toggle"]'
+          );
+          report.phase42.checks.sidebarToggleBtnExists = !!sidebarToggleBtn;
+          // 初始:显示 ◀(展开) + title="隐藏左栏"
+          if (sidebarToggleBtn) {
+            // 文本/title 是 debug 字段(放在 text/title 子键),用 boolean 检查放主 checks
+            report.phase42.text = {
+              sidebarToggleInitialText: (sidebarToggleBtn.textContent || '').trim(),
+              sidebarToggleInitialTitle: sidebarToggleBtn.getAttribute('title') || '',
+              sidebarToggleInitialAriaPressed: sidebarToggleBtn.getAttribute('aria-pressed')
+            };
+            report.phase42.checks.sidebarToggleInitialTextOk = report.phase42.text.sidebarToggleInitialText === '◀';
+            report.phase42.checks.sidebarToggleInitialTitleOk = report.phase42.text.sidebarToggleInitialTitle === '隐藏左栏';
+            // 展开态 data-sidebar-visible=true
+            report.phase42.checks.sidebarVisibleTrue = document.documentElement.getAttribute('data-sidebar-visible') === 'true';
+            // 展开态 .pane-feeds 可见
+            const paneFeeds = document.querySelector('.pane-feeds');
+            report.phase42.checks.paneFeedsVisibleWhenOpen = !!paneFeeds;
+          }
+
+          // 5) 点隐藏左栏按钮 → aside 不渲染 + .app-main is-sidebar-hidden + ▶
+          if (sidebarToggleBtn) {
+            sidebarToggleBtn.click();
+            await sleep(350); // 等 CSS transition
+            const paneFeedsAfter = document.querySelector('.pane-feeds');
+            report.phase42.checks.paneFeedsHiddenAfterToggle = !paneFeedsAfter;
+            report.phase42.checks.dataSidebarVisibleFalse = document.documentElement.getAttribute('data-sidebar-visible') === 'false';
+            const appMain = document.querySelector('.app-main');
+            report.phase42.checks.appMainHasHiddenClass = appMain ? appMain.classList.contains('is-sidebar-hidden') : false;
+            // 重新查按钮(text/title 在 React 重渲染后可能变化)
+            const btnAfter = document.querySelector('[data-testid="app-header__sidebar-toggle"]');
+            if (btnAfter) {
+              report.phase42.text = report.phase42.text || {};
+              report.phase42.text.sidebarToggleAfterText = (btnAfter.textContent || '').trim();
+              report.phase42.text.sidebarToggleAfterTitle = btnAfter.getAttribute('title') || '';
+              report.phase42.text.sidebarToggleAfterAriaPressed = btnAfter.getAttribute('aria-pressed');
+              report.phase42.checks.sidebarToggleAfterTextOk = report.phase42.text.sidebarToggleAfterText === '▶';
+              report.phase42.checks.sidebarToggleAfterTitleOk = report.phase42.text.sidebarToggleAfterTitle === '显示左栏';
+            }
+            // 第一个 ResizeHandle 也应该不渲染(避免拖出隐藏态下的异常宽度)
+            //   .app-main 在折叠态下应该是 2 列(只有 list + reader 中间的 ResizeHandle)
+            // 用 querySelector 找所有带 role="separator" 的(ResizeHandle 通常用这个 role)
+            const allResizeHandles = Array.from(document.querySelectorAll('[role="separator"]')).filter((el) =>
+              el.closest('.app-main')
+            );
+            report.phase42.checks.resizeHandleCountWhenHidden = allResizeHandles.length;
+            // 期望只有 1 个 ResizeHandle(list ↔ reader)
+            report.phase42.checks.onlyOneResizeHandleWhenHidden = allResizeHandles.length === 1;
+          }
+
+          // 6) 再点一次恢复
+          if (sidebarToggleBtn) {
+            const btnAgain = document.querySelector('[data-testid="app-header__sidebar-toggle"]');
+            if (btnAgain) btnAgain.click();
+            await sleep(350);
+            const paneFeedsRestored = document.querySelector('.pane-feeds');
+            report.phase42.checks.paneFeedsRestoredAfterSecondToggle = !!paneFeedsRestored;
+            report.phase42.checks.dataSidebarVisibleTrueAfterRestore = document.documentElement.getAttribute('data-sidebar-visible') === 'true';
+          }
+
+          // 7) 打开通用设置弹窗(点击"通用"按钮)
+          const generalBtn = Array.from(document.querySelectorAll('.app-header__nav-btn'))
+            .find((b) => (b.getAttribute('data-page') || '') === 'general');
+          if (generalBtn) generalBtn.click();
+          await waitFor(() => !!document.querySelector('.general-modal'), { timeout: 3000 });
+          await sleep(150);
+
+          // 8) 系统字号滑块存在 + 当前值=14(默认)
+          const systemFsInput = document.querySelector(
+            '[data-testid="general-modal__system-font-size"]'
+          );
+          report.phase42.checks.systemFontSizeInputExists = !!systemFsInput;
+          report.phase42.checks.systemFontSizeDefault14 = systemFsInput
+            ? Number(systemFsInput.value) === 14
+            : false;
+
+          // 9) 改系统字号到 20 → --ui-font-size 变化 + FeedList 根 fontSize=20
+          if (systemFsInput) {
+            const setter = Object.getOwnPropertyDescriptor(
+              window.HTMLInputElement.prototype, 'value'
+            ).set;
+            setter.call(systemFsInput, '20');
+            systemFsInput.dispatchEvent(new Event('input', { bubbles: true }));
+            systemFsInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await sleep(200);
+            // useAppearance.setSystemFontSize 走 IPC + applyToHtml
+            // <html> style 应有 --ui-font-size: 20px
+            const htmlStyle = document.documentElement.getAttribute('style') || '';
+            report.phase42.checks.uiFontSizeVarIs20 = /--ui-font-size:\\s*20px/i.test(htmlStyle);
+            // FeedList 根容器的 computed fontSize 应是 20px
+            const feedList = document.querySelector('.feed-list');
+            if (feedList) {
+              const computed = getComputedStyle(feedList);
+              report.phase42.checks.feedListFontSizeIs20 = computed.fontSize === '20px';
+              report.phase42.checks.feedListActualFontSize = computed.fontSize;
+            }
+            // ArticleList 根容器 computed fontSize 也应是 20px
+            const articleList = document.querySelector('.article-list');
+            if (articleList) {
+              const computed = getComputedStyle(articleList);
+              report.phase42.checks.articleListFontSizeIs20 = computed.fontSize === '20px';
+              report.phase42.checks.articleListActualFontSize = computed.fontSize;
+            }
+            // 验证子元素 em 缩放:.feed-list__item 实际字体大小 = 20 * 0.93 ≈ 18.6px
+            const feedItem = document.querySelector('.feed-list__item');
+            if (feedItem) {
+              const computed = getComputedStyle(feedItem);
+              // 容许 ±0.5px 浮点误差
+              const fs = parseFloat(computed.fontSize);
+              report.phase42.checks.feedListItemEmScaled = Math.abs(fs - 18.6) < 0.5;
+              report.phase42.checks.feedListItemActualFontSize = computed.fontSize;
+            }
+          }
+
+          // 10) 关闭弹窗
+          const closeBtn = document.querySelector('.general-modal__close');
+          if (closeBtn) closeBtn.click();
+          await sleep(150);
+
+          // 11) ArticleReader 不引用 --ui-font-size(默认 var(--font-size)=16)
+          //     - 但具体文章的 reader 是 article-reader 内的 reader__body 等
+          //     - 我们验证根 html 上 --font-size 仍由 useAppearance 控制,且 reader 内不引用 --ui-font-size
+          //     - 由于 mock 模式下没有选中文章,reader 区域可能是空态
+          //     - 关键验证:html --font-size 没有被 systemFontSize 改写
+          const htmlStyleAfter = document.documentElement.getAttribute('style') || '';
+          report.phase42.checks.fontSizeVarStillDefault = /--font-size:\\s*16px/i.test(htmlStyleAfter);
+          // reader 内容区域(.article-reader)的 computed fontSize 应基于 --font-size = 16px,
+          // 不应受 --ui-font-size=20px 影响
+          const readerEl = document.querySelector('.article-reader');
+          if (readerEl) {
+            const computed = getComputedStyle(readerEl);
+            // reader 根 fontSize 不应是 20(我们用 reader 根或 body 验证)
+            // 注:reader 根可能没显式设 font-size,会继承 body 14px;关键是它不用 var(--ui-font-size)
+            // 这里只验证 reader 根不直接等 20(因为没显式引用)
+            // 因为 article-reader.css 没有 font-size: var(--ui-font-size),所以它的字体应来自继承
+            report.phase42.checks.readerDoesNotInheritUiFontSize =
+              computed.fontSize !== '20px';
+            report.phase42.checks.readerActualFontSize = computed.fontSize;
+          }
+
+          // 12) 重启后保持:验证 systemFontSize=20 已通过 DataSource 写入
+          //   mock 模式:DataSource = MockDataSource(不调 IPC)
+          //     - 验证 window.__JUHE_DS__.settingsGet() 返回 systemFontSize=20
+          //   IPC 模式:DataSource = IpcDataSource
+          //     - 验证 window.api.settings.get() 返回 systemFontSize=20
+          try {
+            // 给 DataSource.update 一点额外时间完成
+            await sleep(100);
+            let sysFsValue = null;
+            let source = 'unknown';
+            const mockDs = window.__JUHE_DS__;
+            if (mockDs && typeof mockDs.settingsGet === 'function') {
+              const r = await mockDs.settingsGet();
+              if (r && r.kind === 'ready' && r.data) {
+                sysFsValue = r.data.systemFontSize;
+                source = 'mock';
+              }
+            } else {
+              // IPC 模式
+              const r = await window.api.settings.get();
+              if (r && r.success && r.data) {
+                sysFsValue = r.data.systemFontSize;
+                source = 'ipc';
+              }
+            }
+            report.phase42.text = report.phase42.text || {};
+            report.phase42.text.settingsSource = source;
+            report.phase42.text.settingsSystemFontSize = String(sysFsValue);
+            report.phase42.checks.settingsSystemFontSize = sysFsValue;
+            report.phase42.checks.settingsSystemFontSizeIs20 = sysFsValue === 20;
+          } catch (e) {
+            report.phase42.checks.settingsGetError = String(e);
+          }
+        } catch (e) {
+          report.phase42.error = String(e);
+          report.phase42.stack = (e instanceof Error) ? e.stack : null;
+        }
+
+        const checks42 = [
+          'aiIconExists', 'aiIconIsStrong', 'aiIconTextIsAI',
+          'topicsIconExists', 'topicsIconIsSvg',
+          'topicsIconHasCircles', 'topicsIconHasConnectingPaths',
+          'sidebarToggleBtnExists',
+          'sidebarToggleInitialTextOk', 'sidebarToggleInitialTitleOk',
+          'sidebarToggleAfterTextOk', 'sidebarToggleAfterTitleOk',
+          'sidebarVisibleTrue', 'paneFeedsVisibleWhenOpen',
+          'paneFeedsHiddenAfterToggle', 'dataSidebarVisibleFalse',
+          'appMainHasHiddenClass', 'onlyOneResizeHandleWhenHidden',
+          'paneFeedsRestoredAfterSecondToggle', 'dataSidebarVisibleTrueAfterRestore',
+          'systemFontSizeInputExists', 'systemFontSizeDefault14',
+          'uiFontSizeVarIs20', 'feedListFontSizeIs20', 'articleListFontSizeIs20',
+          'feedListItemEmScaled',
+          'fontSizeVarStillDefault', 'readerDoesNotInheritUiFontSize',
+          'settingsSystemFontSizeIs20'
+        ];
+        for (const k of checks42) {
+          if (report.phase42.checks[k] !== true) {
+            report.phase42.ok = false;
+            report.phase42.failedCheck = k;
+            report.phase42.failedValue = report.phase42.checks[k];
+            return JSON.stringify(report);
+          }
+        }
+        report.phase42.ok = true;
+        return JSON.stringify(report);
+      })()
+    `;
   } else {
     // Phase 1.1 smoke: contextIsolation + minimal IPC
     probe = `
@@ -3636,6 +3912,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"feedActions":{"ok":true');
     } else if (smokeOpmlExportSelection) {
       pass = raw.includes('"opmlExport":{"ok":true');
+    } else if (smokePhase42) {
+      pass = raw.includes('"phase42":{"ok":true');
     } else if (smokeUiReal) {
       if (SMOKE_FLAGS.smokeIntegration) {
         // 集成 fixture 同时覆盖基础 UI IPC 与 Phase 3 页面流程，两者均必须通过。

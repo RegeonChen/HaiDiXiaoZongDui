@@ -127,6 +127,80 @@
   line-height: 1;
 }
 
+/* Phase 4.2.1:AI 入口粗体 "AI" 字母(三主题协调)
+   - 浅色/深色:var(--fg-soft) 文字色,active 态 var(--accent)
+   - 极重字重(800) + 负字距(letter-spacing -0.04em)让两字母紧凑如一个 logo
+   - 与周围 unicode 字符大小一致(14px) */
+.app-header__nav-icon--ai {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-style: normal;
+  color: inherit;
+  display: inline-block;
+  line-height: 1;
+  /* 视觉对齐补偿:粗体字母 baseline 比 emoji 略低,微调让两字母视觉居中 */
+  transform: translateY(-0.5px);
+}
+
+.app-header__nav-btn.is-active .app-header__nav-icon--ai {
+  color: var(--accent);
+}
+
+/* Phase 4.2.1:专题入口 SVG 图标(三主题协调)
+   - 16x16 viewBox,渲染尺寸 14x14 与其他图标一致
+   - stroke 颜色继承 currentColor(由 nav-btn 文字色决定)
+   - 中心圆点稍大(1.6r)凸显"汇聚"焦点 */
+.app-header__nav-icon--topics {
+  display: block;
+  color: var(--fg-soft);
+}
+
+.app-header__nav-btn:hover .app-header__nav-icon--topics {
+  color: var(--fg);
+}
+
+.app-header__nav-btn.is-active .app-header__nav-icon--topics {
+  color: var(--accent);
+}
+
+/* Phase 4.2.1:隐藏左栏按钮(应用名"聚合拾遗"右侧)
+   - 与现有 nav-btn 视觉一致(同样 22px 高 + 3px border-radius)
+   - icon 随状态切换:展开时显示 ◀(点击会向左折叠),隐藏时显示 ▶(点击会展开)
+   - 多语言 tooltip 由 inline 传入(中:隐藏左栏 / 显示左栏;英:Hide Sidebar / Show Sidebar) */
+.app-header__sidebar-toggle {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-soft);
+  font-size: 12px;
+  padding: 0 5px;
+  height: 22px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  font-family: inherit;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+
+.app-header__sidebar-toggle:hover {
+  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
+  color: var(--fg);
+}
+
+.app-header__sidebar-toggle.is-hidden {
+  /* 隐藏态按钮颜色稍亮,提示"当前是折叠的,点这里展开" */
+  color: var(--accent);
+}
+
+.app-header__sidebar-toggle.is-hidden:hover {
+  background: var(--accent-soft);
+}
+
 .app-header__nav-label {
   display: none;
 }
@@ -224,6 +298,16 @@
   /* grid-template-columns 由 inline style 注入（百分比） */
   grid-auto-rows: 1fr;
   overflow: hidden;
+  /* Phase 4.2.1:左栏折叠时 grid-template-columns inline style 改变,
+     加 220ms transition 让中/右栏平滑扩展 */
+  transition: grid-template-columns 220ms ease;
+}
+
+/* Phase 4.2.1:左栏折叠时 main 加 is-sidebar-hidden class,
+   CSS 不用做特殊处理(完全靠 inline grid-template-columns + conditional render
+   aside + ResizeHandle),但保留 class 钩子供 smoke 探针检测 */
+.app-main.is-sidebar-hidden {
+  /* 占位,实际 grid 由 inline style 控制 */
 }
 
 .pane {
