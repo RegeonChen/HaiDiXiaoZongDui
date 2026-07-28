@@ -16,7 +16,7 @@
  *  - 专题:打开专题表单，以当前文章作为种子创建关联图
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Article, Feed, NoteCreateInput, Tag } from '@shared/types';
+import type { AIChatMessage, Article, Feed, NoteCreateInput, Tag } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { EmptyView } from '../StatusView/EmptyView';
 import { LoadingView } from '../StatusView/LoadingView';
@@ -27,6 +27,7 @@ import { TranslatedArticleView } from '../TranslatedArticleView/TranslatedArticl
 import { StickyBottomPanel } from '../StickyBottomPanel/StickyBottomPanel';
 import { WebArticleView } from '../WebArticleView/WebArticleView';
 import { TopicFormDialog, type TopicFormValue } from '../TopicFormDialog/TopicFormDialog';
+import { ArticleAiChatPanel } from '../ArticleAiChatPanel/ArticleAiChatPanel';
 import { useReaderMode, type ReaderMode } from '../../hooks/useReaderMode';
 import { prepareArticleHtmlForDisplay } from '../../utils/article-images';
 import { parseArticleTitleTags } from '../../utils/article-title-tags';
@@ -67,6 +68,12 @@ interface TranslationDisplayParagraph {
   status: TranslationParagraphStatus;
 }
 
+interface SelectionActionMenu {
+  x: number;
+  y: number;
+  text: string;
+}
+
 const READER_MODE_OPTIONS: ReadonlyArray<{
   mode: ReaderMode;
   label: string;
@@ -91,6 +98,12 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   const [tagSuggestions, setTagSuggestions] = useState<Array<{ name: string; confidence: number; reason: string }>>([]);
   const [noteMarkdown, setNoteMarkdown] = useState('');
   const [topicDialogOpen, setTopicDialogOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<AIChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [selectionMenu, setSelectionMenu] = useState<SelectionActionMenu | null>(null);
   // Phase 3.5.x 落地标签管理:当前文章已应用 tag + 全局 tag 列表
   const [articleTags, setArticleTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -109,6 +122,38 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   stickyTabRef.current = stickyTab;
   const currentArticleIdRef = useRef<string | null>(article?.id ?? null);
   currentArticleIdRef.current = article?.id ?? null;
+
+  useEffect(() => {
+    setChatOpen(false);
+    setChatMessages([]);
+    setChatDraft('');
+    setChatBusy(false);
+    setChatError(null);
+    setSelectionMenu(null);
+  }, [article?.id]);
+
+  useEffect(() => {
+    if (!selectionMenu) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-ai-selection-menu]')) return;
+      setSelectionMenu(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectionMenu(null);
+    };
+    const handleScroll = () => setSelectionMenu(null);
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleScroll);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [selectionMenu]);
 
   // 工具：添加 / 移除 / 切换 panel
   // Debug: 暴露 articleTags / allTags / tagSuggestions 到 window 供 smoke 探针读取
@@ -225,6 +270,87 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   };
 
   // === AI 操作 ===
+
+  const sendChatMessage = useCallback(async (questionOverride?: string) => {
+    if (!article || chatBusy) return;
+    const question = (questionOverride ?? chatDraft).trim();
+    if (!question) return;
+
+    const userMessage: AIChatMessage = { role: 'user', content: question };
+    const requestMessages = [...chatMessages, userMessage];
+    setChatOpen(true);
+    setChatMessages(requestMessages);
+    setChatDraft('');
+    setChatError(null);
+    setChatBusy(true);
+    try {
+      const result = await ds.aiChat(article.id, requestMessages);
+      if (currentArticleIdRef.current !== article.id) return;
+      if (result.kind === 'ready') {
+        setChatMessages((current) => [
+          ...current,
+          { role: 'assistant', content: result.data.message }
+        ]);
+      } else {
+        const message = result.kind === 'error' ? result.error : 'AI 尚未返回结果';
+        setChatError(message);
+        onToast(`AI 对话失败：${message}`, 'error');
+      }
+    } finally {
+      if (currentArticleIdRef.current === article.id) setChatBusy(false);
+    }
+  }, [article, chatBusy, chatDraft, chatMessages, ds, onToast]);
+
+  const handleReaderContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const contentRoot = target.closest(
+      '.article-reader__content, .translated-article-view__block'
+    );
+    if (!contentRoot) return;
+    const readerBody = target.closest('.article-reader__body');
+    if (!readerBody) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!readerBody.contains(range.commonAncestorContainer)) return;
+    const rawText = selection.toString().replace(/\s+/g, ' ').trim();
+    if (!rawText) return;
+
+    event.preventDefault();
+    const text = rawText.slice(0, 5_000);
+    if (rawText.length > text.length) {
+      onToast('选中内容较长，已截取前 5000 个字符', 'info');
+    }
+    setSelectionMenu({
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 210)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 104)),
+      text
+    });
+  }, [onToast]);
+
+  const handleAskSelection = useCallback(() => {
+    if (!selectionMenu) return;
+    const selectedText = selectionMenu.text;
+    setSelectionMenu(null);
+    void sendChatMessage([
+      '请根据文章上下文解释下面这段选中内容的含义、作用以及相关背景：',
+      '',
+      selectedText
+    ].join('\n'));
+  }, [selectionMenu, sendChatMessage]);
+
+  const handleTranslateSelection = useCallback(() => {
+    if (!selectionMenu) return;
+    const selectedText = selectionMenu.text;
+    setSelectionMenu(null);
+    void sendChatMessage([
+      '请将下面选中的内容翻译成简体中文。只输出译文，保留原意和专业术语：',
+      '',
+      selectedText
+    ].join('\n'));
+  }, [selectionMenu, sendChatMessage]);
 
   const handleSummary = useCallback(async () => {
     if (!article) return;
@@ -708,6 +834,20 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
             </button>
             <button
               type="button"
+              className={`article-reader__btn ${chatOpen ? 'is-active' : ''}`}
+              onClick={() => {
+                setSelectionMenu(null);
+                setChatOpen((open) => !open);
+              }}
+              disabled={needsContent}
+              aria-pressed={chatOpen}
+              title={needsContent ? '正文未清洗' : '基于当前文章与 AI 连续对话'}
+              data-tool="ai-chat"
+            >
+              {chatOpen ? '🙈 关闭 AI' : '💬 询问 AI'}
+            </button>
+            <button
+              type="button"
               className={`article-reader__btn ${stickyTab === 'tag-manage' ? 'is-active' : ''}`}
               onClick={() => setStickyTab((p) => (p === 'tag-manage' ? null : 'tag-manage'))}
               aria-pressed={stickyTab === 'tag-manage'}
@@ -755,7 +895,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
           </div>
         </header>
 
-        <div className="article-reader__body">
+        <div className="article-reader__body" onContextMenu={handleReaderContextMenu}>
           {content.loading ? (
             <LoadingView message="正在清洗正文..." />
           ) : content.error ? (
@@ -863,6 +1003,22 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
           }}
         />
             </div>
+            <ArticleAiChatPanel
+              open={chatOpen}
+              articleTitle={parseArticleTitleTags(article.title).cleanTitle}
+              messages={chatMessages}
+              draft={chatDraft}
+              busy={chatBusy}
+              error={chatError}
+              onDraftChange={setChatDraft}
+              onSend={() => void sendChatMessage()}
+              onClear={() => {
+                setChatMessages([]);
+                setChatDraft('');
+                setChatError(null);
+              }}
+              onClose={() => setChatOpen(false)}
+            />
           </section>
         )}
 
@@ -874,6 +1030,38 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
           <WebArticleView articleId={article.id} sourceUrl={articleUrl} />
         )}
       </div>
+      {selectionMenu && (
+        <div
+          className="article-reader__selection-menu"
+          style={{ left: selectionMenu.x, top: selectionMenu.y }}
+          role="menu"
+          aria-label="选中文字操作"
+          data-ai-selection-menu
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <div className="article-reader__selection-preview" title={selectionMenu.text}>
+            {selectionMenu.text}
+          </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={handleTranslateSelection}
+            disabled={chatBusy}
+            data-ai-selection-action="translate"
+          >
+            🌐 翻译选中内容
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={handleAskSelection}
+            disabled={chatBusy}
+            data-ai-selection-action="ask"
+          >
+            💬 询问 AI
+          </button>
+        </div>
+      )}
       {topicDialogOpen && (
         <TopicFormDialog
           mode="create"

@@ -33,6 +33,8 @@ import type {
   ExportFormat,
   Language,
   SummaryDetailLevel,
+  AIChatMessage,
+  AIChatReply,
   AITranslationProgressEvent,
   SyncProgress,
   ArticleFilter
@@ -126,6 +128,7 @@ export interface FullDataSource extends DataSource {
   aiGenerateSummary(articleId: string, language?: Language, detailLevel?: SummaryDetailLevel): Promise<{ ok: boolean; message: string }>;
   aiGetSummary(articleId: string): Promise<DataSourceState<string>>;
   aiGenerateTranslation(articleId: string, targetLanguage?: Language): Promise<{ ok: boolean; message: string }>;
+  aiChat(articleId: string, messages: AIChatMessage[]): Promise<DataSourceState<AIChatReply>>;
   aiSubscribeTranslationProgress(articleId: string, listener: (event: AITranslationProgressEvent) => void): () => void;
   aiGetTranslation(articleId: string): Promise<DataSourceState<Array<{ index: number; original: string; translated: string }>>>;
   aiSuggestTags(articleId: string): Promise<{ ok: boolean; message: string }>;
@@ -460,6 +463,13 @@ export class IpcDataSource implements FullDataSource {
     const r = await window.api.ai.generateTranslation(articleId, targetLanguage);
     if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
     return { ok: true, message: '翻译已生成' };
+  }
+
+  async aiChat(
+    articleId: string,
+    messages: AIChatMessage[]
+  ): Promise<DataSourceState<AIChatReply>> {
+    return unwrap(await window.api.ai.chat(articleId, messages));
   }
 
   aiSubscribeTranslationProgress(

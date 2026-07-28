@@ -57,6 +57,8 @@ import {
   type AIProvider,
   type AIProviderCreateInput,
   type AIProviderUpdateInput,
+  type AIChatMessage,
+  type AIChatReply,
   type AISummary,
   type AITranslation,
   type AITranslationProgressEvent,
@@ -92,6 +94,7 @@ import {
   type TranslationGenerationProgressEvent
 } from './services/ai/translation-agent.js';
 import { suggestTags } from './services/ai/tag-agent.js';
+import { answerArticleQuestion } from './services/ai/article-chat-agent.js';
 import { testConnection } from './services/ai/openai-client.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -131,6 +134,8 @@ const SMOKE_FLAGS = {
   smokeTagManage: process.env['JUHE_SHIVI_SMOKE_TAGMANAGE'] === '1',
   // 阅读区 Markdown / 原站网页 / 左右分栏三模式切换
   smokeReaderModes: process.env['JUHE_SHIVI_SMOKE_READER_MODES'] === '1',
+  // Issue #10：文章上下文多轮 AI 对话 + 划选右键询问/翻译
+  smokeAiChat: process.env['JUHE_SHIVI_SMOKE_AI_CHAT'] === '1',
   // 通用正文图片协议：Renderer custom scheme → Main fetch → image response
   smokeArticleImages: process.env['JUHE_SHIVI_SMOKE_ARTICLE_IMAGES'] === '1',
   // Phase 3.5.x 修复:侧栏 tab=tags 真按 tag 分类 + AI 标签建议 toggle 修复
@@ -262,6 +267,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeCoexist = SMOKE_FLAGS.smokeCoexist;
   const smokeTagManage = SMOKE_FLAGS.smokeTagManage;
   const smokeReaderModes = SMOKE_FLAGS.smokeReaderModes;
+  const smokeAiChat = SMOKE_FLAGS.smokeAiChat;
   const smokeArticleImages = SMOKE_FLAGS.smokeArticleImages;
   const smokeTagList = SMOKE_FLAGS.smokeTagList;
   const smokeFeedsGroup = SMOKE_FLAGS.smokeFeedsGroup;
@@ -305,6 +311,151 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           image.remove();
         } catch (error) {
           report.articleImages.error = String(error);
+        }
+        return JSON.stringify(report);
+      })()
+    `;
+  // Issue #10：文章上下文多轮对话 + 划选文字后的询问/翻译菜单。
+  } else if (smokeAiChat) {
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        async function waitFor(checkFn, timeout) {
+          const start = Date.now();
+          while (Date.now() - start < (timeout || 5000)) {
+            try {
+              const value = checkFn();
+              if (value) return value;
+            } catch {}
+            await sleep(40);
+          }
+          return null;
+        }
+        function setTextareaValue(element, value) {
+          const setter = Object.getOwnPropertyDescriptor(
+            HTMLTextAreaElement.prototype,
+            'value'
+          )?.set;
+          setter?.call(element, value);
+          element.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        function selectArticleText() {
+          const paragraph = document.querySelector('.article-reader__content p');
+          if (!paragraph) return null;
+          const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+          const textNode = walker.nextNode();
+          if (!textNode || !(textNode.textContent || '').trim()) return null;
+          const range = document.createRange();
+          const length = Math.min(24, textNode.textContent.length);
+          range.setStart(textNode, 0);
+          range.setEnd(textNode, length);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          paragraph.dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 280,
+            clientY: 260
+          }));
+          return selection?.toString().trim() || null;
+        }
+
+        const report = { aiChat: { ok: false, error: null, checks: {} } };
+        try {
+          const firstArticle = await waitFor(
+            () => document.querySelector('.article-list__item'),
+            4000
+          );
+          firstArticle?.click();
+          await waitFor(() => document.querySelector('.article-reader__content p'), 3000);
+
+          const chatButton = document.querySelector('[data-tool="ai-chat"]');
+          report.aiChat.checks.toolbarEntry = !!chatButton;
+          chatButton?.click();
+          report.aiChat.checks.panelOpened = !!await waitFor(
+            () => document.querySelector('[data-ai-chat-panel]'),
+            1500
+          );
+
+          let input = document.querySelector('[data-ai-chat-input]');
+          const send = document.querySelector('[data-ai-chat-send]');
+          if (input) setTextareaValue(input, '这篇文章的核心观点是什么？');
+          send?.click();
+          report.aiChat.checks.directQuestionAnswered = !!await waitFor(
+            () => document.querySelectorAll('[data-ai-chat-message-role="assistant"]').length === 1,
+            2500
+          );
+          report.aiChat.checks.directReplyUsesMock =
+            (document.querySelector('[data-ai-chat-message-role="assistant"]')?.textContent || '')
+              .includes('基于当前文章');
+
+          input = document.querySelector('[data-ai-chat-input]');
+          if (input) setTextareaValue(input, '请再具体一点。');
+          document.querySelector('[data-ai-chat-send]')?.click();
+          report.aiChat.checks.multiTurnConversation = !!await waitFor(
+            () =>
+              document.querySelectorAll('[data-ai-chat-message-role="user"]').length === 2 &&
+              document.querySelectorAll('[data-ai-chat-message-role="assistant"]').length === 2,
+            2500
+          );
+
+          const selectedForAsk = selectArticleText();
+          report.aiChat.checks.selectionMenuOpened = !!await waitFor(
+            () => document.querySelector('[data-ai-selection-menu]'),
+            1000
+          );
+          document.querySelector('[data-ai-selection-action="ask"]')?.click();
+          report.aiChat.checks.selectionAsked = !!await waitFor(
+            () => document.querySelectorAll('[data-ai-chat-message-role="assistant"]').length === 3,
+            2500
+          );
+          const userMessagesAfterAsk = Array.from(
+            document.querySelectorAll('[data-ai-chat-message-role="user"]')
+          );
+          report.aiChat.checks.selectionIncludedInQuestion =
+            !!selectedForAsk &&
+            (userMessagesAfterAsk.at(-1)?.textContent || '').includes(selectedForAsk);
+
+          const selectedForTranslation = selectArticleText();
+          report.aiChat.checks.translationMenuReopened = !!await waitFor(
+            () => document.querySelector('[data-ai-selection-action="translate"]'),
+            1000
+          );
+          document.querySelector('[data-ai-selection-action="translate"]')?.click();
+          report.aiChat.checks.selectionTranslated = !!await waitFor(
+            () => document.querySelectorAll('[data-ai-chat-message-role="assistant"]').length === 4,
+            2500
+          );
+          const assistantMessages = Array.from(
+            document.querySelectorAll('[data-ai-chat-message-role="assistant"]')
+          );
+          report.aiChat.checks.translationReplyVisible =
+            !!selectedForTranslation &&
+            (assistantMessages.at(-1)?.textContent || '').includes('mock 译文');
+
+          document.querySelector('[data-ai-chat-clear]')?.click();
+          await sleep(80);
+          report.aiChat.checks.clearConversation =
+            document.querySelectorAll('[data-ai-chat-message-role]').length === 0;
+
+          document.querySelector('[aria-label="关闭文章 AI 助手"]')?.click();
+          await sleep(80);
+          report.aiChat.checks.panelClosed =
+            !document.querySelector('[data-ai-chat-panel]');
+
+          const required = [
+            'toolbarEntry', 'panelOpened', 'directQuestionAnswered',
+            'directReplyUsesMock', 'multiTurnConversation', 'selectionMenuOpened',
+            'selectionAsked', 'selectionIncludedInQuestion',
+            'translationMenuReopened', 'selectionTranslated',
+            'translationReplyVisible', 'clearConversation', 'panelClosed'
+          ];
+          report.aiChat.ok = required.every(
+            (key) => report.aiChat.checks[key] === true
+          );
+        } catch (error) {
+          report.aiChat.error = String(error);
         }
         return JSON.stringify(report);
       })()
@@ -3453,6 +3604,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     let pass: boolean;
     if (smokeArticleImages) {
       pass = raw.includes('"articleImages":{"ok":true');
+    } else if (smokeAiChat) {
+      pass = raw.includes('"aiChat":{"ok":true');
     } else if (smokeReaderModes) {
       pass = raw.includes('"readerModes":{"ok":true');
     } else if (smokeTagList) {
@@ -3917,6 +4070,49 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       const message = e instanceof Error ? e.message : String(e);
       sendFailure(message);
       return fail('AI_TRANSLATION_FAILED', message);
+    }
+  });
+
+  trustedIpcMain.handle(IPC_CHANNELS.AI_CHAT, async (_, args): Promise<IpcResult<AIChatReply>> => {
+    try {
+      if (!args?.articleId) return fail('INVALID_PARAMS', '缺少 articleId');
+      if (!Array.isArray(args.messages) || args.messages.length === 0) {
+        return fail('INVALID_PARAMS', '至少需要一条用户消息');
+      }
+      const messages = args.messages as AIChatMessage[];
+      const invalidMessage = messages.some((message) => (
+        !message ||
+        (message.role !== 'user' && message.role !== 'assistant') ||
+        typeof message.content !== 'string' ||
+        !message.content.trim()
+      ));
+      if (invalidMessage || messages[messages.length - 1]?.role !== 'user') {
+        return fail('INVALID_PARAMS', '对话消息格式无效');
+      }
+
+      const article = ArticleRepository.getById(args.articleId);
+      if (!article) return fail('NOT_FOUND', '文章不存在');
+      if (!article.cleanedMarkdown) return fail('CONTENT_NOT_READY', '文章正文尚未清洗完成');
+      const settings = loadSettings();
+      if (!settings.defaultProviderId) return fail('NO_PROVIDER', '未设置默认 AI Provider');
+      const provider = AiProviderRepository.getByIdWithKey(settings.defaultProviderId);
+      if (!provider) return fail('NOT_FOUND', '默认 Provider 不存在');
+
+      const message = await answerArticleQuestion(
+        provider,
+        article.title,
+        article.cleanedMarkdown,
+        messages
+      );
+      return ok({
+        articleId: article.id,
+        providerId: provider.id,
+        modelName: provider.modelName,
+        message,
+        generatedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      return fail('AI_CHAT_FAILED', e instanceof Error ? e.message : String(e));
     }
   });
 

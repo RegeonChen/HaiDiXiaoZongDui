@@ -529,6 +529,21 @@ export interface AITranslation {
   generatedAt: IsoTimestamp;
 }
 
+/** 文章 AI 助手的单条会话消息。system prompt 只允许由主进程生成。 */
+export interface AIChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** 文章 AI 助手的一次回复。会话历史由 Renderer 在当前阅读会话内维护。 */
+export interface AIChatReply {
+  articleId: string;
+  providerId: string;
+  modelName: string;
+  message: string;
+  generatedAt: IsoTimestamp;
+}
+
 /**
  * 翻译运行期间从主进程推送到阅读器的进度事件。
  *

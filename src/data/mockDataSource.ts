@@ -34,6 +34,8 @@ import type {
   ExportFormat,
   Language,
   SummaryDetailLevel,
+  AIChatMessage,
+  AIChatReply,
   AITranslationProgressEvent,
   SyncProgress,
   SyncStageEvent,
@@ -741,6 +743,27 @@ export class MockDataSource implements DataSource {
     // Phase 3.5.2：mock 模式返回 ok，让 UI 切到 translation 面板
     // 真实进度由 aiSubscribeTranslationProgress 异步推送（30ms started + 每 50ms 一段）
     return { ok: true, message: '已触发（mock 模拟流式进度）' };
+  }
+
+  async aiChat(
+    articleId: string,
+    messages: AIChatMessage[]
+  ): Promise<DataSourceState<AIChatReply>> {
+    await delay(40);
+    const lastQuestion = [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
+    const translating = lastQuestion.includes('翻译') || lastQuestion.toLowerCase().includes('translate');
+    return {
+      kind: 'ready',
+      data: {
+        articleId,
+        providerId: 'mock-provider',
+        modelName: 'mock-model',
+        message: translating
+          ? '这是选中内容的 mock 译文。'
+          : `这是基于当前文章的 mock 回答：${lastQuestion.slice(0, 80)}`,
+        generatedAt: new Date().toISOString()
+      }
+    };
   }
 
   /**

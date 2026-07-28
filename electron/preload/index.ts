@@ -161,6 +161,9 @@ const api = {
     generateTranslation: (articleId: string, targetLanguage?: IpcArgs<typeof IPC_CHANNELS.AI_GENERATE_TRANSLATION>['targetLanguage']): Promise<IpcResponse<typeof IPC_CHANNELS.AI_GENERATE_TRANSLATION>> =>
       invoke(IPC_CHANNELS.AI_GENERATE_TRANSLATION, { articleId, targetLanguage }),
 
+    chat: (articleId: string, messages: IpcArgs<typeof IPC_CHANNELS.AI_CHAT>['messages']): Promise<IpcResponse<typeof IPC_CHANNELS.AI_CHAT>> =>
+      invoke(IPC_CHANNELS.AI_CHAT, { articleId, messages }),
+
     onTranslationProgress: (listener: (event: AITranslationProgressEvent) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, progress: AITranslationProgressEvent): void => {
         listener(progress);

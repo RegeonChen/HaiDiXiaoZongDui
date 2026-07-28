@@ -5,6 +5,7 @@
  *  - provider CRUD + test (连通性校验)
  *  - tag CRUD + article 关联
  *  - note CRUD + digest CRUD + export
+ *  - ai:chat 文章上下文多轮问答（使用本地 OpenAI-compatible mock）
  *  - ai:generateSummary / ai:generateTranslation / ai:suggestTags (需真实 API Key，跳过若未配置)
  *  - ai 结果缓存 (ai:getSummary / ai:getTranslation / ai:getTagSuggestions)
  *  - 字体/视觉主题 + 三栏宽度 settings 持久化 (重启验证)
@@ -37,9 +38,14 @@ const server = http.createServer((req, res) => {
   // 模拟一个 RSS feed 用于 seed
   if (parsedUrl.pathname === '/feed.xml') {
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const guid = parsedUrl.searchParams.has('chat')
+      ? 'smoke33-chat'
+      : parsedUrl.searchParams.has('n')
+        ? 'smoke33-note'
+        : 'smoke33-1';
     res.writeHead(200, { 'content-type': 'application/rss+xml' });
     res.end(`<rss version="2.0"><channel><title>Task 3.3 Test Feed</title><link>${baseUrl}/</link>
-      <item><title>Test Article</title><link>${baseUrl}/a</link><guid>smoke33-1</guid><pubDate>Tue, 15 Jul 2026 06:00:00 GMT</pubDate></item>
+      <item><title>Test Article</title><link>${baseUrl}/a</link><guid>${guid}</guid><pubDate>Tue, 15 Jul 2026 06:00:00 GMT</pubDate></item>
     </channel></rss>`);
     return;
   }
@@ -56,9 +62,13 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       let messages;
       try { messages = JSON.parse(body).messages; } catch { messages = []; }
-      const userMsg = (messages.find((m) => m.role === 'user') || {}).content || '';
+      const userMessages = messages.filter((m) => m.role === 'user');
+      const userMsg = (userMessages[userMessages.length - 1] || {}).content || '';
       const isTranslation = userMsg.includes('ORIGINAL:') || userMsg.includes('TRANSLATED:');
       const isTag = userMsg.includes('suggest') && userMsg.includes('tags');
+      const isArticleChat =
+        userMsg.includes('article chat smoke') ||
+        userMsg.includes('follow-up smoke');
 
       res.writeHead(200, { 'content-type': 'application/json' });
       if (isTag) {
@@ -72,6 +82,10 @@ const server = http.createServer((req, res) => {
       } else if (isTranslation) {
         res.end(JSON.stringify({
           choices: [{ message: { content: '---\nORIGINAL: This is a test article about machine learning.\nTRANSLATED: 这是一篇关于机器学习的测试文章。\n---\nORIGINAL: Large language models have transformed NLP.\nTRANSLATED: 大型语言模型已经改变了自然语言处理。\n---' } }]
+        }));
+      } else if (isArticleChat) {
+        res.end(JSON.stringify({
+          choices: [{ message: { content: 'Article chat smoke reply grounded in the current article.' } }]
         }));
       } else {
         res.end(JSON.stringify({

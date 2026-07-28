@@ -60,6 +60,42 @@
       R.prov.checks.test = pt.success && pt.data?.ok === true;
       var pu = await api.ai.providerUpdate(pid, { name: 'Smoke2' });
       R.prov.checks.update = pu.success && pu.data.name === 'Smoke2';
+
+      var cf = await api.feed.create({ url: FEED + '?chat=1', title: 'AI Chat Feed' });
+      R.prov.checks.chatFeedCreated = cf.success;
+      if (cf.success) {
+        var cs = await api.sync.feed(cf.data.id);
+        var ca = await api.article.list({ feedId: cf.data.id });
+        var chatArticle = ca.success ? ca.data.items[0] : null;
+        R.prov.checks.chatArticleReady =
+          cs.success && !!chatArticle &&
+          (await api.content.getCleanedMarkdown(chatArticle.id)).success;
+        if (chatArticle) {
+          var chat1 = await api.ai.chat(chatArticle.id, [
+            { role: 'user', content: 'article chat smoke question' }
+          ]);
+          R.prov.checks.chatReply =
+            chat1.success &&
+            chat1.data.articleId === chatArticle.id &&
+            chat1.data.message.indexOf('Article chat smoke reply') >= 0;
+          var chat2 = await api.ai.chat(chatArticle.id, [
+            { role: 'user', content: 'article chat smoke question' },
+            { role: 'assistant', content: chat1.success ? chat1.data.message : 'missing' },
+            { role: 'user', content: 'follow-up smoke question' }
+          ]);
+          R.prov.checks.chatMultiTurn =
+            chat2.success &&
+            chat2.data.message.indexOf('Article chat smoke reply') >= 0;
+        } else {
+          R.prov.checks.chatReply = false;
+          R.prov.checks.chatMultiTurn = false;
+        }
+      } else {
+        R.prov.checks.chatArticleReady = false;
+        R.prov.checks.chatReply = false;
+        R.prov.checks.chatMultiTurn = false;
+      }
+
       var pd = await api.ai.providerDelete(pid);
       R.prov.checks.delete = pd.success;
       R.prov.ok = OK(R.prov.checks);
