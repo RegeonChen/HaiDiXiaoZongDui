@@ -593,6 +593,85 @@
   - 标签管理页选中不同标签 → 右栏文章列表实时切换 → 点击文章 → 跳转阅读器。
   - 点击"导出 OPML" → 进入选择界面 → 调整勾选 → 确认导出 → 生成的 OPML 文件仅含选中的订阅源。
 
+## Phase 4.2: Navbar Icon Refinement, System Font Size & Sidebar Toggle
+
+**Overall Goal:** 优化顶栏导航图标、新增系统字号（左栏+中栏）独立于正文字号（右栏）的控制、增加左栏隐藏/显示切换按钮。
+
+### Task 4.2.1 - UI: Navbar Icons, System Font Size & Sidebar Toggle (张晨阳)
+
+- **Task Detail:**
+  1. **AI 设置图标替换**：将顶栏 `navItems` 中 AI 设置入口的图标替换为粗体英文 "AI" 两个字母（纯文本或 SVG 文字），不再使用通用图标。确保 "AI" 文字在浅色/深色/纸质三套视觉主题下与周围图标视觉协调（字号、粗细、颜色、对齐）。
+  2. **专题图标替换**：将顶栏 `navItems` 中专题入口的图标替换为更贴合"专题追踪与多源简报"原设计的图标方案（建议使用多个文档/来源聚合类图标，与 RSS 阅读器的整体图标风格一致）。确保新旧图标切换不影响 `navItems` 的 `data-testid` 和键盘导航。
+  3. **系统字号设置**：在 `GeneralSettingsModal` 中新增"系统字号"调节项（独立于现有的"正文字号"调节项）：
+     - "系统字号"：控制左栏（`FeedList`，订阅源列表）和中栏（`ArticleList`，文章列表）的文字大小。
+     - "正文字号"（现有功能）：仅控制右栏（`ArticleReader`）阅读区正文的文字大小。
+     - 两个调节项各自独立，互不影响；各自通过独立的 CSS 变量驱动渲染。
+     - 系统字号变更后即时生效，无需刷新页面。
+  4. **系统字号 CSS 变量**：新增或复用全局 CSS 变量（如 `--ui-font-size`），将其应用到左栏和中栏的根容器或关键文字元素上；确认 `ArticleReader` 不受此变量影响。
+  5. **隐藏左栏按钮**：在应用名称"聚合拾遗"右侧（或 Layout 顶栏左侧区域）新增一个切换按钮，用于隐藏/显示左栏（订阅源侧栏）：
+     - 点击按钮 → 左栏收起（带 CSS transition 动画，宽度 `0` 或 `auto`），中栏和右栏自动扩展填满剩余空间。
+     - 再次点击 → 左栏恢复原始宽度（保持用户拖拽设定的宽度或默认值）。
+     - 按钮图标随状态切换（如侧栏展开时显示 `◀` 或侧边栏图标，侧栏隐藏时显示 `▶` 或对应图标）。
+     - 按钮在多语言切换时文案/tooltip 同步切换（中文："隐藏左栏"/"显示左栏"，英文："Hide Sidebar"/"Show Sidebar"）。
+- **Affected Areas:** `src/components/Layout/Layout.tsx`（navItems 图标替换 + 隐藏左栏按钮）、`src/components/Layout/Layout.css`（按钮样式 + 侧栏动画）、`src/components/GeneralSettingsModal/GeneralSettingsModal.tsx`（新增系统字号调节项）、`src/components/GeneralSettingsModal/GeneralSettingsModal.css`、`src/components/FeedList/FeedList.css`（系统字号变量应用）、`src/components/ArticleList/ArticleList.css`（系统字号变量应用）、`src/components/ArticleReader/ArticleReader.css`（确认不受系统字号影响）、全局 CSS 变量定义文件、多语言资源文件。
+- **Verification:**
+  - 顶栏"AI"入口显示粗体 "AI" 两个字母，三套主题下视觉协调，点击仍可跳转 AI 设置页。
+  - 顶栏"专题"入口显示新图标，与整体图标风格一致，点击仍可跳转专题页。
+  - 打开通用设置弹窗 → "系统字号"和"正文字号"两个独立滑块 → 拖动"系统字号" → 左栏和中栏文字大小即时变化，右栏正文不变。
+  - 拖动"正文字号"（现有功能）→ 仅右栏正文文字大小变化，左栏和中栏不变。
+  - 两个字号设置重启后均保持用户上次选择。
+  - 点击"隐藏左栏"按钮 → 左栏平滑收起（含动画过渡）→ 中栏和右栏扩展 → 按钮 tooltip 变为"显示左栏"。
+  - 再次点击 → 左栏恢复展开 → 中栏和右栏恢复原始比例 → tooltip 变为"隐藏左栏"。
+  - 左栏隐藏状态下，侧栏宽度拖拽分隔条不显示或禁用（避免拖出隐藏态下的异常宽度）。
+  - 英文界面下按钮 tooltip 显示 "Hide Sidebar" / "Show Sidebar"。
+
+### Task 4.2.2 - Content Pipeline: System Font Size & Sidebar Collapse Compatibility (张宇凡)
+
+- **Task Detail:**
+  1. **系统字号兼容性验证**：在左栏/中栏系统字号分别设为最小值和最大值（如 12px 和 20px）时，确认：
+     - `FeedList` 中订阅源名称、组名、计数字的截断和省略号行为正常，不出现文字重叠或溢出。
+     - `ArticleList` 中文章标题、摘要预览、来源名、时间戳的单行截断行为正常。
+     - 标签 chips（彩色标签）在极端字号下尺寸协调，不遮挡文字。
+  2. **正文字号隔离验证**：确认 Cleanded HTML/Markdown 渲染仅受"正文字号"CSS 变量控制，不被"系统字号"CSS 变量误影响。验证代码块、表格、列表、引用块在各正文字号下的排版正确性。
+  3. **侧栏隐藏兼容性验证**：左栏隐藏后，确认：
+     - 中栏文章列表和右栏阅读区的内容渲染正常，无横向溢出或布局错位。
+     - 三种阅读模式（精简/网页/分栏）在左栏隐藏后均正常显示。
+     - Cleaned HTML 中的宽表格、代码块在扩展后的阅读区内不会溢出。
+  4. **综合边界验证**：系统字号调整 + 左栏隐藏/显示 + 中栏/右栏拖拽宽度组合操作下，内容区域始终可读且无内容丢失。
+- **Affected Areas:** `content-cleaner.ts`（兼容性验证，无功能变更）、阅读模式渲染管线（精简/网页/分栏）。
+- **Verification:**
+  - 系统字号 12px → 左栏订阅源名称完整显示（长名截断加省略号）→ 中栏文章标题单行截断正常。
+  - 系统字号 20px → 标签 chips 不遮挡标题文字 → 计数 badge 不溢出侧栏。
+  - 拖动"正文字号" → 右栏正文变化 → Cleaned HTML 中代码块字体（等宽）不受系统字号影响，表格和列表排版正常。
+  - 隐藏左栏 → 中栏扩宽 → 文章标题摘要利用额外宽度展示更多文字 → 右栏阅读区宽度增加 → 宽代码块不再需要横向滚动或正常显示。
+  - 系统字号最小 + 左栏隐藏 + 网页阅读模式下，内容区域无横向溢出。
+
+### Task 4.2.3 - Database: System Font Size & Sidebar Visibility Persistence (陈冠中)
+
+- **Task Detail:**
+  1. **系统字号持久化**：在 `AppSettings` 类型（`shared/types.ts`）中新增 `systemFontSize` 字段（`number`，默认值如 `14`，单位 px），与现有 `fontSize`（正文字号）字段并列。
+  2. **侧栏可见性持久化**：在 `AppSettings` 类型中新增 `sidebarVisible` 字段（`boolean`，默认值 `true`）。
+  3. **IPC 更新支持**：确保现有 `settings:update` IPC handler 支持 `systemFontSize` 和 `sidebarVisible` 的局部更新（与现有 `fontSize` / `fontTheme` / `visualTheme` 等字段同样的 partial update 模式）。
+  4. **数据源接口同步**：更新 `DataSource` 接口中 `updateSettings` 的类型签名（如需）；同步更新 `IpcDataSource` 和 `MockDataSource` 的实现。
+  5. **数据库迁移**（如需）：若 `AppSettings` 存储结构变更需要 migration，补充对应迁移脚本并确保旧版数据升级后默认值正确。
+  6. **默认值兼容**：首次启动（无历史设置）时，`systemFontSize` 默认 `14`，`sidebarVisible` 默认 `true`；升级自旧版本时，缺失字段自动填充默认值，不影响现有功能。
+- **Affected Areas:** `shared/types.ts`（`AppSettings` 类型扩展）、`electron/main/db/settings-repository.ts`（字段存储与读取）、`electron/main/index.ts`（`settings:update` IPC handler）、`src/data/ipcDataSource.ts`（接口实现）、`src/data/mockDataSource.ts`（mock 实现）、`src/types/dataSource.ts`（DataSource 接口签名，如需变更）、数据库 migration（如需）。
+- **Verification:**
+  - 修改系统字号为 16 → 重启应用 → 左栏和中栏文字保持 16px → 数据库中 `systemFontSize` 值为 `16`。
+  - 修改正文字号为 18 → 重启 → 右栏正文保持 18px → 数据库中 `fontSize` 值为 `18` → `systemFontSize` 仍为 `16`，两者独立。
+  - 隐藏左栏 → 重启应用 → 左栏保持隐藏状态 → 数据库中 `sidebarVisible` 为 `false`。
+  - 旧版本升级（无 `systemFontSize` / `sidebarVisible` 字段）→ 启动后自动使用默认值（`14` / `true`），不报错。
+  - Mock 模式下系统字号和侧栏可见性设置行为与 IPC 模式一致。
+
+### Phase 4.2 Integration (张晨阳 + 张宇凡 + 陈冠中)
+
+- 张晨阳完成顶栏图标替换 + 系统字号 UI + 隐藏左栏按钮 → 接通陈冠中的持久化 → 张宇凡验证内容兼容性。
+- **Verification:**
+  - 顶栏"AI"图标为粗体字母、"专题"图标贴合设计语言，点击各自跳转正确页面。
+  - 通用设置弹窗中"系统字号"和"正文字号"各自独立调节 → 左/中栏与右栏文字字号分别变化 → 重启后各自保持。
+  - 点击"隐藏左栏" → 左栏平滑收起 → 中栏和右栏自动扩展 → 所有阅读模式内容正常 → 重启后左栏保持隐藏。
+  - 系统字号调节 + 正文字号调节 + 左栏隐藏/显示 + 视觉主题切换的组合操作下，界面无闪烁、无布局错位、无内容丢失。
+
 ## Phase 5: Cross-platform Acceptance
 
 **Overall Goal:** 完成三平台验证、问题修复和课程交付准备。

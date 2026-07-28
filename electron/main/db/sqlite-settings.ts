@@ -123,6 +123,8 @@ function isSettingValue(key: keyof AppSettings, value: unknown): boolean {
       return value === 'classic' || value === 'paper';
     case 'fontSize':
       return isNumberInRange(value, 10, 32);
+    case 'systemFontSize':
+      return isNumberInRange(value, 10, 24);
     case 'readingWidth':
       return isNumberInRange(value, 320, 1600);
     case 'sidebarPercent':
@@ -136,6 +138,8 @@ function isSettingValue(key: keyof AppSettings, value: unknown): boolean {
       return isNullableString(value);
     case 'fontTheme':
       return typeof value === 'string' && value.trim().length > 0 && value.length <= 64;
+    case 'sidebarVisible':
+      return typeof value === 'boolean';
   }
 }
 

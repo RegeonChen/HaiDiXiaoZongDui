@@ -651,6 +651,18 @@ export interface AppSettings {
   sidebarPercent: number;
   /** 文章列表宽度百分比（15-50），默认 28 */
   listPercent: number;
+  /**
+   * 系统字号（px），控制左栏（FeedList）和中栏（ArticleList）的文字大小。
+   * 与 fontSize（正文字号）独立，仅影响 UI 面板，不影响阅读区正文。
+   * 范围 10–24，默认 14。
+   */
+  systemFontSize: number;
+  /**
+   * 左栏（订阅源侧栏）是否可见。
+   * false 时侧栏隐藏，中栏和右栏自动扩展填充空间。
+   * 默认 true。
+   */
+  sidebarVisible: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -669,6 +681,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   visualTheme: 'classic',
   sidebarPercent: 18,
   listPercent: 28,
+  systemFontSize: 14,
+  sidebarVisible: true,
 };
 
 // ---- Log（日志） ----
