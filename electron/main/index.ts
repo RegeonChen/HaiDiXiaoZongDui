@@ -309,7 +309,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         return JSON.stringify(report);
       })()
     `;
-  // 阅读模式 smoke：验证 Markdown / 网页 / 分栏切换、分栏宽度和持久化。
+  // 阅读模式 smoke：验证模式切换、字号隔离、窄屏分栏和宽内容滚动。
   } else if (smokeReaderModes) {
     probe = `
       (async () => {
@@ -351,6 +351,80 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             !!document.querySelector('[data-reader-pane="markdown"]') &&
             !document.querySelector('[data-web-article-view]');
 
+          const readerContent = await waitFor(
+            () => document.querySelector('.article-reader__content'),
+            3000
+          );
+          const rootStyle = document.documentElement.style;
+          const previousBodyFontSize = rootStyle.getPropertyValue('--font-size');
+          const previousUiFontSize = rootStyle.getPropertyValue('--ui-font-size');
+          rootStyle.setProperty('--font-size', '18px');
+          rootStyle.setProperty('--ui-font-size', '12px');
+          report.readerModes.checks.readerFontUsesBodyVariable =
+            !!readerContent && getComputedStyle(readerContent).fontSize === '18px';
+          rootStyle.setProperty('--ui-font-size', '20px');
+          report.readerModes.checks.readerFontIsolatedFromUiFont =
+            !!readerContent && getComputedStyle(readerContent).fontSize === '18px';
+
+          const translatedFixture = document.createElement('div');
+          translatedFixture.className = 'translated-article-view__block';
+          translatedFixture.textContent = '译文正文字号探针';
+          Object.assign(translatedFixture.style, {
+            position: 'fixed',
+            visibility: 'hidden',
+            pointerEvents: 'none'
+          });
+          document.body.appendChild(translatedFixture);
+          report.readerModes.checks.translatedFontUsesBodyVariable =
+            getComputedStyle(translatedFixture).fontSize === '18px';
+          translatedFixture.remove();
+
+          const overflowFixture = document.createElement('div');
+          overflowFixture.className = 'article-reader__content';
+          Object.assign(overflowFixture.style, {
+            position: 'fixed',
+            visibility: 'hidden',
+            pointerEvents: 'none',
+            width: '240px'
+          });
+          const longText = 'widecontent'.repeat(80);
+          const preFixture = document.createElement('pre');
+          const codeFixture = document.createElement('code');
+          codeFixture.textContent = longText;
+          preFixture.appendChild(codeFixture);
+          const tableFixture = document.createElement('table');
+          const tableBody = document.createElement('tbody');
+          const tableRow = document.createElement('tr');
+          for (let index = 0; index < 2; index += 1) {
+            const tableCell = document.createElement('td');
+            tableCell.textContent = longText;
+            tableRow.appendChild(tableCell);
+          }
+          tableBody.appendChild(tableRow);
+          tableFixture.appendChild(tableBody);
+          overflowFixture.append(preFixture, tableFixture);
+          document.body.appendChild(overflowFixture);
+          report.readerModes.checks.wideCodeScrollContained =
+            getComputedStyle(preFixture).overflowX === 'auto' &&
+            preFixture.clientWidth <= overflowFixture.clientWidth + 1 &&
+            preFixture.scrollWidth > preFixture.clientWidth;
+          report.readerModes.checks.wideTableScrollContained =
+            getComputedStyle(tableFixture).overflowX === 'auto' &&
+            tableFixture.clientWidth <= overflowFixture.clientWidth + 1 &&
+            tableFixture.scrollWidth > tableFixture.clientWidth;
+          overflowFixture.remove();
+
+          if (previousBodyFontSize) {
+            rootStyle.setProperty('--font-size', previousBodyFontSize);
+          } else {
+            rootStyle.removeProperty('--font-size');
+          }
+          if (previousUiFontSize) {
+            rootStyle.setProperty('--ui-font-size', previousUiFontSize);
+          } else {
+            rootStyle.removeProperty('--ui-font-size');
+          }
+
           const webButton = document.querySelector('[data-reader-mode-option="web"]');
           if (webButton) webButton.click();
           await sleep(250);
@@ -379,6 +453,31 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.readerModes.checks.persisted =
             localStorage.getItem('juhe-shivi.reader.mode') === 'dual';
 
+          const workspace = document.querySelector('.article-reader__workspace');
+          const previousWorkspaceStyle = workspace?.getAttribute('style') || null;
+          if (workspace) {
+            Object.assign(workspace.style, {
+              flex: '0 0 360px',
+              width: '360px',
+              maxWidth: '360px'
+            });
+            await sleep(50);
+          }
+          report.readerModes.checks.narrowDualNoHorizontalOverflow =
+            !!workspace &&
+            workspace.clientWidth > 0 &&
+            workspace.clientWidth <= 360 &&
+            workspace.scrollWidth <= workspace.clientWidth + 1 &&
+            (readerPane?.getBoundingClientRect().width || 0) > 0 &&
+            (webPane?.getBoundingClientRect().width || 0) > 0;
+          if (workspace) {
+            if (previousWorkspaceStyle === null) {
+              workspace.removeAttribute('style');
+            } else {
+              workspace.setAttribute('style', previousWorkspaceStyle);
+            }
+          }
+
           const readerButton = document.querySelector('[data-reader-mode-option="reader"]');
           if (readerButton) readerButton.click();
           await sleep(100);
@@ -390,7 +489,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const required = [
             'threeOptions', 'labelsCorrect', 'defaultReader', 'webOnly',
             'noDuplicateWebUrlBar', 'dualRendered', 'dualHalfWidth',
-            'persisted', 'returnedToReader'
+            'persisted', 'returnedToReader', 'readerFontUsesBodyVariable',
+            'readerFontIsolatedFromUiFont', 'translatedFontUsesBodyVariable',
+            'wideCodeScrollContained', 'wideTableScrollContained',
+            'narrowDualNoHorizontalOverflow'
           ];
           report.readerModes.ok = required.every(
             (key) => report.readerModes.checks[key] === true

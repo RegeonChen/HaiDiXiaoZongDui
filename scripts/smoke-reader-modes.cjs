@@ -1,5 +1,5 @@
 /**
- * Markdown / 原站网页 / 分栏阅读模式 UI smoke。
+ * 阅读模式 UI smoke：覆盖模式切换、字号隔离、窄屏分栏和宽内容滚动。
  *
  * 用法：npm run smoke:reader-modes
  */
@@ -49,7 +49,7 @@ child.on('exit', (code, signal) => {
   clearTimeout(timer);
   console.log(`[smoke-reader-modes] electron 退出 code=${code} signal=${signal}`);
   if (/SMOKE_REPORT_PASS/.test(stdout)) {
-    console.log('[smoke-reader-modes] ✓ 三种阅读模式验证全部通过');
+    console.log('[smoke-reader-modes] ✓ 阅读模式与内容兼容性验证全部通过');
     finish(0);
   } else {
     console.error('[smoke-reader-modes] ✗ 验证失败，未见 SMOKE_REPORT_PASS');

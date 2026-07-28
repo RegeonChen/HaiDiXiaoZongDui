@@ -48,7 +48,7 @@
 }
 
 .translated-article-view__block {
-  font-size: 15px;
+  font-size: var(--font-size, 15px);
   line-height: 1.7;
   color: var(--fg);
   user-select: text;
@@ -84,10 +84,10 @@
   margin: 20px 0 10px 0;
   color: var(--fg);
 }
-.translated-article-view__block h1 { font-size: 22px; }
-.translated-article-view__block h2 { font-size: 19px; }
-.translated-article-view__block h3 { font-size: 17px; }
-.translated-article-view__block h4 { font-size: 15px; }
+.translated-article-view__block h1 { font-size: 1.5em; }
+.translated-article-view__block h2 { font-size: 1.3em; }
+.translated-article-view__block h3 { font-size: 1.1em; }
+.translated-article-view__block h4 { font-size: 1em; }
 .translated-article-view__block pre {
   background: var(--bg);
   border: 1px solid var(--border-soft);
@@ -95,7 +95,7 @@
   padding: 10px 12px;
   overflow-x: auto;
   font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
-  font-size: 13px;
+  font-size: 0.9em;
   margin: 12px 0;
 }
 .translated-article-view__block code {
