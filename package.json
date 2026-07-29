@@ -1,6 +1,6 @@
 {
   "name": "juhe-shivi",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "聚合拾遗 — 跨平台、本地优先的桌面 RSS 阅读器",
   "private": true,
   "author": "聚合拾遗团队",
@@ -48,7 +48,7 @@
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
-    "fast-xml-parser": "^5.10.0",
+    "fast-xml-parser": "^5.10.1",
     "jsdom": "^24.1.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
