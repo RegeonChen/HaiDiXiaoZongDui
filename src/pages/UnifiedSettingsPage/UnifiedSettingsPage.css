@@ -1,0 +1,109 @@
+.settings-workspace {
+  display: grid;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(188px, 210px) minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--workspace-bg);
+}
+
+.settings-workspace__sidebar {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  padding: 20px 10px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--sidebar-bg) 88%, var(--bg));
+}
+
+.settings-workspace__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 9px 15px;
+}
+
+.settings-workspace__heading strong {
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.settings-workspace__heading span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.settings-workspace__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-workspace__nav button {
+  appearance: none;
+  display: grid;
+  width: 100%;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.settings-workspace__nav button:hover {
+  background: var(--bg-elev-hover);
+  color: var(--fg);
+}
+
+.settings-workspace__nav button.is-active {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.settings-workspace__nav button > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-workspace__nav strong {
+  color: currentColor;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-workspace__nav small {
+  color: var(--muted);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-workspace__ai-mark {
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.settings-workspace__content {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-elev) 34%, transparent), transparent 150px),
+    var(--workspace-bg);
+}

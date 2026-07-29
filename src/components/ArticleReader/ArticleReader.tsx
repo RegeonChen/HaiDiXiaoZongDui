@@ -38,6 +38,8 @@ export interface ArticleReaderProps {
   feed: Feed | null;
   onToggleStar: (articleId: string, isStarred: boolean) => void;
   onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
+  aiDockOpen: boolean;
+  onAiDockOpenChange: (open: boolean) => void;
 }
 
 function formatAbsolute(iso: string | null): string {
@@ -85,7 +87,14 @@ const READER_MODE_OPTIONS: ReadonlyArray<{
   { mode: 'dual', label: '分栏', icon: '◫', title: '左侧 Markdown，右侧原站网页' }
 ];
 
-export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleReaderProps) {
+export function ArticleReader({
+  article,
+  feed,
+  onToggleStar,
+  onToast,
+  aiDockOpen,
+  onAiDockOpenChange
+}: ArticleReaderProps) {
   const ds = useDataSource();
   const [readerMode, setReaderMode] = useReaderMode();
   const [content, setContent] = useState<ContentState>({ html: null, loading: false, error: null });
@@ -98,7 +107,6 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   const [tagSuggestions, setTagSuggestions] = useState<Array<{ name: string; confidence: number; reason: string }>>([]);
   const [noteMarkdown, setNoteMarkdown] = useState('');
   const [topicDialogOpen, setTopicDialogOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<AIChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
@@ -124,7 +132,6 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
   currentArticleIdRef.current = article?.id ?? null;
 
   useEffect(() => {
-    setChatOpen(false);
     setChatMessages([]);
     setChatDraft('');
     setChatBusy(false);
@@ -278,7 +285,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
 
     const userMessage: AIChatMessage = { role: 'user', content: question };
     const requestMessages = [...chatMessages, userMessage];
-    setChatOpen(true);
+    onAiDockOpenChange(true);
     setChatMessages(requestMessages);
     setChatDraft('');
     setChatError(null);
@@ -299,7 +306,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
     } finally {
       if (currentArticleIdRef.current === article.id) setChatBusy(false);
     }
-  }, [article, chatBusy, chatDraft, chatMessages, ds, onToast]);
+  }, [article, chatBusy, chatDraft, chatMessages, ds, onAiDockOpenChange, onToast]);
 
   const handleReaderContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target;
@@ -664,7 +671,7 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
       <div className="article-reader">
         <EmptyView
           title="选择一篇文章开始阅读"
-          hint="从中间列表中选一篇文章,正文会显示在这里。"
+          hint="从文章列表中选择一篇文章，正文会显示在这里。"
         />
       </div>
     );
@@ -834,17 +841,17 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
             </button>
             <button
               type="button"
-              className={`article-reader__btn ${chatOpen ? 'is-active' : ''}`}
+              className={`article-reader__btn ${aiDockOpen ? 'is-active' : ''}`}
               onClick={() => {
                 setSelectionMenu(null);
-                setChatOpen((open) => !open);
+                onAiDockOpenChange(!aiDockOpen);
               }}
               disabled={needsContent}
-              aria-pressed={chatOpen}
+              aria-pressed={aiDockOpen}
               title={needsContent ? '正文未清洗' : '基于当前文章与 AI 连续对话'}
               data-tool="ai-chat"
             >
-              {chatOpen ? '🙈 关闭 AI' : '💬 询问 AI'}
+              {aiDockOpen ? '🙈 关闭 AI' : '💬 询问 AI'}
             </button>
             <button
               type="button"
@@ -914,7 +921,10 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
               dangerouslySetInnerHTML={{ __html: displayHtml }}
             />
           ) : (
-            <EmptyView title="这篇文章还没有正文" hint="可能还没有内容,或者源站返回为空。点 ↗ 打开原文试试。" />
+            <EmptyView
+              title="这篇文章还没有正文"
+              hint="可能还没有内容，或者源站返回为空。可以打开原文查看。"
+            />
           )}
         </div>
 
@@ -1003,22 +1013,6 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
           }}
         />
             </div>
-            <ArticleAiChatPanel
-              open={chatOpen}
-              articleTitle={parseArticleTitleTags(article.title).cleanTitle}
-              messages={chatMessages}
-              draft={chatDraft}
-              busy={chatBusy}
-              error={chatError}
-              onDraftChange={setChatDraft}
-              onSend={() => void sendChatMessage()}
-              onClear={() => {
-                setChatMessages([]);
-                setChatDraft('');
-                setChatError(null);
-              }}
-              onClose={() => setChatOpen(false)}
-            />
           </section>
         )}
 
@@ -1030,6 +1024,15 @@ export function ArticleReader({ article, feed, onToggleStar, onToast }: ArticleR
           <WebArticleView articleId={article.id} sourceUrl={articleUrl} />
         )}
       </div>
+      <ArticleAiChatPanel
+        open={aiDockOpen}
+        messages={chatMessages}
+        draft={chatDraft}
+        busy={chatBusy}
+        error={chatError}
+        onDraftChange={setChatDraft}
+        onSend={() => void sendChatMessage()}
+      />
       {selectionMenu && (
         <div
           className="article-reader__selection-menu"
@@ -1108,7 +1111,7 @@ function TagManagePanel({ articleTags, allTags, onAdd, onRemove, onCreate }: Tag
       <div className="sticky-tag-manage__section">
         <h4 className="sticky-tag-manage__heading">已应用({articleTags.length})</h4>
         {articleTags.length === 0 ? (
-          <p className="sticky-tag-manage__empty">还没有标签。点上方 ✏ 添加。</p>
+          <p className="sticky-tag-manage__empty">还没有标签，可以在上方创建。</p>
         ) : (
           <ul className="sticky-tag-manage__chips" data-sticky-section="applied">
             {articleTags.map((t) => (
@@ -1210,7 +1213,7 @@ function TagSuggestPanel({ busy, suggestions, articleTagNames, onApply, onApplyA
           <span>AI 正在分析文章...</span>
         </div>
       ) : suggestions.length === 0 ? (
-        <p className="sticky-tag-suggest__empty">点 🪄 标签建议 按钮触发 AI 推荐。</p>
+        <p className="sticky-tag-suggest__empty">点击“标签建议”生成 AI 推荐。</p>
       ) : (
         <>
           <div className="sticky-tag-suggest__header">

@@ -1,4 +1,6 @@
 .tags-page {
+  display: flex;
+  flex-direction: column;
   padding: 24px 32px 64px;
   height: 100%;
   overflow-y: auto;
@@ -16,14 +18,18 @@
 
 .tags-page__panes {
   display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
   grid-template-columns: minmax(280px, 360px) 1fr;
   gap: 24px;
   max-width: 1280px;
   margin: 0 auto;
-  align-items: start;
+  align-items: stretch;
 }
 
 .tags-page__left {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
@@ -144,14 +150,8 @@
 }
 
 .tags-page__empty {
-  font-size: 13px;
-  color: var(--fg-soft);
-  margin: 0;
-  padding: 16px;
-  text-align: center;
-  background: var(--bg-elev);
-  border: 1px dashed var(--border);
-  border-radius: 4px;
+  flex: 1 1 auto;
+  min-height: 180px;
 }
 
 /* 右栏 */
@@ -164,13 +164,8 @@
 }
 
 .tags-page__right-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   height: 100%;
   min-height: 200px;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .tags-page__right-header {

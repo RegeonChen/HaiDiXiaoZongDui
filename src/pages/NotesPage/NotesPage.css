@@ -1,4 +1,8 @@
 .notes-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
   max-width: 720px;
   margin: 0 auto;
   padding: 24px 32px 64px;
@@ -56,7 +60,8 @@
 
 .notes-page__textarea:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--border-strong);
+  box-shadow: none;
 }
 
 .notes-page__btn {
@@ -122,12 +127,6 @@
 }
 
 .notes-page__empty {
-  font-size: 13px;
-  color: var(--fg-soft);
-  margin: 0;
-  padding: 16px;
-  text-align: center;
-  background: var(--bg-elev);
-  border: 1px dashed var(--border);
-  border-radius: 4px;
+  flex: 1 1 auto;
+  min-height: 180px;
 }

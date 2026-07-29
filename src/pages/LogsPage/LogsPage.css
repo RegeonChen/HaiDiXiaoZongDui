@@ -1,20 +1,64 @@
 .logs-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
   max-width: 960px;
   margin: 0 auto;
   padding: 24px 32px 64px;
 }
 
+.logs-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
 .logs-page__title {
   font-size: 22px;
   font-weight: 600;
-  margin: 0 0 18px;
+  margin: 0;
+}
+
+.logs-page__header p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.logs-page__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.logs-page__actions button {
+  min-width: 72px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.logs-page__actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.logs-page__actions button:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .logs-page__placeholder {
-  padding: 24px 28px;
-  background: var(--bg-elev);
-  border: 1px dashed var(--border);
-  border-radius: 6px;
+  flex: 1 1 auto;
+  min-height: 180px;
 }
 
 .logs-page__placeholder-headline {
@@ -41,14 +85,8 @@
 }
 
 .logs-page__empty {
-  font-size: 13px;
-  color: var(--fg-soft);
-  margin: 0;
-  padding: 16px;
-  text-align: center;
-  background: var(--bg-elev);
-  border: 1px dashed var(--border);
-  border-radius: 4px;
+  flex: 1 1 auto;
+  min-height: 180px;
 }
 
 .logs-page__table {
@@ -63,6 +101,8 @@
   padding: 6px 10px;
   border: 1px solid var(--border);
   text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .logs-page__table th {

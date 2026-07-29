@@ -14,6 +14,7 @@ import type { Feed } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
+import { EmptyView } from '../../components/StatusView/EmptyView';
 import './OpmlExportPage.css';
 
 export interface OpmlExportPageProps {
@@ -136,7 +137,11 @@ export function OpmlExportPage({ onToast, onClose }: OpmlExportPageProps) {
       </div>
 
       {sortedFeeds.length === 0 ? (
-        <p className="opml-export-page__empty">还没有订阅源。先在侧栏添加几个再导出。</p>
+        <EmptyView
+          className="opml-export-page__empty"
+          title="还没有订阅源"
+          hint="先在一级目录添加订阅源，再返回这里导出。"
+        />
       ) : (
         <ul className="opml-export-page__list" data-testid="opml-export__list">
           {sortedFeeds.map((f) => {

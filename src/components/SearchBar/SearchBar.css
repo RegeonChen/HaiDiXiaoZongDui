@@ -21,8 +21,9 @@
 }
 
 .search-bar__input:focus {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
   background: var(--bg-elev);
+  box-shadow: none;
 }
 
 .search-bar__input::placeholder {

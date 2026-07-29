@@ -19,7 +19,7 @@
 }
 
 .add-group-dialog {
-  background: var(--bg-elevated, #ffffff);
+  background: var(--bg-elev);
   color: var(--fg, #1a1a1a);
   border-radius: 10px;
   padding: 24px;
@@ -38,7 +38,7 @@
 
 .add-group-dialog__hint {
   font-size: 13px;
-  color: var(--fg-muted, #6b7280);
+  color: var(--muted);
   margin: 0;
   line-height: 1.5;
 }
@@ -61,7 +61,8 @@
 }
 
 .add-group-dialog__input:focus {
-  border-color: var(--accent, #3b82f6);
+  border-color: var(--border-strong, #9ca3af);
+  box-shadow: none;
 }
 
 .add-group-dialog__error {
@@ -85,14 +86,14 @@
   padding: 7px 14px;
   border-radius: 6px;
   border: 1px solid var(--border, #d1d5db);
-  background: var(--bg-elevated, #ffffff);
+  background: var(--bg-elev);
   color: var(--fg, #1a1a1a);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 
 .add-group-dialog__btn:hover:not(:disabled) {
-  background: var(--bg-hover, #f3f4f6);
+  background: var(--bg-elev-hover);
 }
 
 .add-group-dialog__btn:disabled {

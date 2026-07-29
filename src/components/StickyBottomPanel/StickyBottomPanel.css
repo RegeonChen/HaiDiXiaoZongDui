@@ -175,6 +175,6 @@ html[data-theme='dark'] .sticky-bottom-panel {
   background: var(--bg);
   border-top-color: var(--border, #374151);
 }
-html[data-visual-theme='paper'] .sticky-bottom-panel {
+html[data-theme='light'][data-visual-theme='paper'] .sticky-bottom-panel {
   background: #fdf6e3;
 }

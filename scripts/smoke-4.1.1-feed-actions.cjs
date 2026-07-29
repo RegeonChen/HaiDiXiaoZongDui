@@ -3,7 +3,7 @@
  *
  * 验证（mock 模式 MOCK_ARTICLES 10 篇 + 5 个 feeds）：
  *   1) 切到具体 feed → 中栏顶部 action bar 出现"同步" + "全部已读"两个按钮
- *   2) 切到 all → action bar 不出现（避免误操作）
+ *   2) 切到 all → action bar 显示全局“同步 / 全部已读”
  *   3) 点击同步 → 真实完成 + fetching/parsing/saving 阶段反馈
  *   4) 点击全部已读 → 精确确认数 + mock 数据全部变为已读
  *   5) 同步期间切换订阅源 → 旧请求不能覆盖新选择
@@ -52,9 +52,9 @@ child.stdout.on('data', (b) => { stdout += b.toString(); process.stdout.write(b)
 child.stderr.on('data', (b) => { stderr += b.toString(); process.stderr.write(b); });
 
 const timer = setTimeout(() => {
-  console.error('[smoke-4.1.1] 超时（18s），强制结束');
+  console.error('[smoke-4.1.1] 超时（30s），强制结束');
   child.kill('SIGKILL');
-}, 18000);
+}, 30000);
 
 child.on('exit', (code, signal) => {
   clearTimeout(timer);

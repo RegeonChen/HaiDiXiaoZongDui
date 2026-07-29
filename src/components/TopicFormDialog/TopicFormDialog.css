@@ -88,7 +88,8 @@
 .topic-form-dialog__input:focus,
 .topic-form-dialog__textarea:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--border-strong);
+  box-shadow: none;
 }
 .topic-form-dialog__textarea {
   resize: vertical;

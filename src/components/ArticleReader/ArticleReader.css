@@ -1,11 +1,21 @@
 /* Mercury 风格 ArticleReader */
 .article-reader {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
+}
+
+.article-reader > .status-view {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  width: 100%;
+  min-height: 0;
+  align-self: stretch;
+  justify-self: stretch;
 }
 
 .article-reader__topbar {
@@ -17,6 +27,8 @@
   border-bottom: 1px solid var(--border-soft);
   flex-shrink: 0;
   background: var(--bg-elev);
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .article-reader__sourcelink {
@@ -98,6 +110,8 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .article-reader__pane {
@@ -648,8 +662,9 @@
 .sticky-tag-manage__empty {
   margin: 0;
   font-size: 12px;
+  line-height: 1.6;
   color: var(--muted, #9ca3af);
-  font-style: italic;
+  font-style: normal;
 }
 
 .sticky-tag-manage__chips {
@@ -754,7 +769,8 @@
   gap: 8px;
   padding: 8px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .sticky-tag-suggest__spinner {

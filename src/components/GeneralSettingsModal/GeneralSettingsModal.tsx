@@ -19,7 +19,6 @@
  *   - 各自持久化到 AppSettings，重启后各自保持
  */
 import { useEffect } from 'react';
-import type { Language } from '@shared/types';
 import { useAppearance } from '../../hooks/useAppearance';
 import { useTheme } from '../../hooks/useTheme';
 import './GeneralSettingsModal.css';
@@ -66,10 +65,6 @@ export function GeneralSettingsModal({ open, embedded = false, onClose, onToast 
     const ok = await appearance.setVisualTheme(id);
     onToast(ok ? '视觉主题已切换' : '切换失败', ok ? 'success' : 'error');
   };
-  const handleLanguage = async (lang: Language) => {
-    const ok = await appearance.setLanguage(lang);
-    onToast(ok ? '界面语言已切换' : '切换失败', ok ? 'success' : 'error');
-  };
   const handleFontSize = async (n: number) => {
     if (n < 10 || n > 32) return;
     const ok = await appearance.setFontSize(n);
@@ -93,16 +88,23 @@ export function GeneralSettingsModal({ open, embedded = false, onClose, onToast 
 
   const panel = (
     <div
-      className={`general-modal ${embedded ? 'general-modal--embedded' : ''}`}
+      className={`general-modal ${embedded ? 'general-modal--embedded settings-surface' : ''}`}
       role={embedded ? 'region' : 'dialog'}
       aria-modal={embedded ? undefined : true}
       aria-labelledby="general-modal-title"
       onClick={(e) => e.stopPropagation()}
     >
-        <div className="general-modal__header">
+        <div className={`general-modal__header ${embedded ? 'settings-surface__header' : ''}`}>
           <div>
-            <h2 id="general-modal-title" className="general-modal__title">通用设置</h2>
-            <p className="general-modal__subtitle">调整界面外观与阅读排版，修改会立即生效。</p>
+            <h2
+              id="general-modal-title"
+              className={`general-modal__title ${embedded ? 'settings-surface__title' : ''}`}
+            >
+              通用设置
+            </h2>
+            <p className={`general-modal__subtitle ${embedded ? 'settings-surface__intro' : ''}`}>
+              调整界面外观与阅读排版，修改会立即生效。
+            </p>
           </div>
           <button
             type="button"
@@ -113,108 +115,104 @@ export function GeneralSettingsModal({ open, embedded = false, onClose, onToast 
             ×
           </button>
         </div>
-        <div className="general-modal__body">
-          <section className="general-modal__section">
-            <h3 className="general-modal__section-title">界面语言</h3>
-            <div className="general-modal__radio-group">
-              {(['zh', 'en'] as Language[]).map((lang) => (
-                <button
-                  key={lang}
-                  type="button"
-                  className={`general-modal__radio ${appearance.language === lang ? 'is-active' : ''}`}
-                  onClick={() => void handleLanguage(lang)}
-                >
-                  {lang === 'zh' ? '中文' : 'English'}
-                </button>
-              ))}
+        <div className={`general-modal__body ${embedded ? 'settings-surface__body' : ''}`}>
+          <section className={`general-modal__section ${embedded ? 'settings-surface__section' : ''}`}>
+            <h3 className={`general-modal__section-title ${embedded ? 'settings-surface__section-title' : ''}`}>
+              字体主题
+            </h3>
+            <div className={embedded ? 'settings-surface__section-body' : undefined}>
+              <div className="general-modal__font-list">
+                {FONT_THEMES.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`general-modal__font-card ${appearance.fontTheme === f.id ? 'is-active' : ''}`}
+                    onClick={() => void handleFontTheme(f.id)}
+                    style={{ fontFamily: f.stack }}
+                  >
+                    <span className="general-modal__font-preview">{f.preview}</span>
+                    <span className="general-modal__font-label">{f.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </section>
 
-          <section className="general-modal__section">
-            <h3 className="general-modal__section-title">字体主题</h3>
-            <div className="general-modal__font-list">
-              {FONT_THEMES.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={`general-modal__font-card ${appearance.fontTheme === f.id ? 'is-active' : ''}`}
-                  onClick={() => void handleFontTheme(f.id)}
-                  style={{ fontFamily: f.stack }}
-                >
-                  <span className="general-modal__font-preview">{f.preview}</span>
-                  <span className="general-modal__font-label">{f.label}</span>
-                </button>
-              ))}
+          <section className={`general-modal__section ${embedded ? 'settings-surface__section' : ''}`}>
+            <h3 className={`general-modal__section-title ${embedded ? 'settings-surface__section-title' : ''}`}>
+              视觉主题
+            </h3>
+            <div className={embedded ? 'settings-surface__section-body' : undefined}>
+              <div className="general-modal__visual-list">
+                {VISUAL_THEMES.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    className={`general-modal__visual-card general-modal__visual-card--${v.id} ${appearance.visualTheme === v.id ? 'is-active' : ''}`}
+                    onClick={() => void handleVisualTheme(v.id)}
+                  >
+                    <span className="general-modal__visual-swatch" />
+                    <span className="general-modal__visual-label">{v.label}</span>
+                    <span className="general-modal__visual-desc">{v.description}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </section>
 
-          <section className="general-modal__section">
-            <h3 className="general-modal__section-title">视觉主题</h3>
-            <div className="general-modal__visual-list">
-              {VISUAL_THEMES.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  className={`general-modal__visual-card general-modal__visual-card--${v.id} ${appearance.visualTheme === v.id ? 'is-active' : ''}`}
-                  onClick={() => void handleVisualTheme(v.id)}
-                >
-                  <span className="general-modal__visual-swatch" />
-                  <span className="general-modal__visual-label">{v.label}</span>
-                  <span className="general-modal__visual-desc">{v.description}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="general-modal__section">
-            <h3 className="general-modal__section-title">排版</h3>
-            {/* Phase 4.2.1:系统字号 = 左/中栏 UI 字号(独立于正文字号)
-                - 拖动此滑块 → 左栏 + 中栏文字即时变化,右栏阅读区不变
-                - 范围 10-24,默认 14 */}
-            <div className="general-modal__row" data-testid="general-modal__system-font-size-row">
-              <label className="general-modal__label" htmlFor="general-modal__system-font-size-input">
-                系统字号
-              </label>
-              <input
-                id="general-modal__system-font-size-input"
-                type="number"
-                className="general-modal__input"
-                min={10}
-                max={24}
-                value={appearance.systemFontSize}
-                onChange={(e) => void handleSystemFontSize(Number(e.target.value))}
-                data-testid="general-modal__system-font-size"
-                title="左栏（订阅源）和中栏（文章列表）的文字大小，不影响右栏阅读区"
-              />
-              <span className="general-modal__hint">px（影响左/中栏）</span>
-            </div>
-            <div className="general-modal__row" data-testid="general-modal__font-size-row">
-              <label className="general-modal__label" htmlFor="general-modal__font-size-input">正文字号</label>
-              <input
-                id="general-modal__font-size-input"
-                type="number"
-                className="general-modal__input"
-                min={12}
-                max={24}
-                value={appearance.fontSize}
-                onChange={(e) => void handleFontSize(Number(e.target.value))}
-                data-testid="general-modal__font-size"
-                title="右栏阅读区文字大小，不影响左/中栏 UI"
-              />
-              <span className="general-modal__hint">px（仅影响右栏）</span>
-            </div>
-            <div className="general-modal__row">
-              <label className="general-modal__label">阅读宽度</label>
-              <input
-                type="number"
-                className="general-modal__input"
-                min={500}
-                max={1400}
-                step={50}
-                value={appearance.readingWidth}
-                onChange={(e) => void handleReadingWidth(Number(e.target.value))}
-              />
-              <span className="general-modal__hint">px</span>
+          <section className={`general-modal__section ${embedded ? 'settings-surface__section' : ''}`}>
+            <h3 className={`general-modal__section-title ${embedded ? 'settings-surface__section-title' : ''}`}>
+              排版
+            </h3>
+            <div className={embedded ? 'settings-surface__section-body settings-surface__section-body--rows' : undefined}>
+              {/* Phase 4.2.1:系统字号 = 左/中栏 UI 字号(独立于正文字号)
+                  - 拖动此滑块 → 左栏 + 中栏文字即时变化,右栏阅读区不变
+                  - 范围 10-24,默认 14 */}
+              <div className="general-modal__row" data-testid="general-modal__system-font-size-row">
+                <label className="general-modal__label" htmlFor="general-modal__system-font-size-input">
+                  系统字号
+                </label>
+                <input
+                  id="general-modal__system-font-size-input"
+                  type="number"
+                  className="general-modal__input"
+                  min={10}
+                  max={24}
+                  value={appearance.systemFontSize}
+                  onChange={(e) => void handleSystemFontSize(Number(e.target.value))}
+                  data-testid="general-modal__system-font-size"
+                  title="左栏（订阅源）和中栏（文章列表）的文字大小，不影响右栏阅读区"
+                />
+                <span className="general-modal__hint">px（影响左/中栏）</span>
+              </div>
+              <div className="general-modal__row" data-testid="general-modal__font-size-row">
+                <label className="general-modal__label" htmlFor="general-modal__font-size-input">正文字号</label>
+                <input
+                  id="general-modal__font-size-input"
+                  type="number"
+                  className="general-modal__input"
+                  min={12}
+                  max={24}
+                  value={appearance.fontSize}
+                  onChange={(e) => void handleFontSize(Number(e.target.value))}
+                  data-testid="general-modal__font-size"
+                  title="右栏阅读区文字大小，不影响左/中栏 UI"
+                />
+                <span className="general-modal__hint">px（仅影响右栏）</span>
+              </div>
+              <div className="general-modal__row">
+                <label className="general-modal__label">阅读宽度</label>
+                <input
+                  type="number"
+                  className="general-modal__input"
+                  min={500}
+                  max={1400}
+                  step={50}
+                  value={appearance.readingWidth}
+                  onChange={(e) => void handleReadingWidth(Number(e.target.value))}
+                />
+                <span className="general-modal__hint">px</span>
+              </div>
             </div>
           </section>
         </div>

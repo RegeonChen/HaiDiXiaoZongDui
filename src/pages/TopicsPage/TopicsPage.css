@@ -17,6 +17,13 @@
   position: relative;
 }
 
+.topics-page > .status-view {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 240px;
+  box-sizing: border-box;
+}
+
 .topics-page__title {
   font-size: 24px;
   font-weight: 600;
@@ -152,5 +159,5 @@
   border-color: var(--err);
 }
 .topics-page__item-btn--danger:hover {
-  background: #fbeae8;
+  background: color-mix(in srgb, var(--err) 12%, var(--bg));
 }

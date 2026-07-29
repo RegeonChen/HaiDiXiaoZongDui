@@ -63,8 +63,8 @@
 }
 
 .add-feed-dialog__input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  border-color: var(--border-strong);
+  box-shadow: none;
 }
 
 .add-feed-dialog__input:disabled {

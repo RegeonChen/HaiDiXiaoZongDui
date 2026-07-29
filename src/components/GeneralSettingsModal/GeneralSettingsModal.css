@@ -247,7 +247,7 @@
 
 /* 工作台内嵌形态：保留现有类名以兼容 smoke，但不再覆盖整张应用。 */
 .general-modal--embedded {
-  width: min(900px, calc(100% - 48px));
+  width: min(880px, calc(100% - 48px));
   max-height: none;
   margin: 24px auto 64px;
   border: 0;
@@ -278,9 +278,9 @@
 }
 
 .general-modal--embedded .general-modal__body {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 0;
   overflow: visible;
 }
@@ -293,11 +293,6 @@
   border-radius: 10px;
   background: var(--bg-elev);
   box-shadow: var(--shadow-sm);
-}
-
-.general-modal--embedded .general-modal__section:nth-child(2),
-.general-modal--embedded .general-modal__section:nth-child(3) {
-  grid-column: 1 / -1;
 }
 
 .general-modal--embedded .general-modal__section-title {
@@ -316,7 +311,7 @@
 
 .general-modal--embedded .general-modal__font-card,
 .general-modal--embedded .general-modal__visual-card {
-  min-height: 70px;
+  min-height: 66px;
   transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
 }
 
@@ -333,11 +328,6 @@
   }
 
   .general-modal--embedded .general-modal__body {
-    grid-template-columns: 1fr;
-  }
-
-  .general-modal--embedded .general-modal__section:nth-child(2),
-  .general-modal--embedded .general-modal__section:nth-child(3) {
-    grid-column: auto;
+    display: flex;
   }
 }

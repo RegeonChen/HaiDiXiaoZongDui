@@ -10,7 +10,7 @@
  * 这是"纸质主题"在深色模式下与"经典深色"完全一致的关键。
  *
  * Phase 4.2.1：新增 systemFontSize（控制左/中栏 UI 字号，独立于正文字号）
- *   + sidebarVisible（控制左栏折叠状态，写 --sidebar-visible CSS 变量供 Layout 用）
+ *   + sidebarVisible（持久化一级目录是否展开，供 App 初始化 DirectoryMode）
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useDataSource } from '../context/DataSourceContext';
@@ -49,7 +49,7 @@ export const FONT_STACKS: Record<string, string> = {
  * - 正文字号 → --font-size（驱动 ArticleReader 阅读区）
  * - 系统字号 → --ui-font-size（驱动左/中栏 UI）
  * - 阅读宽度 → --reading-width
- * - 侧栏可见 → data-sidebar-visible（"true" / "false"，Layout 用这个属性切换 display）
+ * - 一级目录可见 → data-sidebar-visible（"true" / "false"，供持久化语义与 smoke 验证）
  */
 function applyToHtml(
   fontTheme: string,
@@ -97,8 +97,8 @@ function applyToHtml(
   if (typeof systemFontSize === 'number' && systemFontSize >= 10 && systemFontSize <= 24) {
     html.style.setProperty('--ui-font-size', `${systemFontSize}px`);
   }
-  // Phase 4.2.1:侧栏可见性 — data-sidebar-visible 属性
-  //   Layout CSS 用 [data-sidebar-visible="false"] 选择器把左栏收起来
+  // Phase 4.2.1:一级目录可见性 — 同步到 data-sidebar-visible 属性。
+  // App 的 DirectoryMode 负责即时布局；此属性保留持久化语义与可验证状态。
   if (typeof sidebarVisible === 'boolean') {
     html.setAttribute('data-sidebar-visible', String(sidebarVisible));
   }

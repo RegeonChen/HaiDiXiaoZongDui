@@ -1,20 +1,27 @@
 /**
- * LogsPage — 本地日志（Phase 4 占位）
- *
- * log:* handler 已注册 stub（返回 NOT_IMPLEMENTED）。
- * Phase 4 启动后由陈冠中接入 Logger + 真实 handler。
+ * LogsPage — 本地日志。
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { LogEntry } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
+import { EmptyView } from '../../components/StatusView/EmptyView';
+import { ErrorView } from '../../components/StatusView/ErrorView';
+import { LoadingView } from '../../components/StatusView/LoadingView';
 import './LogsPage.css';
 
-export function LogsPage() {
+export interface LogsPageProps {
+  onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
+}
+
+export function LogsPage({ onToast }: LogsPageProps) {
   const ds = useDataSource();
   const [logs, setLogs] = useState<LogEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
-  useEffect(() => {
+  const loadLogs = useCallback(() => {
+    setLogs(null);
+    setError(null);
     void (async () => {
       const r = await ds.logList(100);
       if (r.kind === 'ready') {
@@ -27,30 +34,57 @@ export function LogsPage() {
     })();
   }, [ds]);
 
-  const notImplemented = !!error && /NOT_IMPLEMENTED|日志|Phase 4/i.test(error);
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
 
-  if (notImplemented) {
-    return (
-      <div className="logs-page">
-        <h1 className="logs-page__title">本地日志</h1>
-        <div className="logs-page__placeholder">
-          <p className="logs-page__placeholder-headline">日志查看等待 Phase 4 接入</p>
-          <p className="logs-page__placeholder-body">
-            本地 Logger（debug/info/warn/error）+ UI 查看 + 导出，由陈冠中在 Phase 4 接入。
-            当前的 <code>log:*</code> IPC handler 已经注册并返回 <code>NOT_IMPLEMENTED</code> 占位响应。
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const handleExport = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const result = await ds.logExport();
+      if (result.kind === 'ready') {
+        if (result.data) onToast(`日志已导出：${result.data}`, 'success');
+      } else {
+        onToast(
+          `日志导出失败：${result.kind === 'error' ? result.error : '数据仍在加载'}`,
+          'error'
+        );
+      }
+    } catch (exportError) {
+      onToast(
+        `日志导出失败：${exportError instanceof Error ? exportError.message : String(exportError)}`,
+        'error'
+      );
+    } finally {
+      setExporting(false);
+    }
+  }, [ds, exporting, onToast]);
 
   return (
     <div className="logs-page">
-      <h1 className="logs-page__title">本地日志</h1>
-      {logs === null ? (
-        <p className="logs-page__empty">正在加载…</p>
+      <header className="logs-page__header">
+        <div>
+          <h1 className="logs-page__title">本地日志</h1>
+          <p>仅记录脱敏后的应用启动、同步和导入导出事件。</p>
+        </div>
+        <div className="logs-page__actions">
+          <button type="button" onClick={loadLogs}>刷新</button>
+          <button type="button" onClick={() => void handleExport()} disabled={exporting}>
+            {exporting ? '正在导出…' : '导出日志'}
+          </button>
+        </div>
+      </header>
+      {error ? (
+        <ErrorView message={error} onRetry={loadLogs} />
+      ) : logs === null ? (
+        <LoadingView message="正在加载日志…" />
       ) : logs.length === 0 ? (
-        <p className="logs-page__empty">还没有日志。同步 / 抓取 / 渲染过程中的事件会出现在这里。</p>
+        <EmptyView
+          className="logs-page__empty"
+          title="还没有日志"
+          hint="同步、抓取和渲染过程中的事件会显示在这里。"
+        />
       ) : (
         <table className="logs-page__table">
           <thead>
@@ -59,6 +93,7 @@ export function LogsPage() {
               <th>级别</th>
               <th>模块</th>
               <th>消息</th>
+              <th>详情</th>
             </tr>
           </thead>
           <tbody>
@@ -68,6 +103,7 @@ export function LogsPage() {
                 <td>{l.level}</td>
                 <td>{l.module}</td>
                 <td>{l.message}</td>
+                <td>{l.detail ?? '—'}</td>
               </tr>
             ))}
           </tbody>

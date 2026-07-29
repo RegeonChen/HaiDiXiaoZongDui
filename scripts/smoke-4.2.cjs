@@ -1,14 +1,14 @@
 /**
  * Phase 4.2.1 smoke: Navbar 图标(AI 粗体字母 / 专题多源聚合 SVG)
- *   + 系统字号滑块(独立于正文字号) + 隐藏左栏按钮(平滑收起 + 拖拽分隔条隐藏)
+ *   + 系统字号滑块(独立于正文字号) + 阅读功能键三级目录循环
  *
  * 走 mock 模式（MOCK_ARTICLES 10 篇 + 5 个 feeds）：
  *   1) AI 入口图标 = 粗体字母 "AI"（<strong class="app-header__nav-icon--ai">）
  *   2) 专题入口图标 = SVG 多源聚合（<svg class="app-header__nav-icon--topics">）
- *   3) 顶栏隐藏左栏按钮存在 + 初始可见（sidebarVisible=true → ◀ + title="隐藏左栏"）
- *   4) 点隐藏按钮 → aside 不渲染 + .app-main is-sidebar-hidden + data-sidebar-visible="false"
- *      + 按钮变 ▶ + 只剩 1 个 ResizeHandle（避免拖出隐藏态下的异常宽度）
- *   5) 再点一次 → 恢复展开
+ *   3) 顶部小三角已移除；阅读功能键初始为两级目录全开
+ *   4) 第一次再点阅读 → 收起一级目录，只剩 1 个 ResizeHandle
+ *   5) 第二次再点阅读 → 收起二级目录，只剩灵活窗口且无 ResizeHandle
+ *   6) 第三次再点阅读 → 两级目录同时恢复
  *   6) 打开通用设置弹窗 → 系统字号滑块存在 + 当前值=14（默认）
  *   7) 改系统字号到 20 → <html> --ui-font-size="20px" + FeedList + ArticleList 根 fontSize=20px
  *   8) 子元素 em 缩放：.feed-list__item 实际 ≈ 18.6px（20 * 0.93）
@@ -76,7 +76,7 @@ child.on('exit', (code, signal) => {
 
   const ok = /SMOKE_REPORT_PASS/.test(stdout);
   if (ok) {
-    console.log('[smoke-4.2] ✓ Navbar 图标 + 系统字号 + 隐藏左栏 验证全部通过');
+    console.log('[smoke-4.2] ✓ Navbar 图标 + 系统字号 + 阅读键三级目录循环验证全部通过');
     finish(0);
   } else {
     console.error('[smoke-4.2] ✗ 验证失败，未见 SMOKE_REPORT_PASS');

@@ -3,17 +3,22 @@
  */
 .topic-briefing {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 12px;
+  width: 100%;
+  min-height: 240px;
   max-width: 800px;
 }
 
 .topic-briefing__empty-state {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
+  justify-content: center;
   align-items: center;
   gap: 16px;
-  padding: 32px 0;
+  padding: 16px 0;
 }
 
 .topic-briefing__generate-btn {

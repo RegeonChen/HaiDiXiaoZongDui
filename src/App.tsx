@@ -7,7 +7,7 @@
  *
  * Phase 2.5.1：删除订阅源、OPML 导入自动同步、三栏拖拽
  * Phase 3 Integration：
- *  - 顶栏 6 个页面入口（设置/标签/笔记/文摘/专题/日志）
+ *  - 工作台页面入口（标签/笔记/文摘/专题）+ 设置工作区（通用/AI/日志）
  *  - SettingsPage 含 AI Provider、字体/视觉主题、多语言
  *  - ArticleReader 接入 AI 工具栏（摘要/翻译/标签建议/笔记/专题）
  */
@@ -18,7 +18,13 @@ import { useSelection } from './hooks/useSelection';
 import { usePaneWidths } from './hooks/usePaneWidths';
 import { ThemeProvider, useTheme } from './hooks/useTheme';
 import { useAppearance } from './hooks/useAppearance';
-import { Layout, type AppPage } from './components/Layout/Layout';
+import {
+  Layout,
+  type AppPage,
+  type DirectoryMode,
+  nextDirectoryMode,
+  type WorkbenchTab
+} from './components/Layout/Layout';
 import { FeedList } from './components/FeedList/FeedList';
 import { ArticleList } from './components/ArticleList/ArticleList';
 import { ArticleReader } from './components/ArticleReader/ArticleReader';
@@ -30,14 +36,12 @@ import { ContextMenuHost } from './components/ContextMenu/ContextMenu';
 import { SearchBar } from './components/SearchBar/SearchBar';
 import { LoadingView } from './components/StatusView/LoadingView';
 import { ErrorView } from './components/StatusView/ErrorView';
-import { SettingsPage } from './pages/SettingsPage/SettingsPage';
 import { TagsPage } from './pages/TagsPage/TagsPage';
 import { NotesPage } from './pages/NotesPage/NotesPage';
 import { DigestsPage } from './pages/DigestsPage/DigestsPage';
 import { TopicsPage } from './pages/TopicsPage/TopicsPage';
-import { LogsPage } from './pages/LogsPage/LogsPage';
 import { OpmlExportPage } from './pages/OpmlExportPage/OpmlExportPage';
-import { GeneralSettingsModal } from './components/GeneralSettingsModal/GeneralSettingsModal';
+import { UnifiedSettingsPage } from './pages/UnifiedSettingsPage/UnifiedSettingsPage';
 import './index.css';
 import './styles/workbench-polish.css';
 
@@ -71,10 +75,22 @@ export function App() {
   const { effective: effectiveTheme } = useTheme();
   const appearance = useAppearance(effectiveTheme);
 
-  const [currentPage, setCurrentPage] = useState<AppPage>('reader');
+  const [directoryMode, setDirectoryMode] = useState<DirectoryMode>('both');
+  const directoryModeHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!appearance.loaded || directoryModeHydratedRef.current) return;
+    directoryModeHydratedRef.current = true;
+    setDirectoryMode(appearance.sidebarVisible ? 'both' : 'secondary');
+  }, [appearance.loaded, appearance.sidebarVisible]);
+
+  const [openTabs, setOpenTabs] = useState<WorkbenchTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState('reader');
+  const [aiDockOpen, setAiDockOpen] = useState(false);
+  const articleTabSnapshotsRef = useRef<Map<string, Article>>(new Map());
+  const activeTab = openTabs.find((tab) => tab.id === activeTabId);
+  const currentPage: AppPage = activeTab?.page ?? 'reader';
   const [feedsState, setFeedsState] = useState<FeedsState>({ kind: 'loading' });
   const [articlesState, setArticlesState] = useState<ArticlesState>({ kind: 'loading' });
-  const [allArticlesState, setAllArticlesState] = useState<ArticlesState>({ kind: 'loading' });
   // 从专题图打开的文章可能不在当前分页的前 50 条，用独立快照保证阅读器仍能立即显示。
   const [externalSelectedArticle, setExternalSelectedArticle] = useState<Article | null>(null);
   // Phase 3.7.1:文章列表分页
@@ -107,6 +123,7 @@ export function App() {
 
   // Phase 3.6.3：数据库精确计数
   const [counts, setCounts] = useState<{ all: number; unread: number; starred: number }>({ all: 0, unread: 0, starred: 0 });
+  const [feedUnreadCounts, setFeedUnreadCounts] = useState<Record<string, number>>({});
   // Phase 3.6.2：同步进度（两态：进行中 / 完成；完成后 3 秒自动消失）
   type SyncProgress =
     | { kind: 'progress'; feedName: string; completed: number; total: number; okCount: number; failCount: number; stage?: SyncStage | null }
@@ -126,23 +143,6 @@ export function App() {
   const dismissToast = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
-
-  // Phase 4.2.1:切换左栏可见性
-  //   - 调 useAppearance.setSidebarVisible(false/true) → IPC 持久化 + applyToHtml 写 data-sidebar-visible
-  //   - 不需要本地 state 镜像(useAppearance 已是权威 state)
-  const handleToggleSidebar = useCallback(() => {
-    void appearance.setSidebarVisible(!appearance.sidebarVisible);
-  }, [appearance]);
-
-  // Phase 4.2.1:多语言 tooltip 文案(根据 useAppearance.language)
-  //   - 展开时:"隐藏左栏" / "Hide Sidebar"
-  //   - 隐藏时:"显示左栏" / "Show Sidebar"
-  const sidebarToggleTitle = useMemo(
-    () => (appearance.language === 'en'
-      ? appearance.sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar'
-      : appearance.sidebarVisible ? '隐藏左栏' : '显示左栏'),
-    [appearance.language, appearance.sidebarVisible]
-  );
 
   // 拉 feeds
   const refreshFeeds = useCallback(async () => {
@@ -253,22 +253,14 @@ export function App() {
     }
   }, [ds]);
 
-  // 初次拉取 feeds + 全部文章（侧栏计数）
+  // 初次拉取目录数据。文章列表由当前筛选的分页请求独立加载。
   useEffect(() => {
     void refreshFeeds();
     void refreshCounts();
     void refreshTags();
     void refreshTagCounts();
     void refreshGroups();
-    void (async () => {
-      const result = await ds.articles({});
-      if (result.kind === 'ready') {
-        setAllArticlesState({ kind: 'ready', data: result.data });
-      } else {
-        setAllArticlesState({ kind: 'ready', data: [] });
-      }
-    })();
-  }, [refreshFeeds, refreshTags, refreshTagCounts, refreshGroups, ds]);
+  }, [refreshCounts, refreshFeeds, refreshGroups, refreshTagCounts, refreshTags]);
 
   // 当 feed 选择变化时拉取对应文章
   useEffect(() => {
@@ -295,14 +287,10 @@ export function App() {
       void refreshTags();
       void refreshTagCounts();
       void refreshGroups();
-      void (async () => {
-        const r = await ds.articles({});
-        if (r.kind === 'ready') setAllArticlesState({ kind: 'ready', data: r.data });
-      })();
     };
     window.addEventListener('juhe:refresh', handler);
     return () => window.removeEventListener('juhe:refresh', handler);
-  }, [refreshFeeds, refreshCounts, refreshTags, refreshTagCounts, refreshGroups, ds]);
+  }, [refreshCounts, refreshFeeds, refreshGroups, refreshTagCounts, refreshTags]);
 
   // Phase 3.6.2：组件卸载时清理进度条延迟计时器
   useEffect(() => {
@@ -320,7 +308,32 @@ export function App() {
 
   const feeds = feedsState.kind === 'ready' ? feedsState.data : [];
   const articles = articlesState.kind === 'ready' ? articlesState.data : [];
-  const allArticles = allArticlesState.kind === 'ready' ? allArticlesState.data : [];
+
+  // 单个订阅源的未读数也必须是数据库全集计数，不能从当前 50 条分页中推导。
+  // 这里复用既有 articleCount，不扩大共享 IPC 协议；失败的条目不写入 map，
+  // FeedList 会回退到当前页计数而不是展示一个伪精确值。
+  useEffect(() => {
+    let cancelled = false;
+    if (feeds.length === 0) {
+      setFeedUnreadCounts({});
+      return () => {
+        cancelled = true;
+      };
+    }
+    void (async () => {
+      const entries = await Promise.all(feeds.map(async (feed) => {
+        const result = await ds.articleCount({ feedId: feed.id, isRead: false });
+        return result.kind === 'ready' ? ([feed.id, result.data] as const) : null;
+      }));
+      if (cancelled) return;
+      setFeedUnreadCounts(Object.fromEntries(
+        entries.filter((entry): entry is readonly [string, number] => entry !== null)
+      ));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [counts.unread, ds, feeds]);
 
   // Phase 3.5.x：tagCounts 已从 articleCountsByTag 真实拉取（ArticleRepository.countByTag），
   // 直接用 state 即可，不用 useMemo 推导（推导会覆盖真实数据）。
@@ -328,6 +341,7 @@ export function App() {
   const selectedArticle = useMemo<Article | null>(() => {
     if (!selection.articleId) return null;
     return articles.find((a) => a.id === selection.articleId) ??
+      articleTabSnapshotsRef.current.get(selection.articleId) ??
       (externalSelectedArticle?.id === selection.articleId ? externalSelectedArticle : null);
   }, [articles, externalSelectedArticle, selection.articleId]);
 
@@ -349,45 +363,198 @@ export function App() {
     return f?.siteTitle || f?.title || '未知';
   }, [feeds, tags, selection.feedId]);
 
+  const ensurePageTab = useCallback((page: AppPage) => {
+    if (page === 'reader') {
+      const selectedArticleTabId = selection.articleId ? `article:${selection.articleId}` : null;
+      setActiveTabId(
+        selectedArticleTabId && openTabs.some((tab) => tab.id === selectedArticleTabId)
+          ? selectedArticleTabId
+          : 'reader'
+      );
+      return;
+    }
+    const metadata: Record<Exclude<AppPage, 'reader'>, Omit<WorkbenchTab, 'id' | 'page'>> = {
+      settings: { label: '设置', icon: 'settings', closeable: true },
+      tags: { label: '标签管理', icon: 'tags', closeable: true },
+      notes: { label: '笔记', icon: 'notes', closeable: true },
+      digests: { label: '文摘', icon: 'digests', closeable: true },
+      topics: { label: '专题', icon: 'topics', closeable: true },
+      'opml-export': { label: '导出 OPML', icon: 'export', closeable: true }
+    };
+    const id = `page:${page}`;
+    setOpenTabs((prev) => prev.some((tab) => tab.id === id)
+      ? prev
+      : [...prev, { id, page, ...metadata[page] }]);
+    setActiveTabId(id);
+  }, [openTabs, selection.articleId]);
+
+  const handleReaderAction = useCallback(() => {
+    if (currentPage !== 'reader') {
+      ensurePageTab('reader');
+      return;
+    }
+    directoryModeHydratedRef.current = true;
+    const nextMode = nextDirectoryMode(directoryMode);
+    setDirectoryMode(nextMode);
+    if (directoryMode === 'both' || nextMode === 'both') {
+      void appearance.setSidebarVisible(nextMode === 'both');
+    }
+  }, [appearance, currentPage, directoryMode, ensurePageTab]);
+
+  const openArticleTab = useCallback((article: Article) => {
+    articleTabSnapshotsRef.current.set(article.id, article);
+    const id = `article:${article.id}`;
+    const label = article.title.trim() || '未命名文章';
+    setOpenTabs((prev) => {
+      const existing = prev.find((tab) => tab.id === id);
+      if (existing) {
+        return prev.map((tab) => tab.id === id ? { ...tab, label } : tab);
+      }
+      return [...prev, {
+        id,
+        label,
+        page: 'reader',
+        articleId: article.id,
+        icon: 'article',
+        closeable: true
+      }];
+    });
+    setActiveTabId(id);
+  }, []);
+
+  const activateWorkbenchTab = useCallback((tab: WorkbenchTab) => {
+    setActiveTabId(tab.id);
+    if (tab.page !== 'reader') return;
+    if (!tab.articleId) {
+      setExternalSelectedArticle(null);
+      selectArticle(null);
+      return;
+    }
+    const article = articles.find((item) => item.id === tab.articleId)
+      ?? articleTabSnapshotsRef.current.get(tab.articleId)
+      ?? null;
+    if (!article) return;
+    articleTabSnapshotsRef.current.set(article.id, article);
+    setExternalSelectedArticle(article);
+    selectFeed(article.feedId);
+    selectArticle(article.id);
+  }, [articles, selectArticle, selectFeed]);
+
+  const handleTabSelect = useCallback((tabId: string) => {
+    const tab = openTabs.find((item) => item.id === tabId);
+    if (tab) activateWorkbenchTab(tab);
+  }, [activateWorkbenchTab, openTabs]);
+
+  const handleTabClose = useCallback((tabId: string) => {
+    const closingIndex = openTabs.findIndex((tab) => tab.id === tabId);
+    if (closingIndex < 0 || !openTabs[closingIndex].closeable) return;
+    const closingTab = openTabs[closingIndex];
+    if (closingTab.articleId) {
+      articleTabSnapshotsRef.current.delete(closingTab.articleId);
+    }
+    const nextTabs = openTabs.filter((tab) => tab.id !== tabId);
+    setOpenTabs(nextTabs);
+    if (activeTabId !== tabId) return;
+    const fallback = nextTabs[Math.max(0, closingIndex - 1)] ?? nextTabs[0];
+    if (fallback) {
+      activateWorkbenchTab(fallback);
+      return;
+    }
+    setActiveTabId('reader');
+    setExternalSelectedArticle(null);
+    selectArticle(null);
+  }, [activateWorkbenchTab, activeTabId, openTabs, selectArticle]);
+
+  const updateArticleEverywhere = useCallback(
+    (id: string, patch: Partial<Pick<Article, 'isRead' | 'isStarred'>>) => {
+      setArticlesState((prev) => {
+        if (prev.kind !== 'ready') return prev;
+        return {
+          kind: 'ready',
+          data: prev.data.map((article) => article.id === id ? { ...article, ...patch } : article)
+        };
+      });
+      setExternalSelectedArticle((prev) => prev?.id === id ? { ...prev, ...patch } : prev);
+      const snapshot = articleTabSnapshotsRef.current.get(id);
+      if (snapshot) {
+        articleTabSnapshotsRef.current.set(id, { ...snapshot, ...patch });
+      }
+    },
+    []
+  );
+
+  const markSnapshotsReadByFeed = useCallback((feedIds: ReadonlySet<string>) => {
+    for (const [articleId, article] of articleTabSnapshotsRef.current) {
+      if (feedIds.has(article.feedId) && !article.isRead) {
+        articleTabSnapshotsRef.current.set(articleId, { ...article, isRead: true });
+      }
+    }
+    setExternalSelectedArticle((prev) =>
+      prev && feedIds.has(prev.feedId) ? { ...prev, isRead: true } : prev
+    );
+  }, []);
+
+  const purgeArticleTabsByFeed = useCallback((feedIds: ReadonlySet<string>) => {
+    const removedTabIds = new Set<string>();
+    for (const tab of openTabs) {
+      if (!tab.articleId) continue;
+      const snapshot = articleTabSnapshotsRef.current.get(tab.articleId);
+      if (snapshot && feedIds.has(snapshot.feedId)) {
+        removedTabIds.add(tab.id);
+        articleTabSnapshotsRef.current.delete(tab.articleId);
+      }
+    }
+    if (removedTabIds.size === 0) return;
+    setOpenTabs((prev) => prev.filter((tab) => !removedTabIds.has(tab.id)));
+    if (removedTabIds.has(activeTabId)) {
+      setActiveTabId('reader');
+      setExternalSelectedArticle(null);
+      setAiDockOpen(false);
+      selectArticle(null);
+    }
+  }, [activeTabId, openTabs, selectArticle]);
+
   const handleSelectArticle = useCallback(
     (id: string) => {
       setExternalSelectedArticle(null);
       selectArticle(id);
-      const a = articles.find((x) => x.id === id);
+      const a = articles.find((x) => x.id === id)
+        ?? articleTabSnapshotsRef.current.get(id);
+      if (a) openArticleTab(a);
       if (a && !a.isRead) {
-        void ds.markRead(id, true);
-        setArticlesState((prev) => {
-          if (prev.kind !== 'ready') return prev;
-          return {
-            kind: 'ready',
-            data: prev.data.map((x) => (x.id === id ? { ...x, isRead: true } : x))
-          };
-        });
-        setAllArticlesState((prev) => {
-          if (prev.kind !== 'ready') return prev;
-          return {
-            kind: 'ready',
-            data: prev.data.map((x) => (x.id === id ? { ...x, isRead: true } : x))
-          };
-        });
-        void refreshCounts();
+        void (async () => {
+          try {
+            await ds.markRead(id, true);
+            updateArticleEverywhere(id, { isRead: true });
+            await refreshCounts();
+          } catch (error) {
+            pushToast(
+              `标记已读失败：${error instanceof Error ? error.message : String(error)}`,
+              'error'
+            );
+          }
+        })();
       }
     },
-    [articles, ds, selectArticle, refreshCounts]
+    [articles, ds, openArticleTab, pushToast, refreshCounts, selectArticle, updateArticleEverywhere]
   );
 
   const handleToggleStar = useCallback(
     (id: string, isStarred: boolean) => {
-      void ds.markStarred(id, isStarred);
-      const updateList = (prev: ArticlesState): ArticlesState => {
-        if (prev.kind !== 'ready') return prev;
-        return { kind: 'ready', data: prev.data.map((x) => (x.id === id ? { ...x, isStarred } : x)) };
-      };
-      setArticlesState(updateList);
-      setAllArticlesState(updateList);
-      void refreshCounts();
+      void (async () => {
+        try {
+          await ds.markStarred(id, isStarred);
+          updateArticleEverywhere(id, { isStarred });
+          await refreshCounts();
+        } catch (error) {
+          pushToast(
+            `更新星标失败：${error instanceof Error ? error.message : String(error)}`,
+            'error'
+          );
+        }
+      })();
     },
-    [ds, refreshCounts]
+    [ds, pushToast, refreshCounts, updateArticleEverywhere]
   );
 
   // Phase 4.1.1:同步当前选中订阅源(中栏顶部"同步"按钮)
@@ -401,7 +568,7 @@ export function App() {
     if (typeof fid !== 'string') return;
     if (fid === 'all' || fid === 'unread' || fid === 'starred' || fid.startsWith('tag:')) return;
     const feed = feeds.find((f) => f.id === fid);
-    if (!feed || feedActionBusy) return;
+    if (!feed || feedActionBusy || syncing) return;
     setFeedActionBusy(true);
     if (syncDoneTimerRef.current !== null) {
       clearTimeout(syncDoneTimerRef.current);
@@ -467,10 +634,6 @@ export function App() {
         pushToast(msg, 'success');
         finishProgress(true);
         setFailedFeedIds((prev) => prev.filter((id) => id !== feed.id));
-        const result = await ds.articles({});
-        if (result.kind === 'ready') {
-          setAllArticlesState({ kind: 'ready', data: result.data });
-        }
       } else {
         pushToast(`同步失败：${r.error ?? '未知错误'}`, 'error');
         finishProgress(false);
@@ -494,10 +657,20 @@ export function App() {
       void refreshCounts();
       setFeedActionBusy(false);
     }
-  }, [selection.feedId, feeds, feedActionBusy, ds, pushToast, refreshFeeds, refreshArticles, refreshCounts]);
+  }, [
+    selection.feedId,
+    feeds,
+    feedActionBusy,
+    syncing,
+    ds,
+    pushToast,
+    refreshFeeds,
+    refreshArticles,
+    refreshCounts
+  ]);
 
   // Phase 4.1.1:全部标为已读(中栏顶部"全部已读"按钮)
-  //   - 仅对具体 feed 有效(all/unread/starred/tag: 不显示按钮)
+  //   - 对具体 feed 生效；“所有订阅源”由下面的全局处理器统一处理
   //   - 调 ds.markAllReadByFeed 返回更新的文章数
   //   - 完成后本地 articles 状态同步 isRead=true + 调 refreshArticles 触发重新分页
   //   - 调 refreshCounts 侧栏未读数实时更新
@@ -506,7 +679,7 @@ export function App() {
     if (typeof fid !== 'string') return;
     if (fid === 'all' || fid === 'unread' || fid === 'starred' || fid.startsWith('tag:')) return;
     const feed = feeds.find((f) => f.id === fid);
-    if (!feed || feedActionBusy) return;
+    if (!feed || feedActionBusy || syncing) return;
     setFeedActionBusy(true);
     try {
       const unreadCountResult = await ds.articleCount({ feedId: feed.id, isRead: false });
@@ -540,13 +713,7 @@ export function App() {
           data: prev.data.map((a) => (a.feedId === feed.id ? { ...a, isRead: true } : a))
         };
       });
-      setAllArticlesState((prev) => {
-        if (prev.kind !== 'ready') return prev;
-        return {
-          kind: 'ready',
-          data: prev.data.map((a) => (a.feedId === feed.id ? { ...a, isRead: true } : a))
-        };
-      });
+      markSnapshotsReadByFeed(new Set([feed.id]));
       // 刷新当前分页 articles + 侧栏计数
       if (selectedFeedIdRef.current === feed.id) {
         await refreshArticles({ feedId: feed.id });
@@ -557,16 +724,107 @@ export function App() {
     } finally {
       setFeedActionBusy(false);
     }
-  }, [selection.feedId, feeds, feedActionBusy, ds, pushToast, refreshArticles, refreshCounts]);
+  }, [
+    selection.feedId,
+    feeds,
+    feedActionBusy,
+    syncing,
+    ds,
+    pushToast,
+    markSnapshotsReadByFeed,
+    refreshArticles,
+    refreshCounts
+  ]);
+
+  // “所有订阅源”的全部已读：沿用现有逐订阅源接口，避免扩大共享 IPC 协议。
+  const handleMarkAllReadAcrossFeeds = useCallback(async () => {
+    if (selection.feedId !== 'all' || feedActionBusy || syncing) return;
+    setFeedActionBusy(true);
+    try {
+      const unreadCountResult = await ds.articleCount({ isRead: false });
+      if (unreadCountResult.kind !== 'ready') {
+        throw new Error(
+          unreadCountResult.kind === 'error' ? unreadCountResult.error : '未读文章数仍在加载'
+        );
+      }
+      const unreadCount = unreadCountResult.data;
+      if (unreadCount === 0) {
+        pushToast('所有订阅源中没有未读文章', 'info');
+        return;
+      }
+      const ok = await confirmRef.current?.open({
+        title: '全部标为已读',
+        message: `确定要把所有订阅源中的 ${unreadCount} 篇未读文章全部标为已读？`,
+        confirmLabel: '全部已读',
+        cancelLabel: '取消'
+      });
+      if (!ok) return;
+
+      let markedCount = 0;
+      const updatedFeedIds = new Set<string>();
+      const failedFeedNames: string[] = [];
+      for (const feed of feeds) {
+        try {
+          markedCount += await ds.markAllReadByFeed(feed.id);
+          updatedFeedIds.add(feed.id);
+        } catch {
+          failedFeedNames.push(feed.siteTitle || feed.title || feed.url);
+        }
+      }
+
+      const markSuccessfulFeedsRead = (prev: ArticlesState): ArticlesState => {
+        if (prev.kind !== 'ready') return prev;
+        return {
+          kind: 'ready',
+          data: prev.data.map((article) =>
+            updatedFeedIds.has(article.feedId) ? { ...article, isRead: true } : article
+          )
+        };
+      };
+      setArticlesState(markSuccessfulFeedsRead);
+      markSnapshotsReadByFeed(updatedFeedIds);
+
+      if (selectedFeedIdRef.current === 'all') {
+        await refreshArticles({});
+      }
+      void refreshCounts();
+
+      if (failedFeedNames.length === 0) {
+        pushToast(`已标记 ${markedCount} 篇为已读`, 'success');
+      } else {
+        pushToast(
+          `已标记 ${markedCount} 篇为已读；${failedFeedNames.length} 个订阅源处理失败`,
+          'error'
+        );
+      }
+    } catch (e) {
+      pushToast(`标记失败：${e instanceof Error ? e.message : String(e)}`, 'error');
+    } finally {
+      setFeedActionBusy(false);
+    }
+  }, [
+    selection.feedId,
+    feedActionBusy,
+    syncing,
+    ds,
+    feeds,
+    markSnapshotsReadByFeed,
+    pushToast,
+    refreshArticles,
+    refreshCounts
+  ]);
 
   // Phase 4.1.1:判断当前选中的 feedId 是否显示同步/全部已读按钮
-  //   - 仅具体 feed 显示(all/unread/starred/tag: 都不显示,避免误操作)
+  //   - “所有订阅源”和具体 feed 显示；未读/星标/tag 筛选不显示，避免范围歧义
   const showFeedActionBar = useMemo(() => {
     const fid = selection.feedId;
     if (typeof fid !== 'string') return false;
-    if (fid === 'all' || fid === 'unread' || fid === 'starred' || fid.startsWith('tag:')) return false;
+    if (fid === 'all') return true;
+    if (fid === 'unread' || fid === 'starred' || fid.startsWith('tag:')) return false;
     return feeds.some((f) => f.id === fid);
   }, [selection.feedId, feeds]);
+  const isAllFeedSelection = selection.feedId === 'all';
+  const feedActionBarBusy = feedActionBusy || syncing;
 
   // P2 体验打磨：全局键盘快捷键
   //   j / k        下一条 / 上一条 文章（自动 mark read）
@@ -652,32 +910,31 @@ export function App() {
       }
 
       // o: 打开原文
-      if (key === 'o' && selection.articleId) {
+      if (key === 'o' && selectedArticle) {
         e.preventDefault();
-        const a = articlesState.kind === 'ready'
-          ? articlesState.data.find((x) => x.id === selection.articleId)
-          : null;
-        if (a?.url) {
-          void window.api.shell.openExternal(a.url);
-        }
+        void window.api.shell.openExternal(selectedArticle.url);
         return;
       }
 
       // s: 切换星标
-      if (key === 's' && selection.articleId) {
+      if (key === 's' && selectedArticle) {
         e.preventDefault();
-        const a = articlesState.kind === 'ready'
-          ? articlesState.data.find((x) => x.id === selection.articleId)
-          : null;
-        if (a) {
-          handleToggleStar(a.id, !a.isStarred);
-        }
+        handleToggleStar(selectedArticle.id, !selectedArticle.isStarred);
         return;
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [articlesState, feedsState, selection.articleId, selection.feedId, handleSelectArticle, handleToggleStar, selectFeed]);
+  }, [
+    articlesState,
+    feedsState,
+    handleSelectArticle,
+    handleToggleStar,
+    selectFeed,
+    selectedArticle,
+    selection.articleId,
+    selection.feedId
+  ]);
 
   // 添加订阅源
   const handleAddFeed = useCallback(
@@ -700,10 +957,10 @@ export function App() {
             pushToast(`「${feed.title || url}」同步失败：${sync.message}`, 'error');
           }
           await refreshFeeds();
-          const result = await ds.articles({});
-          if (result.kind === 'ready') {
-            setAllArticlesState({ kind: 'ready', data: result.data });
+          if (selectedFeedIdRef.current === feed.id) {
+            await refreshArticles({ feedId: feed.id });
           }
+          await refreshCounts();
         } catch (error) {
           const message = error instanceof Error ? error.message : '未知错误';
           pushToast(`「${feed.title || url}」同步失败：${message}`, 'error');
@@ -712,12 +969,12 @@ export function App() {
 
       return { ok: true, message: '已添加，正在后台同步' };
     },
-    [ds, pushToast, refreshFeeds, selectFeed]
+    [ds, pushToast, refreshArticles, refreshCounts, refreshFeeds, selectFeed]
   );
 
   // 同步全部（Phase 3.6.2：进度反馈 + 完成后 3 秒延迟消失）
   const handleSyncAll = useCallback(async () => {
-    if (syncing) return;
+    if (syncing || feedActionBusy) return;
     setSyncing(true);
     // 清理上一次完成态的延迟计时器（避免快速重复同步时计时器泄漏）
     if (syncDoneTimerRef.current !== null) {
@@ -765,9 +1022,8 @@ export function App() {
       setSyncingProgress({ kind: 'done', total, okCount, failCount });
       setFailedFeedIds(failedIds);
       await refreshFeeds();
-      const result = await ds.articles({});
-      if (result.kind === 'ready') {
-        setAllArticlesState({ kind: 'ready', data: result.data });
+      if (selectedFeedIdRef.current === 'all') {
+        await refreshArticles({});
       }
       void refreshCounts();
 
@@ -798,13 +1054,20 @@ export function App() {
     } finally {
       setSyncing(false);
     }
-  }, [syncing, feeds, ds, refreshFeeds, refreshCounts, pushToast]);
+  }, [syncing, feedActionBusy, feeds, ds, refreshFeeds, refreshArticles, refreshCounts, pushToast]);
 
   // 删除订阅源
   const handleDeleteFeed = useCallback(
     async (feed: Feed) => {
-      // Phase 3.4.1.6：用 allArticles 统计真正的文章数（不受当前筛选影响）
-      const articleCount = allArticles.filter((a) => a.feedId === feed.id).length;
+      const countResult = await ds.articleCount({ feedId: feed.id });
+      if (countResult.kind !== 'ready') {
+        pushToast(
+          `无法获取文章数：${countResult.kind === 'error' ? countResult.error : '数据仍在加载'}`,
+          'error'
+        );
+        return;
+      }
+      const articleCount = countResult.data;
       const ok = await confirmRef.current?.open({
         title: '删除订阅源',
         message: `确定要删除「${feed.siteTitle || feed.title}」？此操作会同时删除其全部 ${articleCount} 篇文章，无法撤销。`,
@@ -827,25 +1090,36 @@ export function App() {
         if (selection.feedId === feed.id) {
           selectFeed('all');
         }
+        purgeArticleTabsByFeed(new Set([feed.id]));
         await refreshFeeds();
-        const result = await ds.articles({});
-        if (result.kind === 'ready') {
-          setAllArticlesState({ kind: 'ready', data: result.data });
-        }
-        void refreshCounts();
+        await refreshCounts();
         pushToast(`已删除「${feed.siteTitle || feed.title}」`, 'success');
       } catch (e) {
         pushToast(`删除失败：${String(e)}`, 'error');
       }
     },
-    [articles, ds, pushToast, refreshFeeds, refreshCounts, selectFeed, selection.feedId]
+    [ds, purgeArticleTabsByFeed, pushToast, refreshCounts, refreshFeeds, selectFeed, selection.feedId]
   );
 
   // Bug 2 修复:批量删除订阅源(用户要求 ... 改为批量删除)
   const handleBatchDeleteFeeds = useCallback(
     async (feedIds: string[]) => {
       if (feedIds.length === 0) return;
-      const articleCount = allArticles.filter((a) => feedIds.includes(a.feedId)).length;
+      const countResults = await Promise.all(
+        feedIds.map((feedId) => ds.articleCount({ feedId }))
+      );
+      const countError = countResults.find((result) => result.kind !== 'ready');
+      if (countError) {
+        pushToast(
+          `无法获取文章数：${countError.kind === 'error' ? countError.error : '数据仍在加载'}`,
+          'error'
+        );
+        return;
+      }
+      const articleCount = countResults.reduce(
+        (total, result) => total + (result.kind === 'ready' ? result.data : 0),
+        0
+      );
       const names = feeds
         .filter((f) => feedIds.includes(f.id))
         .map((f) => f.siteTitle || f.title)
@@ -868,32 +1142,44 @@ export function App() {
       }
       let ok2 = 0;
       let fail2 = 0;
+      const deletedFeedIds = new Set<string>();
       for (const id of feedIds) {
         try {
           const r = await api.feed.delete(id);
-          if (r.success) ok2 += 1;
-          else fail2 += 1;
+          if (r.success) {
+            ok2 += 1;
+            deletedFeedIds.add(id);
+          } else {
+            fail2 += 1;
+          }
         } catch {
           fail2 += 1;
         }
       }
       // 如果当前选中在被删列表里,回退到 'all'
-      if (typeof selection.feedId === 'string' && feedIds.includes(selection.feedId)) {
+      if (typeof selection.feedId === 'string' && deletedFeedIds.has(selection.feedId)) {
         selectFeed('all');
       }
+      purgeArticleTabsByFeed(deletedFeedIds);
       await refreshFeeds();
       await refreshGroups();
-      const result = await ds.articles({});
-      if (result.kind === 'ready') {
-        setAllArticlesState({ kind: 'ready', data: result.data });
-      }
-      void refreshCounts();
+      await refreshCounts();
       pushToast(
         `已删除 ${ok2} 个订阅源${fail2 > 0 ? `,${fail2} 个失败` : ''}`,
         fail2 > 0 ? 'info' : 'success'
       );
     },
-    [allArticles, feeds, ds, pushToast, refreshFeeds, refreshGroups, refreshCounts, selectFeed, selection.feedId]
+    [
+      ds,
+      feeds,
+      purgeArticleTabsByFeed,
+      pushToast,
+      refreshCounts,
+      refreshFeeds,
+      refreshGroups,
+      selectFeed,
+      selection.feedId
+    ]
   );
 
   // Bug 2 修复:批量删除标签
@@ -1076,10 +1362,6 @@ export function App() {
       pushToast(`OPML 导入成功：新增 ${feedsImported}，跳过 ${feedsSkipped}`, 'success');
     }
     await refreshFeeds();
-    const result = await ds.articles({});
-    if (result.kind === 'ready') {
-      setAllArticlesState({ kind: 'ready', data: result.data });
-    }
 
     if (feedsImported > 0) {
       pushToast(`开始同步 ${feedsImported} 个新订阅源…`, 'info');
@@ -1100,27 +1382,29 @@ export function App() {
           pushToast(`自动同步部分失败：成功 ${okCount}，失败 ${failCount}`, 'error');
         }
         await refreshFeeds();
-        const result2 = await ds.articles({});
-        if (result2.kind === 'ready') {
-          setAllArticlesState({ kind: 'ready', data: result2.data });
-        }
       }
     }
+    if (selectedFeedIdRef.current === 'all') {
+      await refreshArticles({});
+    }
+    await refreshCounts();
 
     return { ok: true, message: 'done', result: r.data };
-  }, [ds, pushToast, refreshFeeds]);
+  }, [ds, pushToast, refreshArticles, refreshCounts, refreshFeeds]);
 
   // Phase 4.1.4:OPML 导出改为跳转到 OpmlExportPage 子页面,
   //   由子页面收集 feedIds 后调 window.api.opml.export(feedIds)
   //   这里只做路由跳转,不再直接触发原生保存对话框
   const handleOpmlExport = useCallback(() => {
-    setCurrentPage('opml-export');
+    ensurePageTab('opml-export');
     return Promise.resolve({ ok: true, message: 'navigated' });
-  }, []);
+  }, [ensurePageTab]);
 
   const handleWorkbenchFeedSelect = useCallback((id: string) => {
+    setActiveTabId('reader');
+    setExternalSelectedArticle(null);
+    setAiDockOpen(false);
     selectFeed(id);
-    setCurrentPage('reader');
   }, [selectFeed]);
 
   // ----- 渲染三栏（reader 页面） -----
@@ -1132,17 +1416,22 @@ export function App() {
     ) : (
       <FeedList
         feeds={feeds}
-        articles={allArticles}
+        articles={articles}
         selected={selection.feedId}
         onSelect={handleWorkbenchFeedSelect}
         onDeleteFeed={handleDeleteFeed}
         allCount={counts.all}
         unreadCount={counts.unread}
         starredCount={counts.starred}
+        feedUnreadCounts={feedUnreadCounts}
         failedFeedIds={syncing ? undefined : failedFeedIds}
         tags={tags}
         tagCounts={tagCounts}
         groups={groups}
+        onAddFeed={() => setAddDialogOpen(true)}
+        onImportOpml={() => {
+          void handleOpmlImport();
+        }}
         onAddGroup={() => setAddGroupDialogOpen(true)}
         onMoveFeedToGroup={handleMoveFeedToGroup}
         onDeleteGroup={handleDeleteGroup}
@@ -1156,11 +1445,10 @@ export function App() {
           pushToast(r.message, r.ok ? 'success' : 'error');
           if (r.ok) {
             await refreshFeeds();
-            const result = await ds.articles({});
-            if (result.kind === 'ready') {
-              setAllArticlesState({ kind: 'ready', data: result.data });
+            if (selectedFeedIdRef.current === feed.id) {
+              await refreshArticles({ feedId: feed.id });
             }
-            void refreshCounts();
+            await refreshCounts();
           }
         }}
         onExportOpml={handleOpmlExport}
@@ -1200,23 +1488,29 @@ export function App() {
           <>
             <button
               type="button"
-              className={`feed-action-btn ${feedActionBusy ? 'is-busy' : ''}`}
-              onClick={() => void handleSyncSelectedFeed()}
-              disabled={feedActionBusy}
+              className={`feed-action-btn ${feedActionBarBusy ? 'is-busy' : ''}`}
+              onClick={() => void (isAllFeedSelection ? handleSyncAll() : handleSyncSelectedFeed())}
+              disabled={feedActionBarBusy}
               data-testid="feed-action__sync"
-              title="同步当前订阅源"
+              title={isAllFeedSelection ? '同步所有订阅源' : '同步当前订阅源'}
             >
-              {feedActionBusy ? '同步中…' : '↻ 同步'}
+              {feedActionBarBusy ? '处理中…' : '↻ 同步'}
             </button>
             <button
               type="button"
-              className={`feed-action-btn ${feedActionBusy ? 'is-busy' : ''}`}
-              onClick={() => void handleMarkAllReadByFeed()}
-              disabled={feedActionBusy}
+              className={`feed-action-btn ${feedActionBarBusy ? 'is-busy' : ''}`}
+              onClick={() => void (
+                isAllFeedSelection ? handleMarkAllReadAcrossFeeds() : handleMarkAllReadByFeed()
+              )}
+              disabled={feedActionBarBusy}
               data-testid="feed-action__mark-all-read"
-              title="把该订阅源下所有未读文章标为已读"
+              title={
+                isAllFeedSelection
+                  ? '把所有订阅源中的未读文章标为已读'
+                  : '把该订阅源下所有未读文章标为已读'
+              }
             >
-              ✓ 全部已读
+              {feedActionBarBusy ? '处理中…' : '✓ 全部已读'}
             </button>
           </>
         ) : undefined}
@@ -1229,42 +1523,35 @@ export function App() {
       feed={selectedFeed}
       onToggleStar={handleToggleStar}
       onToast={pushToast}
+      aiDockOpen={aiDockOpen}
+      onAiDockOpenChange={setAiDockOpen}
     />
   );
 
   // Phase 3.7.1 修复:搜索跳转直接复用 handleTopicOpenArticle 的 externalSelectedArticle
   // 模式,不再依赖内存数组查找 — 即使搜索结果在第 51+ 篇文章也能直接打开
   const handleSearchSelect = useCallback((article: Article) => {
+    articleTabSnapshotsRef.current.set(article.id, article);
     setExternalSelectedArticle(article);
     selectFeed(article.feedId);
     selectArticle(article.id);
-    setCurrentPage('reader');
-  }, [selectArticle, selectFeed]);
+    openArticleTab(article);
+  }, [openArticleTab, selectArticle, selectFeed]);
 
   // 专题脉络图 / 专题文章列表点击来源后回到阅读器并定位原文。
   const handleTopicOpenArticle = useCallback((article: Article) => {
+    articleTabSnapshotsRef.current.set(article.id, article);
     setExternalSelectedArticle(article);
     selectFeed(article.feedId);
     selectArticle(article.id);
-    setCurrentPage('reader');
-  }, [selectArticle, selectFeed]);
+    openArticleTab(article);
+  }, [openArticleTab, selectArticle, selectFeed]);
 
-  // ----- 渲染页面（reader 之外的页面） -----
-  // Phase 3.4.4.4：nav 7 项 — general 弹窗 / ai 子页面 / 5 个原 page
+  // ----- 渲染 reader 之外的当前页面 -----
   let pageSlot: JSX.Element;
   switch (currentPage) {
-    case 'general':
-      pageSlot = (
-        <GeneralSettingsModal
-          open
-          embedded
-          onClose={() => setCurrentPage('reader')}
-          onToast={pushToast}
-        />
-      );
-      break;
-    case 'ai':
-      pageSlot = <SettingsPage onToast={pushToast} />;
+    case 'settings':
+      pageSlot = <UnifiedSettingsPage onToast={pushToast} />;
       break;
     case 'tags':
       pageSlot = <TagsPage onToast={pushToast} onOpenArticle={handleTopicOpenArticle} />;
@@ -1278,11 +1565,8 @@ export function App() {
     case 'topics':
       pageSlot = <TopicsPage onToast={pushToast} onOpenArticle={handleTopicOpenArticle} />;
       break;
-    case 'logs':
-      pageSlot = <LogsPage />;
-      break;
     case 'opml-export':
-      pageSlot = <OpmlExportPage onToast={pushToast} onClose={() => setCurrentPage('reader')} />;
+      pageSlot = <OpmlExportPage onToast={pushToast} onClose={() => ensurePageTab('reader')} />;
       break;
     case 'reader':
     default:
@@ -1293,26 +1577,27 @@ export function App() {
   return (
     <>
       <Layout
-        feedsSlot={feedsSlot}
+        sidebarSlot={feedsSlot}
         articlesSlot={articlesSlot}
         readerSlot={readerSlot}
-        onAddFeed={() => setAddDialogOpen(true)}
-        onSyncAll={handleSyncAll}
-        syncing={syncing}
-        onOpmlImport={handleOpmlImport}
-        onOpmlExport={handleOpmlExport}
         sidebarPercent={widths.sidebarPercent}
         listPercent={widths.listPercent}
         onResizeSidebar={setSidebar}
         onResizeList={setList}
         currentPage={currentPage}
-        onPageChange={setCurrentPage}
+        onPageChange={ensurePageTab}
         pageSlot={pageSlot}
         searchSlot={<SearchBar feeds={feeds} onSelect={handleSearchSelect} />}
-        // Phase 4.2.1:左栏折叠状态
-        sidebarVisible={appearance.sidebarVisible}
-        onToggleSidebar={handleToggleSidebar}
-        sidebarToggleTitle={sidebarToggleTitle}
+        tabs={openTabs}
+        activeTabId={activeTabId}
+        onTabSelect={handleTabSelect}
+        onTabClose={handleTabClose}
+        aiDockOpen={aiDockOpen}
+        aiAvailable={currentPage === 'reader' && selectedArticle !== null}
+        onToggleAiDock={() => setAiDockOpen((open) => !open)}
+        onOpenSettings={() => ensurePageTab('settings')}
+        directoryMode={directoryMode}
+        onReaderAction={handleReaderAction}
       />
       <AddFeedDialog
         open={addDialogOpen}

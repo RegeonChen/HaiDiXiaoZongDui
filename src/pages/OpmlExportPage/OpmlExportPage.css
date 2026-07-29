@@ -1,4 +1,6 @@
 .opml-export-page {
+  display: flex;
+  flex-direction: column;
   padding: 24px 32px 64px;
   max-width: 720px;
   margin: 0 auto;
@@ -120,14 +122,9 @@
 }
 
 .opml-export-page__empty {
-  font-size: 13px;
-  color: var(--fg-soft);
-  margin: 0 0 24px;
-  padding: 32px 16px;
-  text-align: center;
-  background: var(--bg-elev);
-  border: 1px dashed var(--border);
-  border-radius: 4px;
+  flex: 1 1 auto;
+  min-height: 180px;
+  margin-bottom: 24px;
 }
 
 .opml-export-page__footer {

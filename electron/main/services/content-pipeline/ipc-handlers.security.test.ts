@@ -67,6 +67,13 @@ describe('content pipeline IPC security', () => {
     expect(harness.exportFile).not.toHaveBeenCalledWith(
       '/Users/victim/Library/Application Support/app.db'
     );
+    expect(harness.recordLog).toHaveBeenCalledWith(
+      'info',
+      'opml:import',
+      'OPML 导入完成',
+      { feedsImported: 1, feedsSkipped: 0, errorCount: 0 }
+    );
+    expect(JSON.stringify(harness.recordLog.mock.calls)).not.toContain('/approved/');
   });
 
   it('treats a cancelled native dialog as a successful no-op', async () => {
@@ -206,11 +213,13 @@ function createHarness(paths: {
   importFile: ReturnType<typeof vi.fn>;
   exportFile: ReturnType<typeof vi.fn>;
   selectOpmlExportPath: ReturnType<typeof vi.fn>;
+  recordLog: ReturnType<typeof vi.fn>;
 } {
   const importFile = vi.fn(async () => ({ feedsImported: 1, feedsSkipped: 0, errors: [] }));
   const exportFile = vi.fn(async () => undefined);
   const selectOpmlImportPath = vi.fn(async () => paths.importPath);
   const selectOpmlExportPath = vi.fn(async () => paths.exportPath);
+  const recordLog = vi.fn();
   const services = {
     sync: {
       syncAll: vi.fn(async () => []),
@@ -228,11 +237,12 @@ function createHarness(paths: {
   const security: ContentPipelineIpcSecurity = {
     trustedRendererUrl,
     selectOpmlImportPath,
-    selectOpmlExportPath
+    selectOpmlExportPath,
+    recordLog
   };
 
   registerContentPipelineIpc(services, security);
-  return { importFile, exportFile, selectOpmlExportPath };
+  return { importFile, exportFile, selectOpmlExportPath, recordLog };
 }
 
 async function invoke(

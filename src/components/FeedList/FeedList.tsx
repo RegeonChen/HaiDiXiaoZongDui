@@ -2,8 +2,7 @@
  * 订阅源侧栏（Mercury 风格）
  *
  *  - tab 切换：订阅源 / 标签（按 tag 分类文章，Phase 3.5.x 落地）
- *  - 添加订阅源入口：顶栏 + 按钮（打开 AddFeedDialog），不在侧栏重复
- *  - 添加组入口：tab=sources 顶部"+"按钮（打开 AddGroupDialog）
+ *  - 一级目录右上角"+"：添加订阅源、导入/导出 OPML、添加订阅源组
  *  - 底部状态栏：订阅源数 / 文章数 / 未读数
  *  - 右键订阅源 → 弹菜单（同步 / 移动到组 / 删除 / 复制 URL）
  *  - 选中态：mercury 风格的圆点 + 灰底
@@ -15,13 +14,14 @@
  *
  * Phase 3.5.x 订阅源分组：
  *  - tab=sources 按 groupName 聚合分组（"未分组"作为兜底组）
- *  - 顶栏 "+" 按钮添加空组（本地缓存，需用户把订阅源移动到新组来激活）
+ *  - "+" 菜单中的"添加订阅源组"添加空组（本地缓存，需用户把订阅源移动到新组来激活）
  *  - 右键菜单"移动到..."子菜单列出所有组 + "未分组"
  *  - 组标题旁"+删除"按钮可删除组（组内订阅源移到未分组）
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Article, Feed, Tag } from '@shared/types';
 import { showContextMenu } from '../ContextMenu/ContextMenu';
+import { EmptyView } from '../StatusView/EmptyView';
 import './FeedList.css';
 
 export interface FeedListProps {
@@ -36,6 +36,8 @@ export interface FeedListProps {
   allCount?: number;
   unreadCount?: number;
   starredCount?: number;
+  /** 每个订阅源的数据库精确未读数；缺失条目才回退到当前页本地计算。 */
+  feedUnreadCounts?: Record<string, number>;
   /** Phase 3.6.2：同步失败的订阅源 ID 列表（红点标记） */
   failedFeedIds?: string[];
   /** Phase 3.5.x：用户的所有 tag 列表（tab=tags 展示） */
@@ -46,6 +48,10 @@ export interface FeedListProps {
   groups?: string[];
   /** Phase 3.5.x：打开"添加组"对话框 */
   onAddGroup?: () => void;
+  /** 一级目录右上角 "+" 菜单：添加订阅源。 */
+  onAddFeed?: () => void;
+  /** 一级目录右上角 "+" 菜单：导入 OPML。 */
+  onImportOpml?: () => void;
   /** Phase 3.5.x：把订阅源移动到指定组（null = 未分组） */
   onMoveFeedToGroup?: (feed: Feed, groupName: string | null) => void;
   /** Phase 3.5.x：删除组（组内订阅源移到未分组） */
@@ -82,11 +88,14 @@ export function FeedList({
   allCount,
   unreadCount,
   starredCount,
+  feedUnreadCounts,
   failedFeedIds,
   tags,
   tagCounts,
   groups = [],
   onAddGroup,
+  onAddFeed,
+  onImportOpml,
   onMoveFeedToGroup,
   onDeleteGroup,
   onDeleteTag,
@@ -127,6 +136,8 @@ export function FeedList({
   });
   // "更多" 菜单开关
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  // 一级目录右上角 "+"：统一承载添加订阅源、OPML 导入/导出和添加组。
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   // Bug 2 修复：批量管理模式( ... 改为批量删除入口)
   const [batchMode, setBatchMode] = useState(false);
   const [selectedForBatch, setSelectedForBatch] = useState<Set<string>>(new Set());
@@ -151,17 +162,24 @@ export function FeedList({
     });
   }, []);
 
-  // "更多" 按钮点外面关闭
+  // 顶栏弹出菜单点外面关闭
   useEffect(() => {
-    if (!moreMenuOpen) return;
+    if (!moreMenuOpen && !createMenuOpen) return;
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && target.closest('[data-testid="feed-list__more"], [data-testid="feed-list__more-menu"]')) return;
+      if (
+        target &&
+        target.closest(
+          '[data-testid="feed-list__more"], [data-testid="feed-list__more-menu"], ' +
+          '[data-testid="feed-list__create"], [data-testid="feed-list__create-menu"]'
+        )
+      ) return;
       setMoreMenuOpen(false);
+      setCreateMenuOpen(false);
     };
     window.addEventListener('mousedown', onClick);
     return () => window.removeEventListener('mousedown', onClick);
-  }, [moreMenuOpen]);
+  }, [moreMenuOpen, createMenuOpen]);
 
   // Bug 2 修复:批量选择辅助
   const enterBatchMode = useCallback(() => {
@@ -205,10 +223,7 @@ export function FeedList({
   }, [selectedForBatch, tab, onBatchDeleteFeeds, onBatchDeleteTags]);
 
 
-  // Phase 3.6.3：优先使用数据库精确计数（顶层三个虚拟分组），未提供时 fallback 到本地计算
-  // PLAN 3.6.3 仅要求"所有订阅源/未读/星标文章"三个虚拟分类使用数据库精确计数；
-  // 单个订阅源行的未读数仍走本地 allArticles 聚合（PLAN 未要求每行精确，且本地计算对
-  // 当前已加载的 allArticles 来说已经覆盖全集，行为正确且无额外 IPC 开销）。
+  // Phase 3.6.3：优先使用数据库精确计数，未提供时 fallback 到当前页本地计算。
   const resolvedUnread = unreadCount ?? articles.filter((a) => !a.isRead).length;
   const resolvedStarred = starredCount ?? articles.filter((a) => a.isStarred).length;
   const resolvedAll = allCount ?? articles.length;
@@ -219,7 +234,7 @@ export function FeedList({
     { id: 'starred', label: '星标文章', icon: '★', count: resolvedStarred }
   ];
 
-  // 单订阅源行未读数（本地聚合，详见上方注释）
+  // 单订阅源行未读数的 fallback，只在精确计数请求失败或调用方未提供时使用。
   const unreadByFeed = useMemo(() => {
     const m = new Map<string, number>();
     for (const a of articles) {
@@ -357,6 +372,7 @@ export function FeedList({
             title="更多操作"
             onClick={(e) => {
               e.stopPropagation();
+              setCreateMenuOpen(false);
               setMoreMenuOpen((prev) => !prev);
             }}
             data-testid="feed-list__more"
@@ -381,17 +397,97 @@ export function FeedList({
               </button>
             </div>
           )}
-          {/* Phase 3.5.x：tab=sources 时显示"添加组"按钮；tab=tags 不显示 */}
-          {tab === 'sources' && onAddGroup && (
+          {(onAddFeed || onImportOpml || onExportOpml || onAddGroup) && (
             <button
               type="button"
-              className="feed-list__icon-btn"
-              title="添加订阅源组"
-              onClick={onAddGroup}
-              data-testid="feed-list__add-group"
+              className={`feed-list__icon-btn ${createMenuOpen ? 'is-active' : ''}`}
+              title="添加与导入"
+              aria-label="打开添加与导入菜单"
+              aria-expanded={createMenuOpen}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMoreMenuOpen(false);
+                setCreateMenuOpen((open) => !open);
+              }}
+              data-testid="feed-list__create"
             >
               +
             </button>
+          )}
+          {createMenuOpen && (
+            <div
+              className="feed-list__more-menu feed-list__create-menu"
+              role="menu"
+              aria-label="添加与导入"
+              data-testid="feed-list__create-menu"
+            >
+              {onAddFeed && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="feed-list__more-item"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    onAddFeed();
+                  }}
+                  data-testid="feed-list__add-feed"
+                >
+                  <span aria-hidden="true">＋</span>
+                  <span>添加订阅源</span>
+                </button>
+              )}
+              {(onImportOpml || onExportOpml) && onAddFeed && (
+                <div className="feed-list__menu-separator" role="separator" />
+              )}
+              {onImportOpml && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="feed-list__more-item"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    onImportOpml();
+                  }}
+                  data-testid="feed-list__import-opml"
+                >
+                  <span aria-hidden="true">↓</span>
+                  <span>导入 OPML</span>
+                </button>
+              )}
+              {onExportOpml && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="feed-list__more-item"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    onExportOpml();
+                  }}
+                  data-testid="feed-list__export-opml"
+                >
+                  <span aria-hidden="true">↑</span>
+                  <span>导出 OPML</span>
+                </button>
+              )}
+              {onAddGroup && (onAddFeed || onImportOpml || onExportOpml) && (
+                <div className="feed-list__menu-separator" role="separator" />
+              )}
+              {onAddGroup && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="feed-list__more-item"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    onAddGroup();
+                  }}
+                  data-testid="feed-list__add-group"
+                >
+                  <span aria-hidden="true">⊞</span>
+                  <span>添加订阅源组</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -462,10 +558,11 @@ export function FeedList({
       {/* 真实订阅源分组 */}
       {tab === 'sources' && showAll && (
         grouped.length === 0 ? (
-          <div className="feed-list__empty">
-            还没有订阅源。<br />
-            点顶部 + 按钮添加一个 RSS / Atom / JSON Feed 源。
-          </div>
+          <EmptyView
+            className="feed-list__empty"
+            title="还没有订阅源"
+            hint="点击一级目录右上角的“+”，添加 RSS、Atom 或 JSON Feed 订阅源。"
+          />
         ) : (
           grouped.map(([group, list]) => {
             // "未分组"是兜底组，不能删除也不能添加（也没意义）
@@ -487,7 +584,17 @@ export function FeedList({
                     aria-label={isCollapsed ? `展开 ${group}` : `折叠 ${group}`}
                     data-testid={`feed-list__toggle-group-${group}`}
                   >
-                    <span className="feed-list__group-arrow">{isCollapsed ? '▸' : '▾'}</span>
+                    <span className="feed-list__group-arrow" aria-hidden="true">
+                      <svg viewBox="0 0 14 14" focusable="false">
+                        <path
+                          d={
+                            isCollapsed
+                              ? 'M2.5 2v10L11.16 7z'
+                              : 'M2 2.5h10L7 11.16z'
+                          }
+                        />
+                      </svg>
+                    </span>
                     <span className="feed-list__group-name">{group}</span>
                     <span className="feed-list__group-count">{list.length}</span>
                   </button>
@@ -509,7 +616,7 @@ export function FeedList({
                   </div>
                 ) : (
                   list.map((f) => {
-                    const unread = unreadByFeed.get(f.id) ?? 0;
+                    const unread = feedUnreadCounts?.[f.id] ?? unreadByFeed.get(f.id) ?? 0;
                     const isSelected = selected === f.id;
                     const isBatchChecked = selectedForBatch.has(f.id);
                     return (
@@ -573,10 +680,11 @@ export function FeedList({
       {tab === 'tags' && (
         <>
           {(!tags || tags.length === 0) ? (
-            <div className="feed-list__empty">
-              还没有任何标签。<br />
-              在文章阅读区点 🏷 标签 / 🪄 标签建议 添加。
-            </div>
+            <EmptyView
+              className="feed-list__empty"
+              title="还没有标签"
+              hint="在文章阅读区点击“标签”或“标签建议”添加。"
+            />
           ) : (
             <div className="feed-list__virtuals" data-section="tags">
               {tags.map((t) => {

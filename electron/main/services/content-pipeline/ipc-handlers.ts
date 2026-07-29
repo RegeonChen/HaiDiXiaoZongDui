@@ -21,6 +21,12 @@ export interface ContentPipelineIpcSecurity {
   trustedRendererUrl: string;
   selectOpmlImportPath: (event: IpcMainInvokeEvent) => Promise<string | null>;
   selectOpmlExportPath: (event: IpcMainInvokeEvent) => Promise<string | null>;
+  recordLog?: (
+    level: 'debug' | 'info' | 'warn' | 'error',
+    module: string,
+    message: string,
+    detail?: Record<string, string | number | boolean | null>
+  ) => void;
 }
 
 /**
@@ -36,11 +42,37 @@ export function registerContentPipelineIpc(
     handler: (event: IpcMainInvokeEvent, args: unknown) => Promise<IpcResponse<C>>
   ): void => handle(channel, security.trustedRendererUrl, handler);
 
-  secureHandle(IPC_CHANNELS.SYNC_ALL, async () => success(await services.sync.syncAll()));
+  secureHandle(IPC_CHANNELS.SYNC_ALL, async () => {
+    const results = await services.sync.syncAll();
+    const failedCount = results.filter((result) => !result.success).length;
+    security.recordLog?.(
+      failedCount > 0 ? 'warn' : 'info',
+      'sync:all',
+      failedCount > 0 ? '批量同步部分失败' : '批量同步完成',
+      {
+        totalCount: results.length,
+        successCount: results.length - failedCount,
+        failedCount
+      }
+    );
+    return success(results);
+  });
 
   secureHandle(IPC_CHANNELS.SYNC_FEED, async (_event, args) => {
     const feedId = requiredString(args, 'feedId');
-    return success(await services.sync.syncFeed(feedId));
+    const result = await services.sync.syncFeed(feedId);
+    security.recordLog?.(
+      result.success ? 'info' : 'warn',
+      'sync:feed',
+      result.success ? '订阅源同步完成' : '订阅源同步失败',
+      {
+        feedId,
+        success: result.success,
+        newArticles: result.newArticles,
+        updatedArticles: result.updatedArticles
+      }
+    );
+    return success(result);
   });
 
   secureHandle(IPC_CHANNELS.SYNC_PROGRESS, async () => success(services.sync.getProgress()));
@@ -68,15 +100,40 @@ export function registerContentPipelineIpc(
   secureHandle(IPC_CHANNELS.OPML_IMPORT, async (event) => {
     const filePath = await security.selectOpmlImportPath(event);
     if (!filePath) return success(null);
-    return success(await services.opml.importFile(filePath));
+    try {
+      const result = await services.opml.importFile(filePath);
+      security.recordLog?.(
+        result.errors.length > 0 ? 'warn' : 'info',
+        'opml:import',
+        result.errors.length > 0 ? 'OPML 导入部分完成' : 'OPML 导入完成',
+        {
+          feedsImported: result.feedsImported,
+          feedsSkipped: result.feedsSkipped,
+          errorCount: result.errors.length
+        }
+      );
+      return success(result);
+    } catch (error) {
+      security.recordLog?.('error', 'opml:import', 'OPML 导入失败');
+      throw error;
+    }
   });
 
   secureHandle(IPC_CHANNELS.OPML_EXPORT, async (event, args) => {
     const feedIds = optionalStringArray(args, 'feedIds');
     const filePath = await security.selectOpmlExportPath(event);
     if (!filePath) return success(false);
-    await services.opml.exportFile(filePath, feedIds);
-    return success(true);
+    try {
+      await services.opml.exportFile(filePath, feedIds);
+      security.recordLog?.('info', 'opml:export', 'OPML 导出完成', {
+        selectedFeedCount: feedIds?.length ?? 0,
+        exportedAll: feedIds === undefined
+      });
+      return success(true);
+    } catch (error) {
+      security.recordLog?.('error', 'opml:export', 'OPML 导出失败');
+      throw error;
+    }
   });
 
   const channels = [

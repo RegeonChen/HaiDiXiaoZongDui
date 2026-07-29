@@ -1,18 +1,14 @@
 .settings-page {
-  max-width: 720px;
+  max-width: 880px;
   margin: 0 auto;
   padding: 24px 32px 64px;
-  font-family: var(--font-body, system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
 }
 
-.settings-page__hint {
+.settings-page__intro {
   font-size: 12px;
-  color: var(--fg-soft);
-  margin: 0 0 18px;
-  padding: 10px 12px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  color: var(--muted);
+  margin: -15px 0 20px;
+  line-height: 1.6;
 }
 
 .settings-page__title {
@@ -80,7 +76,8 @@
 
 .settings-page__input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--border-strong);
+  box-shadow: none;
 }
 
 .settings-page__radio-group {
@@ -262,13 +259,8 @@
 }
 
 .settings-page__empty {
-  font-size: 13px;
-  color: var(--fg-soft);
   margin: 0 0 12px;
-  padding: 12px;
-  background: var(--bg);
-  border: 1px dashed var(--border);
-  border-radius: 4px;
+  min-height: 120px;
 }
 
 .settings-page__form {

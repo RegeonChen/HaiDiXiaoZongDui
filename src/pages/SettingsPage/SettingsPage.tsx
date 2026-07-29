@@ -11,6 +11,7 @@ import type { AppSettings, AIProvider, AIProviderCreateInput, AIProviderUpdateIn
 import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
+import { EmptyView } from '../../components/StatusView/EmptyView';
 import './SettingsPage.css';
 
 export interface SettingsPageProps {
@@ -122,83 +123,92 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
   }
 
   return (
-    <div className="settings-page">
-      <h1 className="settings-page__title">AI 设置</h1>
-      <p className="settings-page__hint">
-        通用设置（语言 / 字体 / 视觉主题 / 字号 / 阅读宽度）已挪到顶栏"通用"按钮弹窗。
-      </p>
+    <div className="settings-page settings-surface">
+      <header className="settings-surface__header">
+        <h1 className="settings-page__title settings-surface__title">AI 与模型</h1>
+        <p className="settings-page__intro settings-surface__intro">
+          配置文章摘要、翻译和右侧 AI 助手使用的默认模型。
+        </p>
+      </header>
 
       {/* === AI 默认值 === */}
-      <section className="settings-page__section">
-        <h2 className="settings-page__section-title">AI 默认值</h2>
+      <section className="settings-page__section settings-surface__section">
+        <h2 className="settings-page__section-title settings-surface__section-title">AI 默认值</h2>
 
-        <div className="settings-page__row">
-          <label className="settings-page__label">默认摘要语言</label>
-          <select
-            className="settings-page__input"
-            value={settings.defaultSummaryLanguage}
-            onChange={(e) => void updateSettings({ defaultSummaryLanguage: e.target.value as Language })}
-          >
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-          </select>
-        </div>
+        <div className="settings-surface__section-body settings-surface__section-body--rows">
+          <div className="settings-page__row">
+            <label className="settings-page__label">默认摘要语言</label>
+            <select
+              className="settings-page__input"
+              value={settings.defaultSummaryLanguage}
+              onChange={(e) => void updateSettings({ defaultSummaryLanguage: e.target.value as Language })}
+            >
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
 
-        <div className="settings-page__row">
-          <label className="settings-page__label">默认摘要详细度</label>
-          <select
-            className="settings-page__input"
-            value={settings.defaultSummaryDetail}
-            onChange={(e) => void updateSettings({ defaultSummaryDetail: e.target.value as SummaryDetailLevel })}
-          >
-            <option value="brief">简略</option>
-            <option value="standard">标准</option>
-            <option value="detailed">详细</option>
-          </select>
-        </div>
+          <div className="settings-page__row">
+            <label className="settings-page__label">默认摘要详细度</label>
+            <select
+              className="settings-page__input"
+              value={settings.defaultSummaryDetail}
+              onChange={(e) => void updateSettings({ defaultSummaryDetail: e.target.value as SummaryDetailLevel })}
+            >
+              <option value="brief">简略</option>
+              <option value="standard">标准</option>
+              <option value="detailed">详细</option>
+            </select>
+          </div>
 
-        <div className="settings-page__row">
-          <label className="settings-page__label">默认翻译目标语言</label>
-          <select
-            className="settings-page__input"
-            value={settings.defaultTranslationTarget}
-            onChange={(e) => void updateSettings({ defaultTranslationTarget: e.target.value as Language })}
-          >
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-          </select>
-        </div>
+          <div className="settings-page__row">
+            <label className="settings-page__label">默认翻译目标语言</label>
+            <select
+              className="settings-page__input"
+              value={settings.defaultTranslationTarget}
+              onChange={(e) => void updateSettings({ defaultTranslationTarget: e.target.value as Language })}
+            >
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
 
-        <div className="settings-page__row">
-          <label className="settings-page__label">默认 AI Provider</label>
-          <select
-            className="settings-page__input"
-            value={settings.defaultProviderId ?? ''}
-            onChange={(e) => void updateSettings({ defaultProviderId: e.target.value || null })}
-          >
-            <option value="">(未设置)</option>
-            {providers?.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}（{p.modelName}）
-              </option>
-            ))}
-          </select>
+          <div className="settings-page__row">
+            <label className="settings-page__label">默认 AI Provider</label>
+            <select
+              className="settings-page__input"
+              value={settings.defaultProviderId ?? ''}
+              onChange={(e) => void updateSettings({ defaultProviderId: e.target.value || null })}
+            >
+              <option value="">(未设置)</option>
+              {providers?.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}（{p.modelName}）
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </section>
 
       {/* === AI Provider === */}
-      <section className="settings-page__section">
-        <h2 className="settings-page__section-title">AI Provider</h2>
+      <section className="settings-page__section settings-surface__section">
+        <h2 className="settings-page__section-title settings-surface__section-title">AI Provider</h2>
 
-        {providersError ? (
-          <ErrorView message={providersError} onRetry={loadAll} />
-        ) : providers === null ? (
-          <LoadingView message="正在加载 AI Provider…" />
-        ) : (
-          <>
+        <div className="settings-surface__section-body settings-surface__provider-body">
+          {providersError ? (
+            <ErrorView message={providersError} onRetry={loadAll} />
+          ) : providers === null ? (
+            <LoadingView message="正在加载 AI Provider…" />
+          ) : (
+            <>
             <div className="settings-page__provider-list">
               {providers.length === 0 && (
-                <p className="settings-page__empty">还没有 AI Provider。点下方「添加 Provider」配置 OpenAI 兼容服务。</p>
+                <EmptyView
+                  className="settings-page__empty"
+                  title="还没有 AI Provider"
+                  hint="点击下方“添加 Provider”，配置 OpenAI 兼容服务。"
+                />
               )}
               {providers.map((p) => (
                 <div key={p.id} className="settings-page__provider-card">
@@ -260,8 +270,9 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
                 + 添加 AI Provider
               </button>
             )}
-          </>
-        )}
+            </>
+          )}
+        </div>
       </section>
     </div>
   );

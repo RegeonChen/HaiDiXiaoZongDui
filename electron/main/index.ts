@@ -24,6 +24,7 @@ import {
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { writeFile } from 'node:fs/promises';
 import { initDatabase, closeDatabase } from './db/connection.js';
 import { runMigrations } from './db/migration.js';
 import { loadSettings, saveSettings } from './db/sqlite-settings.js';
@@ -46,6 +47,13 @@ import { installArticleWebviewSecurity } from './services/content-pipeline/artic
 import { registerArticleImageProtocol } from './services/content-pipeline/article-image-proxy.js';
 import { OpmlApplicationService } from './services/content-pipeline/opml-service.js';
 import { SyncService } from './services/content-pipeline/sync-service.js';
+import {
+  appendLocalLog,
+  formatLocalLogs,
+  initializeLocalLogService,
+  listLocalLogs,
+  type LocalLogDetail
+} from './services/local-log-service.js';
 import { IPC_CHANNELS, IPC_EVENTS, type IpcResult } from '../../shared/ipc.js';
 import { ARTICLE_WEBVIEW_PARTITION } from '../../shared/article-webview.js';
 import {
@@ -152,7 +160,7 @@ const SMOKE_FLAGS = {
   smokeFeedActions: process.env['JUHE_SHIVI_SMOKE_FEED_ACTIONS'] === '1',
   // Phase 4.1.4：OPML 选择性导出子界面（OpmlExportPage 勾选 + 全选 + 确认传 feedIds）
   smokeOpmlExportSelection: process.env['JUHE_SHIVI_SMOKE_OPML_EXPORT_SELECTION'] === '1',
-  // Phase 4.2.1：Navbar 图标(AI 粗体字母 / 专题多源聚合 SVG) + 系统字号滑块 + 隐藏左栏按钮
+  // Phase 4.2.1：Navbar 图标 + 系统字号滑块 + 阅读功能键三级目录循环
   smokePhase42: process.env['JUHE_SHIVI_SMOKE_PHASE42'] === '1',
   seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
   seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
@@ -438,22 +446,31 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             !!selectedForTranslation &&
             (assistantMessages.at(-1)?.textContent || '').includes('mock 译文');
 
-          document.querySelector('[data-ai-chat-clear]')?.click();
-          await sleep(80);
-          report.aiChat.checks.clearConversation =
-            document.querySelectorAll('[data-ai-chat-message-role]').length === 0;
+          report.aiChat.checks.panelHeaderRemoved =
+            !document.querySelector('.article-ai-chat__header') &&
+            !document.querySelector('[data-ai-chat-clear]') &&
+            !document.querySelector('[aria-label="关闭文章 AI 助手"]');
 
-          document.querySelector('[aria-label="关闭文章 AI 助手"]')?.click();
+          // 再次点击同一个“询问 AI”按钮收起，随后重开；对话内容应保留。
+          chatButton?.click();
           await sleep(80);
-          report.aiChat.checks.panelClosed =
+          report.aiChat.checks.panelClosedByAiToggle =
             !document.querySelector('[data-ai-chat-panel]');
+          chatButton?.click();
+          await sleep(80);
+          report.aiChat.checks.panelReopenedByAiToggle =
+            !!document.querySelector('[data-ai-chat-panel]');
+          report.aiChat.checks.conversationPreservedAfterToggle =
+            document.querySelectorAll('[data-ai-chat-message-role]').length === 8;
 
           const required = [
             'toolbarEntry', 'panelOpened', 'directQuestionAnswered',
             'directReplyUsesMock', 'multiTurnConversation', 'selectionMenuOpened',
             'selectionAsked', 'selectionIncludedInQuestion',
             'translationMenuReopened', 'selectionTranslated',
-            'translationReplyVisible', 'clearConversation', 'panelClosed'
+            'translationReplyVisible', 'panelHeaderRemoved',
+            'panelClosedByAiToggle', 'panelReopenedByAiToggle',
+            'conversationPreservedAfterToggle'
           ];
           report.aiChat.ok = required.every(
             (key) => report.aiChat.checks[key] === true
@@ -1413,9 +1430,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         }
         const report = { topic: { ok: false, error: null, checks: {} } };
         try {
-          // 1) 切到 topics 页面（nav 7 项：topics=索引 5）
-          const navBtns = document.querySelectorAll('.app-header__nav-btn');
-          const topicsNavBtn = navBtns[5];
+          // 1) 切到 topics 页面
+          const topicsNavBtn = document.querySelector('[data-page-key="topics"]');
           topicsNavBtn?.click();
           await waitFor(() => !!document.querySelector('.topics-page'), { timeout: 3000 });
           report.topic.checks.topicsPageRendered = !!document.querySelector('.topics-page');
@@ -1442,7 +1458,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const getArticlesR = await window.api.topic.getArticles(topicId);
 
           // 让 TopicsPage 重新挂载并进入新建专题，验证真实点线图 DOM。
-          document.querySelector('.app-header__logo-btn')?.click();
+          document.querySelector('[data-page-key="reader"]')?.click();
           await sleep(50);
           topicsNavBtn?.click();
           await waitFor(() => !!document.querySelector('.topics-page__item-main'), { timeout: 2500 });
@@ -1738,6 +1754,12 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             renderedGroupNames.includes('未分组');
 
           // C) 打开"添加组"对话框 → input "测试组" → submit → 侧栏出现新组
+          const createBtn = document.querySelector('[data-testid="feed-list__create"]');
+          createBtn?.click();
+          await waitFor(
+            () => !!document.querySelector('[data-testid="feed-list__add-group"]'),
+            { timeout: 1500 }
+          );
           const addGroupBtn = document.querySelector('[data-testid="feed-list__add-group"]');
           report.feedsGroup.checks.addGroupBtnVisible = !!addGroupBtn;
           addGroupBtn?.click();
@@ -2365,19 +2387,107 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.feedActions.checks.syncFailureToast =
             (document.body.textContent || '').includes('同步失败：');
 
-          // 6) 切到 all → action bar 不出现
+          // 6) 切到“所有订阅源” → 显示同款 action bar，作用范围改为全局
           const allTab = Array.from(document.querySelectorAll('.feed-list__virtuals .feed-list__item'))
             .find((b) => (b.textContent || '').includes('所有订阅源'));
           if (allTab) allTab.click();
-          await sleep(200);
+          await waitFor(
+            () => {
+              const activeAll = Array.from(
+                document.querySelectorAll('.feed-list__virtuals .feed-list__item')
+              ).some((button) =>
+                button.classList.contains('is-active') &&
+                (button.textContent || '').includes('所有订阅源')
+              );
+              return activeAll && !!document.querySelector(
+                '[data-testid="article-list__action-bar"]'
+              );
+            },
+            { timeout: 3000 }
+          );
           const actionBarAfterAll = document.querySelector('[data-testid="article-list__action-bar"]');
-          report.feedActions.checks.actionBarHiddenOnAll = !actionBarAfterAll;
+          const globalSyncBtn = document.querySelector('[data-testid="feed-action__sync"]');
+          const globalMarkAllReadBtn = document.querySelector('[data-testid="feed-action__mark-all-read"]');
+          report.feedActions.checks.actionBarVisibleOnAll = !!actionBarAfterAll;
+          report.feedActions.checks.globalSyncButtonVisible =
+            !!globalSyncBtn && globalSyncBtn.getAttribute('title') === '同步所有订阅源';
+          report.feedActions.checks.globalMarkAllReadButtonVisible =
+            !!globalMarkAllReadBtn &&
+            globalMarkAllReadBtn.getAttribute('title') === '把所有订阅源中的未读文章标为已读';
+
+          // 全局“全部已读”也必须使用精确计数确认；取消后不能改变数据。
+          let globalUnreadBefore = -1;
+          if (ds?.articleCount) {
+            const globalBeforeResult = await ds.articleCount({ isRead: false });
+            globalUnreadBefore = globalBeforeResult.kind === 'ready' ? globalBeforeResult.data : -1;
+          }
+          if (globalMarkAllReadBtn) globalMarkAllReadBtn.click();
+          await waitFor(() => !!document.querySelector('.confirm-dialog'), { timeout: 2000 });
+          const globalConfirmMessage =
+            document.querySelector('.confirm-dialog__message')?.textContent || '';
+          report.feedActions.checks.globalMarkAllReadConfirmExactCount =
+            globalUnreadBefore > 0 &&
+            globalConfirmMessage.includes('所有订阅源') &&
+            globalConfirmMessage.includes(String(globalUnreadBefore));
+          document.querySelector('.confirm-dialog__btn--ghost')?.click();
+          await sleep(100);
+          let globalUnreadAfterCancel = -1;
+          if (ds?.articleCount) {
+            const globalAfterResult = await ds.articleCount({ isRead: false });
+            globalUnreadAfterCancel =
+              globalAfterResult.kind === 'ready' ? globalAfterResult.data : -1;
+          }
+          report.feedActions.checks.globalMarkAllReadCancelPreservesData =
+            globalUnreadBefore > 0 && globalUnreadAfterCancel === globalUnreadBefore;
+
+          // 再次确认，验证全局处理器会把所有订阅源的未读数真正归零。
+          await waitFor(() => {
+            const button = document.querySelector('[data-testid="feed-action__mark-all-read"]');
+            return !!button && !button.hasAttribute('disabled');
+          }, { timeout: 2000 });
+          document.querySelector('[data-testid="feed-action__mark-all-read"]')?.click();
+          await waitFor(() => !!document.querySelector('.confirm-dialog'), { timeout: 2000 });
+          document.querySelector('.confirm-dialog__btn--primary')?.click();
+          let globalUnreadAfterApply = -1;
+          for (let i = 0; i < 40; i++) {
+            if (ds?.articleCount) {
+              const globalAppliedResult = await ds.articleCount({ isRead: false });
+              globalUnreadAfterApply =
+                globalAppliedResult.kind === 'ready' ? globalAppliedResult.data : -1;
+            }
+            if (globalUnreadAfterApply === 0) break;
+            await sleep(50);
+          }
+          await waitFor(
+            () => {
+              const button = document.querySelector('[data-testid="feed-action__mark-all-read"]');
+              return !!button &&
+                !button.hasAttribute('disabled') &&
+                (document.body.textContent || '').includes('已标记');
+            },
+            { timeout: 3000 }
+          );
+          report.feedActions.checks.globalUnreadBefore = globalUnreadBefore;
+          report.feedActions.checks.globalUnreadAfterCancel = globalUnreadAfterCancel;
+          report.feedActions.checks.globalUnreadAfterApply = globalUnreadAfterApply;
+          report.feedActions.checks.globalMarkAllReadApplied =
+            globalUnreadBefore > 0 &&
+            globalUnreadAfterApply === 0 &&
+            (document.body.textContent || '').includes('已标记');
 
           // 7) 切到 unread → action bar 不出现
           const unreadTab = Array.from(document.querySelectorAll('.feed-list__virtuals .feed-list__item'))
             .find((b) => (b.textContent || '').includes('未读'));
           if (unreadTab) unreadTab.click();
-          await sleep(200);
+          await waitFor(
+            () => Array.from(
+              document.querySelectorAll('.feed-list__virtuals .feed-list__item')
+            ).some((button) =>
+              button.classList.contains('is-active') &&
+              (button.textContent || '').includes('未读')
+            ),
+            { timeout: 3000 }
+          );
           const actionBarAfterUnread = document.querySelector('[data-testid="article-list__action-bar"]');
           report.feedActions.checks.actionBarHiddenOnUnread = !actionBarAfterUnread;
 
@@ -2386,7 +2496,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             '[data-feed-id="' + firstFeedId + '"] button.feed-list__item'
           );
           if (currentFirstFeedButton) currentFirstFeedButton.click();
-          await sleep(200);
+          await waitFor(
+            () => document.querySelector(
+              '[data-feed-id="' + firstFeedId + '"] button.feed-list__item'
+            )?.classList.contains('is-active') === true &&
+              !!document.querySelector('.article-list__item'),
+            { timeout: 3000 }
+          );
 
           // 9) 点击第一篇文章 → reader 打开
           const firstArticle = document.querySelector('.article-list__item');
@@ -2498,7 +2614,11 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           'syncSelectionPreserved',
           'mockDataSourceExposed', 'markAllReadConfirmExactCount', 'markAllReadApplied',
           'syncFailureRefreshedStatus', 'syncFailureToast',
-          'actionBarHiddenOnAll', 'actionBarHiddenOnUnread',
+          'actionBarVisibleOnAll',
+          'globalSyncButtonVisible', 'globalMarkAllReadButtonVisible',
+          'globalMarkAllReadConfirmExactCount', 'globalMarkAllReadCancelPreservesData',
+          'globalMarkAllReadApplied',
+          'actionBarHiddenOnUnread',
           'articleReaderOpened', 'articleDebugExposed',
           'articleTitleChipsEmptyBefore', 'articleTitleChipRenderedAfter',
           'tagsPageOpened', 'tagsPageTwoColumnLayout',
@@ -2549,12 +2669,17 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
           await sleep(200);
 
-          // 2) 点"导出 OPML"按钮(顶栏 OpmlButtons)
-          const exportBtn = Array.from(document.querySelectorAll('.opml-buttons__btn'))
-            .find((b) => (b.textContent || '').includes('导出 OPML'));
+          // 2) 从一级目录右上角 "+" 菜单打开"导出 OPML"
+          const createBtn = document.querySelector('[data-testid="feed-list__create"]');
+          if (createBtn) createBtn.click();
+          await waitFor(
+            () => !!document.querySelector('[data-testid="feed-list__export-opml"]'),
+            { timeout: 1500 }
+          );
+          const exportBtn = document.querySelector('[data-testid="feed-list__export-opml"]');
           report.opmlExport.checks.exportBtnFound = !!exportBtn;
           if (!exportBtn) {
-            report.opmlExport.error = '找不到导出 OPML 按钮';
+            report.opmlExport.error = '找不到一级目录 + 菜单中的导出 OPML';
             return JSON.stringify(report);
           }
           exportBtn.click();
@@ -2791,8 +2916,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.uiIpc.checks.uiListHasData = !!articleItems && articleItems.length >= 1;
           report.uiIpc.checks.uiListCount = articleItems ? articleItems.length : 0;
 
-          // ---- P1: UI 上有"添加订阅源"按钮 + 点开 dialog ----
-          const addBtn = await waitFor(() => document.querySelector('.app-header__add-btn'));
+          // ---- P1: 一级目录 "+" 菜单中有"添加订阅源" + 点开 dialog ----
+          const createBtn = await waitFor(() => document.querySelector('[data-testid="feed-list__create"]'));
+          if (createBtn) createBtn.click();
+          const addBtn = await waitFor(
+            () => document.querySelector('[data-testid="feed-list__add-feed"]'),
+            { timeout: 1500 }
+          );
           report.uiIpc.checks.uiHasAddBtn = !!addBtn;
           if (addBtn) {
             addBtn.click();
@@ -2806,9 +2936,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.uiIpc.checks.uiAddDialogOpens = false;
           }
 
-          // ---- P2: OPML 按钮组（导入 + 导出）----
+          // ---- P2: 一级目录 "+" 菜单中的 OPML 导入 + 导出 ----
+          const createBtnAgain = document.querySelector('[data-testid="feed-list__create"]');
+          if (createBtnAgain) createBtnAgain.click();
           const opmlBtns = await waitFor(() => {
-            const btns = document.querySelectorAll('.opml-buttons__btn');
+            const btns = document.querySelectorAll(
+              '[data-testid="feed-list__import-opml"], [data-testid="feed-list__export-opml"]'
+            );
             return btns.length === 2 ? btns : null;
           }, { timeout: 1500 });
           report.uiIpc.checks.uiHasOpmlButtons = !!opmlBtns;
@@ -2965,39 +3099,32 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           // 6 个页面入口 + 页面切换 + AI 工具栏 + 主题切换
           const integrationReport = { ok: false, error: null, checks: {} };
           try {
-            // 1) 6 个 nav 按钮齐全
+            // 1) Activity Bar 只保留 4 个内容工具；设置与 AI 位于右上角。
             const navBtns = document.querySelectorAll('.app-header__nav-btn');
             integrationReport.checks.navBtnCount = navBtns.length;
-            integrationReport.checks.navBtnsOk = navBtns.length >= 6;
+            integrationReport.checks.navBtnsOk = navBtns.length === 4;
 
-            // 2) 切到每个 page，验证 .app-page 出现 + 页面内容
-            // Phase 3.4.4.4：nav 7 项：general（弹窗）/ ai / tags / notes / digests / topics / logs
-            // 索引：[general=0, ai=1, tags=2, notes=3, digests=4, topics=5, logs=6]
+            // 2) 切到每个内容工具，验证页面在统一编辑器标签中渲染。
             const pageCheckpoints = [
-              { page: 'ai', selector: '.settings-page', text: 'AI' },
               { page: 'tags', selector: '.tags-page', text: '标签' },
               { page: 'notes', selector: '.notes-page', text: '笔记' },
               { page: 'digests', selector: '.digests-page', text: '文摘' },
-              { page: 'topics', selector: '.topics-page', text: '专题' },
-              { page: 'logs', selector: '.logs-page', text: '本地日志' }
+              { page: 'topics', selector: '.topics-page', text: '专题' }
             ];
             for (const cp of pageCheckpoints) {
-              const navBtn = Array.from(navBtns).find((b) => b.getAttribute('data-page-key') === cp.page || b.textContent?.includes(cp.text));
-              // 实际 dom 没有 data-page-key；用索引兜底（Phase 3.4.4.4 后 ai 占索引 1）
-              const idx = ['ai', 'tags', 'notes', 'digests', 'topics', 'logs'].indexOf(cp.page);
-              const target = idx >= 0 ? navBtns[idx + 1] : null; // +1 跳过 general（弹窗）
+              const target = Array.from(navBtns).find((b) => b.getAttribute('data-page-key') === cp.page);
               if (target) target.click();
               await sleep(120);
               const el = document.querySelector(cp.selector);
               integrationReport.checks['page_' + cp.page + 'Rendered'] = !!el;
             }
 
-            // 3) 通用设置 Modal（Phase 3.4.4.4 拆分后）：3 套字体 + 2 套视觉主题按钮
-            //    原 SettingsPage 字体/视觉入口已挪到 GeneralSettingsModal 弹窗
-            //    点 navBtn[0] (general) 触发弹窗（App.tsx 拦截：setGeneralModalOpen(true) + setCurrentPage('reader')）
-            const navBtn0 = navBtns[0]; // general（弹窗入口）
-            navBtn0?.click();
+            // 3) 右上角设置入口打开统一设置页；通用与 AI 配置在同一页内切换。
+            const settingsBtn = document.querySelector('[data-testid="app-header__settings"]');
+            settingsBtn?.click();
             await waitFor(() => !!document.querySelector('.general-modal'), { timeout: 2000 });
+            integrationReport.checks.settingsWorkspaceRendered =
+              !!document.querySelector('.settings-workspace');
             const fontCards = document.querySelectorAll('.general-modal__font-card');
             const visualCards = document.querySelectorAll('.general-modal__visual-card');
             integrationReport.checks.fontThemeCount = fontCards.length;
@@ -3067,13 +3194,17 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             integrationReport.checks.visualBefore = visualBefore;
             integrationReport.checks.visualAfter = visualAfter;
             integrationReport.checks.visualToggled = visualBefore !== visualAfter;
-            // 关闭弹窗（点 backdrop）回到 reader
-            const backdrop = document.querySelector('.general-modal__backdrop');
-            backdrop?.click();
+            const aiSettingsNav = document.querySelector('[data-settings-section="ai"]');
+            aiSettingsNav?.click();
+            await waitFor(() => !!document.querySelector('.settings-page'), { timeout: 2000 });
+            integrationReport.checks.aiSettingsRendered = !!document.querySelector('.settings-page');
+
+            // 点击阅读器标签回到 reader。
+            document.querySelector('[data-tab-id="reader"]')?.click();
             await sleep(150);
 
             // 6) TagsPage：创建标签 + 删除
-            const navBtn1 = navBtns[2]; // tags（Phase 3.4.4.4 后索引 +1）
+            const navBtn1 = document.querySelector('[data-page-key="tags"]');
             navBtn1?.click();
             await waitFor(() => !!document.querySelector('.tags-page'), { timeout: 2000 });
             const tagBefore = document.querySelectorAll('.tags-page__item').length;
@@ -3103,7 +3234,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             integrationReport.checks.tagDeleted = tagDelR.success && tagListAfterCount === tagBefore;
 
             // 7) NotesPage：选文章 + 添加笔记
-            const navBtn2 = navBtns[3]; // notes（Phase 3.4.4.4 后索引 +1）
+            const navBtn2 = document.querySelector('[data-page-key="notes"]');
             navBtn2?.click();
             await waitFor(() => !!document.querySelector('.notes-page'), { timeout: 2000 });
             const noteSelect = document.querySelector('.notes-page__select');
@@ -3130,28 +3261,21 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             }
 
             // 8) DigestsPage：列出
-            const navBtn3 = navBtns[4]; // digests（Phase 3.4.4.4 后索引 +1）
+            const navBtn3 = document.querySelector('[data-page-key="digests"]');
             navBtn3?.click();
             await sleep(120);
             integrationReport.checks.digestPageRendered = !!document.querySelector('.digests-page');
 
             // 9) TopicsPage：真实后端的空数据库状态
-            const navBtn4 = navBtns[5]; // topics（Phase 3.4.4.4 后索引 +1）
+            const navBtn4 = document.querySelector('[data-page-key="topics"]');
             navBtn4?.click();
             await sleep(120);
             integrationReport.checks.topicsPageRendered = !!document.querySelector('.topics-page');
             integrationReport.checks.topicsEmptyState = !!document.querySelector('.topics-page .status-view');
 
-            // 10) LogsPage：占位
-            const navBtn5 = navBtns[6]; // logs（Phase 3.4.4.4 后索引 +1）
-            navBtn5?.click();
-            await sleep(120);
-            integrationReport.checks.logsPageRendered = !!document.querySelector('.logs-page');
-            integrationReport.checks.logsPlaceholder = !!document.querySelector('.logs-page__placeholder');
-
-            // 11) 回到 reader：5 个 AI 按钮
-            const logoBtn = document.querySelector('.app-header__logo-btn');
-            logoBtn?.click();
+            // 10) 回到 reader：文章工具栏与右上角 AI 入口
+            const openArticleTab = document.querySelector('[data-tab-id^="article:"]');
+            openArticleTab?.click();
             await waitFor(() => !!document.querySelector('.app-main'), { timeout: 2000 });
             // 确保有 article 被选中（前面 uiClickWorks 应该已点过）
             const articleSelected = !!document.querySelector('.article-reader');
@@ -3168,6 +3292,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               aiBtnLabels.some((t) => t.includes('标签')) &&
               aiBtnLabels.some((t) => t.includes('笔记')) &&
               aiBtnLabels.some((t) => t.includes('专题'));
+            integrationReport.checks.aiHeaderEntryExists =
+              !!document.querySelector('[data-testid="app-header__ai"]');
 
             // Electron 不支持 window.prompt。专题按钮必须打开应用内表单，
             // 防止出现“按钮能获得焦点，但点击后没有任何反应”的回归。
@@ -3178,14 +3304,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             document.querySelector('.topic-form-dialog__close')?.click();
 
             // OK 判定
-            // Phase 3.4.4.4：page_settingsRendered 改名 page_aiRendered（settings → ai 拆分）
             const integrationChecks = [
-              'navBtnsOk', 'page_aiRendered', 'page_tagsRendered', 'page_notesRendered',
-              'page_digestsRendered', 'page_topicsRendered', 'page_logsRendered',
+              'navBtnsOk', 'page_tagsRendered', 'page_notesRendered',
+              'page_digestsRendered', 'page_topicsRendered',
+              'settingsWorkspaceRendered', 'aiSettingsRendered',
               'fontThemesOk', 'visualThemesOk', 'fontToggled', 'visualToggled',
               'tagCreated', 'tagDeleted', 'noteCreated', 'digestPageRendered',
-              'topicsPageRendered', 'topicsEmptyState', 'logsPageRendered', 'logsPlaceholder',
-              'backToReader', 'aiBtnsOk', 'topicDialogOpens'
+              'topicsPageRendered', 'topicsEmptyState',
+              'backToReader', 'aiBtnsOk', 'aiHeaderEntryExists', 'topicDialogOpens'
             ];
             integrationReport.ok = integrationChecks.every((k) => integrationReport.checks[k] === true);
           } catch (e) {
@@ -3201,8 +3327,16 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             progressReport.checks.progressBarInitiallyHidden =
               document.querySelector('.sync-progress-bar') === null;
 
-            // 点击顶栏「同步全部」按钮（App.handleSyncAll）
-            const syncBtn = document.querySelector('.app-header__sync-btn');
+            // “同步全部”统一位于“所有订阅源”的二级目录操作栏。
+            const allFeedsButton = Array.from(
+              document.querySelectorAll('.feed-list__virtuals .feed-list__item')
+            ).find((button) => (button.textContent || '').includes('所有订阅源'));
+            allFeedsButton?.click();
+            await waitFor(
+              () => !!document.querySelector('[data-testid="feed-action__sync"]'),
+              { timeout: 2000 }
+            );
+            const syncBtn = document.querySelector('[data-testid="feed-action__sync"]');
             if (syncBtn) {
               syncBtn.click();
               // 等待 progress 态出现（mock sync 极快，可能直接跳到 done；
@@ -3570,14 +3704,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     rawProbe = rawProbe.replace(/__FEED_URL__/g, JSON.stringify(feedUrl));
     probe = rawProbe;
   } else if (smokePhase42) {
-    // Phase 4.2.1 smoke: Navbar 图标(AI 粗体字母 + 专题 SVG) + 系统字号滑块 + 隐藏左栏按钮
+    // Phase 4.2.1 smoke: Navbar 图标 + 系统字号 + 阅读功能键三级目录折叠
     // 走 mock 模式（Mock 5 个 feeds + 10 articles）：
     //   1) AI 入口图标 = 粗体字母 "AI"（<strong class="app-header__nav-icon--ai">）
     //   2) 专题入口图标 = SVG 多源聚合（<svg class="app-header__nav-icon--topics">）
-    //   3) 顶栏隐藏左栏按钮存在 + 初始可见（sidebarVisible=true → ◀ + title="隐藏左栏"）
-    //   4) 点隐藏按钮 → aside 不渲染 + .app-main is-sidebar-hidden + data-sidebar-visible="false"
-    //      + 按钮变 ▶ + 只剩 1 个 ResizeHandle（避免拖出隐藏态下的异常宽度）
-    //   5) 再点一次 → 恢复展开
+    //   3) 左上角小三角已移除，阅读功能键初始为“两级目录全开”
+    //   4) 第一次再点阅读 → 收起一级目录，仅保留二级目录 + 1 个 ResizeHandle
+    //   5) 第二次再点阅读 → 收起二级目录，只保留灵活窗口 + 0 个 ResizeHandle
+    //   6) 第三次再点阅读 → 两级目录同时恢复 + 2 个 ResizeHandle
     //   6) 打开通用设置弹窗 → 系统字号滑块存在 + 当前值=14（默认）
     //   7) 改系统字号到 20 → <html> --ui-font-size="20px" + FeedList + ArticleList 根 fontSize=20px
     //   8) 子元素 em 缩放：.feed-list__item 实际 ≈ 18.6px（20 * 0.93）
@@ -3601,6 +3735,73 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           // 1) 等主界面
           await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
           await sleep(200);
+
+          const readerEmptyPrompt = document.querySelector('.article-reader .status-view');
+          if (readerEmptyPrompt) {
+            const emptyPromptStyle = getComputedStyle(readerEmptyPrompt);
+            report.phase42.checks.readerEmptyPromptBorderless =
+              emptyPromptStyle.borderTopWidth === '0px' &&
+              emptyPromptStyle.borderRightWidth === '0px' &&
+              emptyPromptStyle.borderBottomWidth === '0px' &&
+              emptyPromptStyle.borderLeftWidth === '0px' &&
+              emptyPromptStyle.backgroundColor === 'rgba(0, 0, 0, 0)' &&
+              emptyPromptStyle.boxShadow === 'none';
+            const readerRect = document.querySelector('.article-reader')?.getBoundingClientRect();
+            const titleRect =
+              readerEmptyPrompt.querySelector('.status-title')?.getBoundingClientRect();
+            const hintRect =
+              readerEmptyPrompt.querySelector('.status-hint')?.getBoundingClientRect();
+            if (readerRect && titleRect && hintRect) {
+              const promptCenterY = (titleRect.top + hintRect.bottom) / 2;
+              report.phase42.checks.readerEmptyPromptCentered =
+                Math.abs(promptCenterY - (readerRect.top + readerRect.height / 2)) <= 2;
+            }
+          }
+
+          // 侧栏标签空状态同样复用公共结构，并在一级目录内容区内双向居中。
+          const tagTabBtn = document.querySelector(
+            '.feed-list__tab[role="tab"]:nth-of-type(2)'
+          );
+          if (tagTabBtn) {
+            tagTabBtn.click();
+            await waitFor(
+              () => document.querySelector('.feed-list__empty .status-title')?.textContent === '还没有标签',
+              { timeout: 2000 }
+            );
+            const tagEmptyPrompt = document.querySelector('.feed-list__empty.status-view');
+            const feedBody = document.querySelector('.feed-list__body');
+            report.phase42.checks.feedTagEmptyUsesSharedView = !!tagEmptyPrompt;
+            report.phase42.checks.feedTagEmptyHasUnifiedCopy =
+              tagEmptyPrompt?.querySelector('.status-title')?.textContent === '还没有标签' &&
+              tagEmptyPrompt?.querySelector('.status-hint')?.textContent ===
+                '在文章阅读区点击“标签”或“标签建议”添加。';
+            if (tagEmptyPrompt) {
+              const tagEmptyStyle = getComputedStyle(tagEmptyPrompt);
+              report.phase42.checks.feedTagEmptyBorderless =
+                tagEmptyStyle.borderTopWidth === '0px' &&
+                tagEmptyStyle.borderRightWidth === '0px' &&
+                tagEmptyStyle.borderBottomWidth === '0px' &&
+                tagEmptyStyle.borderLeftWidth === '0px' &&
+                tagEmptyStyle.backgroundColor === 'rgba(0, 0, 0, 0)' &&
+                tagEmptyStyle.boxShadow === 'none';
+              const bodyRect = feedBody?.getBoundingClientRect();
+              const tagTitleRect =
+                tagEmptyPrompt.querySelector('.status-title')?.getBoundingClientRect();
+              const tagHintRect =
+                tagEmptyPrompt.querySelector('.status-hint')?.getBoundingClientRect();
+              if (bodyRect && tagTitleRect && tagHintRect) {
+                const promptCenterX =
+                  (Math.min(tagTitleRect.left, tagHintRect.left) +
+                    Math.max(tagTitleRect.right, tagHintRect.right)) / 2;
+                const promptCenterY = (tagTitleRect.top + tagHintRect.bottom) / 2;
+                report.phase42.checks.feedTagEmptyCentered =
+                  Math.abs(promptCenterX - (bodyRect.left + bodyRect.width / 2)) <= 2 &&
+                  Math.abs(promptCenterY - (bodyRect.top + bodyRect.height / 2)) <= 2;
+              }
+            }
+            document.querySelector('.feed-list__tab[role="tab"]:first-of-type')?.click();
+            await sleep(100);
+          }
 
           // 2) AI 入口粗体 "AI" 字母
           const aiIcon = document.querySelector(
@@ -3632,71 +3833,134 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.phase42.checks.topicsIconPathCount = paths.length;
           }
 
-          // 4) 顶栏隐藏左栏按钮(初始可见 = sidebarVisible=true)
-          const sidebarToggleBtn = document.querySelector(
-            '[data-testid="app-header__sidebar-toggle"]'
-          );
-          report.phase42.checks.sidebarToggleBtnExists = !!sidebarToggleBtn;
-          // 初始:显示 ◀(展开) + title="隐藏左栏"
-          if (sidebarToggleBtn) {
-            // 文本/title 是 debug 字段(放在 text/title 子键),用 boolean 检查放主 checks
-            report.phase42.text = {
-              sidebarToggleInitialText: (sidebarToggleBtn.textContent || '').trim(),
-              sidebarToggleInitialTitle: sidebarToggleBtn.getAttribute('title') || '',
-              sidebarToggleInitialAriaPressed: sidebarToggleBtn.getAttribute('aria-pressed')
+          // 订阅源、分组和文章列表计数必须使用完全相同的字号与字重；
+          // 分组折叠图标使用固定尺寸 SVG，不再依赖字形本身的视觉大小。
+          const feedCount = document.querySelector('.feed-list__count');
+          const groupCount = document.querySelector('.feed-list__group-count');
+          const articleCount = document.querySelector('.article-list__count');
+          if (feedCount && groupCount && articleCount) {
+            const feedCountStyle = getComputedStyle(feedCount);
+            const groupCountStyle = getComputedStyle(groupCount);
+            const articleCountStyle = getComputedStyle(articleCount);
+            report.phase42.checks.countTypographyUnified =
+              feedCountStyle.fontSize === groupCountStyle.fontSize &&
+              groupCountStyle.fontSize === articleCountStyle.fontSize &&
+              feedCountStyle.fontWeight === groupCountStyle.fontWeight &&
+              groupCountStyle.fontWeight === articleCountStyle.fontWeight &&
+              feedCountStyle.lineHeight === groupCountStyle.lineHeight &&
+              groupCountStyle.lineHeight === articleCountStyle.lineHeight;
+            report.phase42.checks.countTypography = {
+              feed: {
+                fontSize: feedCountStyle.fontSize,
+                fontWeight: feedCountStyle.fontWeight,
+                lineHeight: feedCountStyle.lineHeight
+              },
+              group: {
+                fontSize: groupCountStyle.fontSize,
+                fontWeight: groupCountStyle.fontWeight,
+                lineHeight: groupCountStyle.lineHeight
+              },
+              article: {
+                fontSize: articleCountStyle.fontSize,
+                fontWeight: articleCountStyle.fontWeight,
+                lineHeight: articleCountStyle.lineHeight
+              }
             };
-            report.phase42.checks.sidebarToggleInitialTextOk = report.phase42.text.sidebarToggleInitialText === '◀';
-            report.phase42.checks.sidebarToggleInitialTitleOk = report.phase42.text.sidebarToggleInitialTitle === '隐藏左栏';
-            // 展开态 data-sidebar-visible=true
-            report.phase42.checks.sidebarVisibleTrue = document.documentElement.getAttribute('data-sidebar-visible') === 'true';
-            // 展开态 .pane-feeds 可见
-            const paneFeeds = document.querySelector('.pane-feeds');
-            report.phase42.checks.paneFeedsVisibleWhenOpen = !!paneFeeds;
+          }
+          const groupArrowSvg = document.querySelector('.feed-list__group-arrow svg');
+          if (groupArrowSvg) {
+            const arrowRect = groupArrowSvg.getBoundingClientRect();
+            const arrowPath = groupArrowSvg.querySelector('path');
+            const arrowPathBox =
+              arrowPath && typeof arrowPath.getBBox === 'function' ? arrowPath.getBBox() : null;
+            report.phase42.checks.groupArrowUsesLargeSvg =
+              arrowRect.width === 13 && arrowRect.height === 13 &&
+              !!arrowPathBox && arrowPathBox.width === 10 && arrowPathBox.height >= 8.5;
+            report.phase42.checks.groupArrowSize =
+              arrowRect.width + 'x' + arrowRect.height +
+              ' path=' + (arrowPathBox ? arrowPathBox.width + 'x' + arrowPathBox.height : 'missing');
           }
 
-          // 5) 点隐藏左栏按钮 → aside 不渲染 + .app-main is-sidebar-hidden + ▶
-          if (sidebarToggleBtn) {
-            sidebarToggleBtn.click();
-            await sleep(350); // 等 CSS transition
-            const paneFeedsAfter = document.querySelector('.pane-feeds');
-            report.phase42.checks.paneFeedsHiddenAfterToggle = !paneFeedsAfter;
-            report.phase42.checks.dataSidebarVisibleFalse = document.documentElement.getAttribute('data-sidebar-visible') === 'false';
-            const appMain = document.querySelector('.app-main');
-            report.phase42.checks.appMainHasHiddenClass = appMain ? appMain.classList.contains('is-sidebar-hidden') : false;
-            // 重新查按钮(text/title 在 React 重渲染后可能变化)
-            const btnAfter = document.querySelector('[data-testid="app-header__sidebar-toggle"]');
-            if (btnAfter) {
-              report.phase42.text = report.phase42.text || {};
-              report.phase42.text.sidebarToggleAfterText = (btnAfter.textContent || '').trim();
-              report.phase42.text.sidebarToggleAfterTitle = btnAfter.getAttribute('title') || '';
-              report.phase42.text.sidebarToggleAfterAriaPressed = btnAfter.getAttribute('aria-pressed');
-              report.phase42.checks.sidebarToggleAfterTextOk = report.phase42.text.sidebarToggleAfterText === '▶';
-              report.phase42.checks.sidebarToggleAfterTitleOk = report.phase42.text.sidebarToggleAfterTitle === '显示左栏';
-            }
-            // 第一个 ResizeHandle 也应该不渲染(避免拖出隐藏态下的异常宽度)
-            //   .app-main 在折叠态下应该是 2 列(只有 list + reader 中间的 ResizeHandle)
-            // 用 querySelector 找所有带 role="separator" 的(ResizeHandle 通常用这个 role)
-            const allResizeHandles = Array.from(document.querySelectorAll('[role="separator"]')).filter((el) =>
-              el.closest('.app-main')
-            );
-            report.phase42.checks.resizeHandleCountWhenHidden = allResizeHandles.length;
-            // 期望只有 1 个 ResizeHandle(list ↔ reader)
-            report.phase42.checks.onlyOneResizeHandleWhenHidden = allResizeHandles.length === 1;
-          }
+          // 4) 小三角入口已移除；阅读功能键接管三级目录循环。
+          const readerBtn = document.querySelector('[data-page-key="reader"]');
+          const countResizeHandles = () => Array.from(
+            document.querySelectorAll('[role="separator"]')
+          ).filter((el) => el.closest('.app-workbench__content')).length;
+          report.phase42.checks.headerTriangleRemoved =
+            !document.querySelector('[data-testid="app-header__sidebar-toggle"]');
+          report.phase42.checks.readerButtonExists = !!readerBtn;
+          if (readerBtn) {
+            report.phase42.text = {
+              readerInitialTitle: readerBtn.getAttribute('title') || ''
+            };
+            report.phase42.checks.readerInitialTitleOk =
+              report.phase42.text.readerInitialTitle === '收起一级目录';
+            report.phase42.checks.directoryModeInitialBoth =
+              readerBtn.getAttribute('data-directory-mode') === 'both';
+            report.phase42.checks.sidebarVisibleTrue =
+              document.documentElement.getAttribute('data-sidebar-visible') === 'true';
+            report.phase42.checks.paneFeedsVisibleInitially =
+              !!document.querySelector('.pane-feeds');
+            report.phase42.checks.paneListVisibleInitially =
+              !!document.querySelector('.pane-list');
+            report.phase42.checks.twoResizeHandlesInitially =
+              countResizeHandles() === 2;
 
-          // 6) 再点一次恢复
-          if (sidebarToggleBtn) {
-            const btnAgain = document.querySelector('[data-testid="app-header__sidebar-toggle"]');
-            if (btnAgain) btnAgain.click();
+            // 5) 第一次再点阅读：收起一级目录，二级目录与灵活窗口保留。
+            readerBtn.click();
             await sleep(350);
-            const paneFeedsRestored = document.querySelector('.pane-feeds');
-            report.phase42.checks.paneFeedsRestoredAfterSecondToggle = !!paneFeedsRestored;
-            report.phase42.checks.dataSidebarVisibleTrueAfterRestore = document.documentElement.getAttribute('data-sidebar-visible') === 'true';
+            const readerAfterFirst = document.querySelector('[data-page-key="reader"]');
+            report.phase42.text.readerTitleAfterFirst =
+              readerAfterFirst?.getAttribute('title') || '';
+            report.phase42.checks.directoryModeSecondary =
+              readerAfterFirst?.getAttribute('data-directory-mode') === 'secondary';
+            report.phase42.checks.paneFeedsHiddenAfterFirst =
+              !document.querySelector('.pane-feeds');
+            report.phase42.checks.paneListVisibleAfterFirst =
+              !!document.querySelector('.pane-list');
+            report.phase42.checks.dataSidebarVisibleFalse =
+              document.documentElement.getAttribute('data-sidebar-visible') === 'false';
+            report.phase42.checks.readerTitleAfterFirstOk =
+              report.phase42.text.readerTitleAfterFirst === '收起二级目录';
+            report.phase42.checks.oneResizeHandleAfterFirst =
+              countResizeHandles() === 1;
+
+            // 6) 第二次再点阅读：收起二级目录，只剩灵活窗口。
+            readerAfterFirst?.click();
+            await sleep(220);
+            const readerAfterSecond = document.querySelector('[data-page-key="reader"]');
+            report.phase42.text.readerTitleAfterSecond =
+              readerAfterSecond?.getAttribute('title') || '';
+            report.phase42.checks.directoryModeNone =
+              readerAfterSecond?.getAttribute('data-directory-mode') === 'none';
+            report.phase42.checks.paneFeedsHiddenAfterSecond =
+              !document.querySelector('.pane-feeds');
+            report.phase42.checks.paneListHiddenAfterSecond =
+              !document.querySelector('.pane-list');
+            report.phase42.checks.readerTitleAfterSecondOk =
+              report.phase42.text.readerTitleAfterSecond === '展开一级和二级目录';
+            report.phase42.checks.zeroResizeHandlesAfterSecond =
+              countResizeHandles() === 0;
+            report.phase42.checks.appMainHasListHiddenClass =
+              document.querySelector('.app-main')?.classList.contains('is-list-hidden') === true;
+
+            // 7) 第三次再点阅读：一级、二级目录同时恢复。
+            readerAfterSecond?.click();
+            await sleep(350);
+            const readerAfterThird = document.querySelector('[data-page-key="reader"]');
+            report.phase42.checks.directoryModeBothRestored =
+              readerAfterThird?.getAttribute('data-directory-mode') === 'both';
+            report.phase42.checks.bothPanesRestoredAfterThird =
+              !!document.querySelector('.pane-feeds') &&
+              !!document.querySelector('.pane-list');
+            report.phase42.checks.dataSidebarVisibleTrueAfterRestore =
+              document.documentElement.getAttribute('data-sidebar-visible') === 'true';
+            report.phase42.checks.twoResizeHandlesAfterRestore =
+              countResizeHandles() === 2;
           }
 
-          // 7) 打开通用设置工作区(点击"通用"按钮)
-          const generalBtn = Array.from(document.querySelectorAll('.app-header__nav-btn'))
-            .find((b) => (b.getAttribute('data-page') || '') === 'general');
+          // 8) 通过右上角齿轮打开统一设置工作区。
+          const generalBtn = document.querySelector('[data-testid="app-header__settings"]');
           if (generalBtn) generalBtn.click();
           await waitFor(() => !!document.querySelector('.general-modal'), { timeout: 3000 });
           await sleep(150);
@@ -3741,11 +4005,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             }
           }
 
-          // 10) 关闭设置工作区并返回阅读。IDE 工作台结构下，设置页打开时
-          // ArticleList 会被工作区页签替换，因此回到阅读后再验证中栏字号。
-          const closeBtn = document.querySelector('.general-modal__close');
-          if (closeBtn) closeBtn.click();
-          await waitFor(() => !!document.querySelector('.article-list'), { timeout: 3000 });
+          // 10) 固定四段工作台中，设置只替换最右灵活窗口，ArticleList 始终保留。
+          // 点击竖向功能栏的阅读入口返回正文，再同时验证中栏与阅读区。
+          const readerNavBtn = document.querySelector('[data-page-key="reader"]');
+          if (readerNavBtn) readerNavBtn.click();
+          await waitFor(
+            () => !!document.querySelector('.article-list') && !!document.querySelector('.article-reader'),
+            { timeout: 3000 }
+          );
           await sleep(150);
           const articleList = document.querySelector('.article-list');
           if (articleList) {
@@ -3808,27 +4075,140 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           } catch (e) {
             report.phase42.checks.settingsGetError = String(e);
           }
+
+          // 13) 通用设置与 AI 设置必须使用同一套页面和分组卡片规格。
+          generalBtn?.click();
+          await waitFor(
+            () => !!document.querySelector('.general-modal--embedded.settings-surface'),
+            { timeout: 3000 }
+          );
+          const generalSurface = document.querySelector(
+            '.general-modal--embedded.settings-surface'
+          );
+          const generalTitle = generalSurface?.querySelector('.settings-surface__title');
+          const generalSection = generalSurface?.querySelector('.settings-surface__section');
+          const generalSectionTitle =
+            generalSection?.querySelector('.settings-surface__section-title');
+          const generalSurfaceRect = generalSurface?.getBoundingClientRect();
+          const generalTitleStyle = generalTitle ? getComputedStyle(generalTitle) : null;
+          const generalSectionStyle = generalSection ? getComputedStyle(generalSection) : null;
+          const generalSectionTitleStyle =
+            generalSectionTitle ? getComputedStyle(generalSectionTitle) : null;
+          const generalMetrics = {
+            titleFontSize: generalTitleStyle?.fontSize ?? null,
+            titleFontWeight: generalTitleStyle?.fontWeight ?? null,
+            titleLineHeight: generalTitleStyle?.lineHeight ?? null,
+            sectionBorderRadius: generalSectionStyle?.borderRadius ?? null,
+            sectionBorderTopWidth: generalSectionStyle?.borderTopWidth ?? null,
+            sectionBackgroundColor: generalSectionStyle?.backgroundColor ?? null,
+            sectionTitleFontSize: generalSectionTitleStyle?.fontSize ?? null,
+            sectionTitlePaddingTop: generalSectionTitleStyle?.paddingTop ?? null,
+            sectionTitlePaddingBottom: generalSectionTitleStyle?.paddingBottom ?? null
+          };
+          document.querySelector('[data-settings-section="ai"]')?.click();
+          await waitFor(
+            () => !!document.querySelector('.settings-page.settings-surface'),
+            { timeout: 3000 }
+          );
+          const aiSurface = document.querySelector('.settings-page.settings-surface');
+          const aiTitle = aiSurface?.querySelector('.settings-surface__title');
+          const aiSection = aiSurface?.querySelector('.settings-surface__section');
+          const aiSectionTitle = aiSection?.querySelector('.settings-surface__section-title');
+          const aiSurfaceRect = aiSurface?.getBoundingClientRect();
+          const aiTitleStyle = aiTitle ? getComputedStyle(aiTitle) : null;
+          const aiSectionStyle = aiSection ? getComputedStyle(aiSection) : null;
+          const aiSectionTitleStyle = aiSectionTitle ? getComputedStyle(aiSectionTitle) : null;
+          report.phase42.checks.settingsPagesUseSharedStructure =
+            !!generalSurface?.querySelector('.settings-surface__header') &&
+            !!generalSurface?.querySelector('.settings-surface__section-body') &&
+            !!aiSurface?.querySelector('.settings-surface__header') &&
+            !!aiSurface?.querySelector('.settings-surface__section-body');
+          report.phase42.checks.settingsPagesVisualMetricsUnified =
+            !!generalSurfaceRect && !!aiSurfaceRect &&
+            Math.abs(generalSurfaceRect.width - aiSurfaceRect.width) <= 1 &&
+            generalMetrics.titleFontSize === aiTitleStyle?.fontSize &&
+            generalMetrics.titleFontWeight === aiTitleStyle?.fontWeight &&
+            generalMetrics.titleLineHeight === aiTitleStyle?.lineHeight &&
+            generalMetrics.sectionBorderRadius === aiSectionStyle?.borderRadius &&
+            generalMetrics.sectionBorderTopWidth === aiSectionStyle?.borderTopWidth &&
+            generalMetrics.sectionBackgroundColor === aiSectionStyle?.backgroundColor &&
+            generalMetrics.sectionTitleFontSize === aiSectionTitleStyle?.fontSize &&
+            generalMetrics.sectionTitlePaddingTop === aiSectionTitleStyle?.paddingTop &&
+            generalMetrics.sectionTitlePaddingBottom === aiSectionTitleStyle?.paddingBottom;
+          report.phase42.checks.settingsPageMetrics = {
+            generalWidth: generalSurfaceRect?.width ?? null,
+            aiWidth: aiSurfaceRect?.width ?? null,
+            generalTitleFont: generalMetrics.titleFontSize,
+            aiTitleFont: aiTitleStyle?.fontSize ?? null,
+            generalSectionRadius: generalMetrics.sectionBorderRadius,
+            aiSectionRadius: aiSectionStyle?.borderRadius ?? null,
+            generalSectionTitlePadding:
+              generalMetrics.sectionTitlePaddingTop + ' / ' +
+              generalMetrics.sectionTitlePaddingBottom,
+            aiSectionTitlePadding:
+              aiSectionTitleStyle?.paddingTop + ' / ' +
+              aiSectionTitleStyle?.paddingBottom
+          };
+
+          // 14) 文本输入框聚焦时不得出现 Chromium 的双层蓝色焦点框。
+          const tagsNavBtn = document.querySelector('[data-page-key="tags"]');
+          tagsNavBtn?.click();
+          await waitFor(
+            () => !!document.querySelector('.tags-page__input--name'),
+            { timeout: 3000 }
+          );
+          const tagNameInput = document.querySelector('.tags-page__input--name');
+          if (tagNameInput) {
+            tagNameInput.focus();
+            await sleep(50);
+            const inputFocusStyle = getComputedStyle(tagNameInput);
+            const accentProbe = document.createElement('span');
+            accentProbe.style.color = 'var(--accent)';
+            document.body.appendChild(accentProbe);
+            const accentColor = getComputedStyle(accentProbe).color;
+            accentProbe.remove();
+            report.phase42.checks.formFocusHasNoBlueFrame =
+              inputFocusStyle.outlineStyle === 'none' &&
+              inputFocusStyle.outlineWidth === '0px' &&
+              inputFocusStyle.boxShadow === 'none' &&
+              inputFocusStyle.borderColor !== accentColor;
+            report.phase42.checks.formFocusStyle = {
+              outlineStyle: inputFocusStyle.outlineStyle,
+              outlineWidth: inputFocusStyle.outlineWidth,
+              boxShadow: inputFocusStyle.boxShadow,
+              borderColor: inputFocusStyle.borderColor,
+              accentColor
+            };
+          }
         } catch (e) {
           report.phase42.error = String(e);
           report.phase42.stack = (e instanceof Error) ? e.stack : null;
         }
 
         const checks42 = [
+          'readerEmptyPromptBorderless', 'readerEmptyPromptCentered',
+          'feedTagEmptyUsesSharedView', 'feedTagEmptyHasUnifiedCopy',
+          'feedTagEmptyBorderless', 'feedTagEmptyCentered',
           'aiIconExists', 'aiIconIsStrong', 'aiIconTextIsAI',
           'topicsIconExists', 'topicsIconIsSvg',
           'topicsIconHasCircles', 'topicsIconHasConnectingPaths',
-          'sidebarToggleBtnExists',
-          'sidebarToggleInitialTextOk', 'sidebarToggleInitialTitleOk',
-          'sidebarToggleAfterTextOk', 'sidebarToggleAfterTitleOk',
-          'sidebarVisibleTrue', 'paneFeedsVisibleWhenOpen',
-          'paneFeedsHiddenAfterToggle', 'dataSidebarVisibleFalse',
-          'appMainHasHiddenClass', 'onlyOneResizeHandleWhenHidden',
-          'paneFeedsRestoredAfterSecondToggle', 'dataSidebarVisibleTrueAfterRestore',
+          'countTypographyUnified', 'groupArrowUsesLargeSvg',
+          'headerTriangleRemoved', 'readerButtonExists', 'readerInitialTitleOk',
+          'directoryModeInitialBoth', 'sidebarVisibleTrue',
+          'paneFeedsVisibleInitially', 'paneListVisibleInitially', 'twoResizeHandlesInitially',
+          'directoryModeSecondary', 'paneFeedsHiddenAfterFirst', 'paneListVisibleAfterFirst',
+          'dataSidebarVisibleFalse', 'readerTitleAfterFirstOk', 'oneResizeHandleAfterFirst',
+          'directoryModeNone', 'paneFeedsHiddenAfterSecond', 'paneListHiddenAfterSecond',
+          'readerTitleAfterSecondOk', 'zeroResizeHandlesAfterSecond', 'appMainHasListHiddenClass',
+          'directoryModeBothRestored', 'bothPanesRestoredAfterThird',
+          'dataSidebarVisibleTrueAfterRestore', 'twoResizeHandlesAfterRestore',
           'systemFontSizeInputExists', 'systemFontSizeDefault14',
           'uiFontSizeVarIs20', 'feedListFontSizeIs20', 'articleListFontSizeIs20',
           'feedListItemEmScaled',
           'fontSizeVarStillDefault', 'readerDoesNotInheritUiFontSize',
-          'settingsSystemFontSizeIs20'
+          'settingsSystemFontSizeIs20',
+          'settingsPagesUseSharedStructure', 'settingsPagesVisualMetricsUnified',
+          'formFocusHasNoBlueFrame'
         ];
         for (const k of checks42) {
           if (report.phase42.checks[k] !== true) {
@@ -4045,6 +4425,19 @@ function ok<T>(data: T): IpcResult<T> {
 
 function fail(code: string, message: string, detail?: string): IpcResult<never> {
   return { success: false, error: { code, message, detail } };
+}
+
+function recordLocalLog(
+  level: LogEntry['level'],
+  module: string,
+  message: string,
+  detail?: LocalLogDetail
+): void {
+  try {
+    appendLocalLog(level, module, message, detail);
+  } catch {
+    process.stderr.write('[local-log] 写入失败\n');
+  }
 }
 
 type MainIpcHandler = Parameters<typeof ipcMain.handle>[1];
@@ -4656,14 +5049,44 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
     } catch (e) { return fail('TOPIC_BRIEFING_EXPORT_FAILED', e instanceof Error ? e.message : String(e)); }
   });
 
-  // ============= Log（Phase 4 占位 stub，陈冠中会在 Phase 4 接入真实实现） =============
+  // ============= Log =============
 
-  trustedIpcMain.handle(IPC_CHANNELS.LOG_LIST, async (): Promise<IpcResult<LogEntry[]>> => {
-    return fail('NOT_IMPLEMENTED', '日志查看功能等待 Phase 4 接入');
+  trustedIpcMain.handle(IPC_CHANNELS.LOG_LIST, async (_, args): Promise<IpcResult<LogEntry[]>> => {
+    try {
+      const rawLimit = args?.limit;
+      if (
+        rawLimit !== undefined &&
+        (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 1_000)
+      ) {
+        return fail('INVALID_PARAMS', 'limit 必须是 1 到 1000 之间的整数');
+      }
+      return ok(listLocalLogs(rawLimit ?? 100));
+    } catch {
+      return fail('LOG_LIST_FAILED', '无法读取本地日志');
+    }
   });
 
-  trustedIpcMain.handle(IPC_CHANNELS.LOG_EXPORT, async (): Promise<IpcResult<string>> => {
-    return fail('NOT_IMPLEMENTED', '日志导出功能等待 Phase 4 接入');
+  trustedIpcMain.handle(IPC_CHANNELS.LOG_EXPORT, async (event): Promise<IpcResult<string>> => {
+    try {
+      const date = new Date().toISOString().slice(0, 10);
+      const options: SaveDialogOptions = {
+        title: '导出本地日志',
+        defaultPath: path.join(app.getPath('documents'), `juhe-shiyi-logs-${date}.txt`),
+        filters: [{ name: 'Text', extensions: ['txt'] }]
+      };
+      const owner = BrowserWindow.fromWebContents(event.sender);
+      const result = owner
+        ? await dialog.showSaveDialog(owner, options)
+        : await dialog.showSaveDialog(options);
+      if (result.canceled || !result.filePath) return ok('');
+      const entries = listLocalLogs(1_000);
+      await writeFile(result.filePath, formatLocalLogs(entries), { encoding: 'utf8', mode: 0o600 });
+      recordLocalLog('info', 'log:export', '本地日志已导出', { entryCount: entries.length });
+      return ok(path.basename(result.filePath));
+    } catch {
+      recordLocalLog('error', 'log:export', '本地日志导出失败');
+      return fail('LOG_EXPORT_FAILED', '无法导出本地日志');
+    }
   });
 
   // P2 体验打磨：键盘快捷键 'o' 在系统浏览器打开原文
@@ -4789,6 +5212,16 @@ app.whenReady().then(async () => {
     process.stdout.write(`[main] WARN JUHE_SHIVE_USER_DATA not set, smoke data will leak\n`);
   }
 
+  try {
+    initializeLocalLogService(app.getPath('userData'));
+    recordLocalLog('info', 'app:lifecycle', '应用已启动', {
+      version: app.getVersion(),
+      platform: process.platform
+    });
+  } catch {
+    process.stderr.write('[local-log] 初始化失败\n');
+  }
+
   registerArticleImageProtocol(
     (scheme, handler) => protocol.handle(scheme, handler),
     [
@@ -4812,7 +5245,8 @@ app.whenReady().then(async () => {
   }, {
     trustedRendererUrl,
     selectOpmlImportPath,
-    selectOpmlExportPath
+    selectOpmlExportPath,
+    recordLog: recordLocalLog
   });
   await createMainWindow(trustedRendererUrl);
 
@@ -4824,6 +5258,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('will-quit', () => {
+  recordLocalLog('info', 'app:lifecycle', '应用正在退出');
   disposeContentPipelineIpc?.();
   disposeContentPipelineIpc = null;
   closeDatabase();

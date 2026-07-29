@@ -10,6 +10,7 @@ import type { Article, Feed, Tag, TagCreateInput } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
+import { EmptyView } from '../../components/StatusView/EmptyView';
 import { parseArticleTitleTags } from '../../utils/article-title-tags';
 import './TagsPage.css';
 
@@ -239,7 +240,11 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
           </form>
 
           {tags.length === 0 ? (
-            <p className="tags-page__empty">还没有标签。在上方添加一个开始使用。</p>
+            <EmptyView
+              className="tags-page__empty"
+              title="还没有标签"
+              hint="在上方输入名称并添加一个标签。"
+            />
           ) : (
             <ul className="tags-page__list" data-testid="tags-page__list">
               {tags.map((t) => (
@@ -280,9 +285,11 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
         {/* 右栏：选中标签下的文章列表 */}
         <section className="tags-page__right" data-testid="tags-page__right">
           {!selectedTagId ? (
-            <div className="tags-page__right-empty">
-              <p>← 在左侧选择一个标签，查看该标签下的文章列表</p>
-            </div>
+            <EmptyView
+              className="tags-page__right-empty"
+              title="选择一个标签"
+              hint="从左侧标签列表中选择，查看该标签下的文章。"
+            />
           ) : tagArticlesLoading && tagArticles === null ? (
             <LoadingView message="正在加载文章…" />
           ) : (
@@ -309,7 +316,11 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
                   onRetry={() => setTagArticlesReloadKey((key) => key + 1)}
                 />
               ) : tagArticles && tagArticles.length === 0 ? (
-                <p className="tags-page__empty">该标签下还没有文章。</p>
+                <EmptyView
+                  className="tags-page__empty"
+                  title="该标签下还没有文章"
+                  hint="可以回到阅读区，为文章添加这个标签。"
+                />
               ) : (
                 <>
                   <ul className="tags-page__article-list" data-testid="tags-page__article-list">

@@ -1,30 +1,48 @@
 /**
- * IDE 风格应用工作台
+ * IDE 式应用工作台。
  *
- * 阅读页保留三栏拖拽；设置、标签、文摘等二级页面只替换中央工作区，
- * Activity Bar 与订阅源侧栏保持在同一应用上下文中。
+ * 固定顺序：竖向功能栏 / 一级订阅源目录 / 二级文章目录 / 灵活窗口。
+ * 只有最右灵活窗口切换标签和内容，前两级目录始终保持原位。
  */
 import { ReactNode, useCallback, useRef } from 'react';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
-import { OpmlButtons } from '../OpmlButtons/OpmlButtons';
 import { ResizeHandle } from '../ResizeHandle/ResizeHandle';
 import './Layout.css';
 
-export type AppPage = 'reader' | 'general' | 'ai' | 'tags' | 'notes' | 'digests' | 'topics' | 'logs' | 'opml-export';
+export type AppPage = 'reader' | 'settings' | 'tags' | 'notes' | 'digests' | 'topics' | 'opml-export';
+
+export type WorkbenchIconName =
+  | 'reader'
+  | 'article'
+  | 'settings'
+  | 'ai'
+  | 'tags'
+  | 'notes'
+  | 'digests'
+  | 'topics'
+  | 'export';
+
+export interface WorkbenchTab {
+  id: string;
+  label: string;
+  page: AppPage;
+  articleId?: string;
+  icon: WorkbenchIconName;
+  closeable?: boolean;
+}
+
+export type DirectoryMode = 'both' | 'secondary' | 'none';
+
+export function nextDirectoryMode(mode: DirectoryMode): DirectoryMode {
+  if (mode === 'both') return 'secondary';
+  if (mode === 'secondary') return 'none';
+  return 'both';
+}
 
 export interface LayoutProps {
-  feedsSlot: ReactNode;
+  sidebarSlot: ReactNode;
   articlesSlot: ReactNode;
   readerSlot: ReactNode;
-  onAddFeed?: () => void;
-  onSyncAll?: () => void;
-  syncing?: boolean;
-  onOpmlImport?: () => Promise<{
-    ok: boolean;
-    message: string;
-    result?: { feedsImported: number; feedsSkipped: number; errors: string[] } | null;
-  }>;
-  onOpmlExport?: () => Promise<{ ok: boolean; message: string }>;
   sidebarPercent: number;
   listPercent: number;
   onResizeSidebar: (percent: number) => void;
@@ -33,22 +51,17 @@ export interface LayoutProps {
   onPageChange: (page: AppPage) => void;
   pageSlot?: ReactNode;
   searchSlot?: ReactNode;
-  /** Phase 4.2.1：订阅源侧栏可见性与持久化切换。 */
-  sidebarVisible?: boolean;
-  onToggleSidebar?: () => void;
-  sidebarToggleTitle?: string;
+  tabs: WorkbenchTab[];
+  activeTabId: string;
+  onTabSelect: (tabId: string) => void;
+  onTabClose: (tabId: string) => void;
+  aiDockOpen: boolean;
+  aiAvailable: boolean;
+  onToggleAiDock: () => void;
+  onOpenSettings: () => void;
+  directoryMode: DirectoryMode;
+  onReaderAction: () => void;
 }
-
-type WorkbenchIconName =
-  | 'reader'
-  | 'general'
-  | 'ai'
-  | 'tags'
-  | 'notes'
-  | 'digests'
-  | 'topics'
-  | 'logs'
-  | 'export';
 
 function WorkbenchIcon({
   name,
@@ -98,7 +111,13 @@ function WorkbenchIcon({
         <path d="M4 8.5h16M8 8.5v10" />
       </>
     ),
-    general: (
+    article: (
+      <>
+        <path d="M6 3.5h9l3 3V21H6z" />
+        <path d="M15 3.5V7h3M9 11h6M9 15h6M9 18h4" />
+      </>
+    ),
+    settings: (
       <>
         <circle cx="12" cy="12" r="3.2" />
         <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 4.2 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H2.4v-4h.1A1.7 1.7 0 0 0 4.2 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06L6.66 3.8l.06.06A1.7 1.7 0 0 0 8.6 4.2a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1v-.1h4v.1a1.7 1.7 0 0 0 1 1.7 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 8.6a1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1.1.4h.1v4h-.1a1.7 1.7 0 0 0-1.7 1z" />
@@ -115,11 +134,6 @@ function WorkbenchIcon({
       <>
         <path d="M6 5h14v15H6zM3 8v12h14" />
         <path d="M9 9h8M9 13h8M9 17h5" />
-      </>
-    ),
-    logs: (
-      <>
-        <path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />
       </>
     ),
     export: (
@@ -147,14 +161,9 @@ function WorkbenchIcon({
 }
 
 export function Layout({
-  feedsSlot,
+  sidebarSlot,
   articlesSlot,
   readerSlot,
-  onAddFeed,
-  onSyncAll,
-  syncing = false,
-  onOpmlImport,
-  onOpmlExport,
   sidebarPercent,
   listPercent,
   onResizeSidebar,
@@ -163,11 +172,19 @@ export function Layout({
   onPageChange,
   pageSlot,
   searchSlot,
-  sidebarVisible = true,
-  onToggleSidebar,
-  sidebarToggleTitle
+  tabs,
+  activeTabId,
+  onTabSelect,
+  onTabClose,
+  aiDockOpen,
+  aiAvailable,
+  onToggleAiDock,
+  onOpenSettings,
+  directoryMode,
+  onReaderAction
 }: LayoutProps) {
-  const mainRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLElement>(null);
   const sidebarRef = useRef(sidebarPercent);
   sidebarRef.current = sidebarPercent;
   const listRef = useRef(listPercent);
@@ -175,122 +192,83 @@ export function Layout({
 
   const handleSidebarDrag = useCallback(
     (deltaPx: number) => {
-      const total = mainRef.current?.clientWidth ?? 0;
+      const total = contentRef.current?.clientWidth ?? 0;
       if (total === 0) return;
-      const deltaPercent = (deltaPx / total) * 100;
-      const maxSidebar = Math.min(40, 80 - listRef.current);
-      onResizeSidebar(Math.max(10, Math.min(maxSidebar, sidebarRef.current + deltaPercent)));
+      onResizeSidebar(Math.max(12, Math.min(36, sidebarRef.current + (deltaPx / total) * 100)));
     },
     [onResizeSidebar]
   );
 
   const handleListDrag = useCallback(
     (deltaPx: number) => {
-      const total = mainRef.current?.clientWidth ?? 0;
+      const total = editorRef.current?.clientWidth ?? 0;
       if (total === 0) return;
-      const deltaPercent = (deltaPx / total) * 100;
-      const maxList = Math.min(50, 80 - sidebarRef.current);
-      onResizeList(Math.max(15, Math.min(maxList, listRef.current + deltaPercent)));
+      const readerPercent = 100 - sidebarRef.current - listRef.current;
+      const editorTotal = Math.max(1, listRef.current + readerPercent);
+      const deltaRelative = (deltaPx / total) * editorTotal;
+      onResizeList(Math.max(16, Math.min(48, listRef.current + deltaRelative)));
     },
     [onResizeList]
   );
 
-  const readerPercent = 100 - sidebarPercent - listPercent;
-  const gridTemplateColumns = sidebarVisible
-    ? `${sidebarPercent}fr 4px ${listPercent}fr 4px ${readerPercent}fr`
-    : `${listPercent}fr 4px ${readerPercent}fr`;
+  const sidebarVisible = directoryMode === 'both';
+  const articleDirectoryVisible = directoryMode !== 'none';
+  const readerPercent = Math.max(20, 100 - sidebarPercent - listPercent);
+  const contentColumns = sidebarVisible
+    ? `minmax(218px, ${sidebarPercent}fr) 4px minmax(0, ${100 - sidebarPercent}fr)`
+    : 'minmax(0, 1fr)';
+  const editorColumns = articleDirectoryVisible
+    ? `minmax(260px, ${listPercent}fr) 4px minmax(320px, ${readerPercent}fr)`
+    : 'minmax(0, 1fr)';
+  const readerActionTitle = currentPage !== 'reader'
+    ? '回到阅读工作区'
+    : directoryMode === 'both'
+      ? '收起一级目录'
+      : directoryMode === 'secondary'
+        ? '收起二级目录'
+        : '展开一级和二级目录';
 
-  // 顺序保持不变，兼容既有 UI smoke。
   const navItems: Array<{ id: AppPage; label: string; icon: WorkbenchIconName; title: string }> = [
-    { id: 'general', label: '通用设置', icon: 'general', title: '通用设置' },
-    { id: 'ai', label: 'AI 设置', icon: 'ai', title: 'AI Provider 与默认值' },
-    { id: 'tags', label: '标签管理', icon: 'tags', title: '标签管理' },
-    { id: 'notes', label: '笔记', icon: 'notes', title: '笔记' },
+    { id: 'tags', label: '标签', icon: 'tags', title: '标签管理' },
+    { id: 'notes', label: '笔记', icon: 'notes', title: '文章笔记' },
     { id: 'digests', label: '文摘', icon: 'digests', title: '文摘整理与导出' },
-    { id: 'topics', label: '专题', icon: 'topics', title: '专题追踪' },
-    { id: 'logs', label: '本地日志', icon: 'logs', title: '本地日志' }
+    { id: 'topics', label: '专题', icon: 'topics', title: '专题追踪' }
   ];
-
-  const pageMeta = currentPage === 'opml-export'
-    ? { label: '导出 OPML', icon: 'export' as WorkbenchIconName }
-    : navItems.find((item) => item.id === currentPage);
 
   return (
     <div className="app-layout">
       <header className="app-header">
         <div className="app-header__left">
-          <button
-            type="button"
-            className="app-header__logo-btn"
-            onClick={() => onPageChange('reader')}
-            title="聚合拾遗 — 回到阅读"
-            aria-label="回到阅读"
-          >
-            <svg
-              className="app-header__logo-svg"
-              viewBox="0 0 16 16"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <rect x="2" y="2" width="5" height="5" rx="0.5" />
-              <rect x="9" y="2" width="5" height="5" rx="0.5" />
-              <rect x="2" y="9" width="5" height="5" rx="0.5" />
-              <rect x="9" y="9" width="5" height="5" rx="0.5" />
-            </svg>
-          </button>
           <div className="app-header__identity">
             <h1 className="app-header__title">聚合拾遗</h1>
-            {currentPage !== 'reader' && (
-              <>
-                <span className="app-header__crumb-separator" aria-hidden="true">/</span>
-                <span className="app-header__crumb">{pageMeta?.label}</span>
-              </>
-            )}
           </div>
-          {onToggleSidebar && (
-            <button
-              type="button"
-              className={`app-header__sidebar-toggle ${sidebarVisible ? '' : 'is-hidden'}`}
-              onClick={onToggleSidebar}
-              title={sidebarToggleTitle ?? (sidebarVisible ? '隐藏左栏' : '显示左栏')}
-              aria-label={sidebarToggleTitle ?? (sidebarVisible ? '隐藏左栏' : '显示左栏')}
-              aria-pressed={!sidebarVisible}
-              data-testid="app-header__sidebar-toggle"
-            >
-              {sidebarVisible ? '◀' : '▶'}
-            </button>
-          )}
         </div>
+
+        {searchSlot && <div className="app-header__search">{searchSlot}</div>}
+
         <div className="app-header__right">
-          {searchSlot && <div className="app-header__search">{searchSlot}</div>}
-          {currentPage === 'reader' && onAddFeed && (
-            <button
-              type="button"
-              className="app-header__add-btn"
-              onClick={onAddFeed}
-              title="添加订阅源"
-            >
-              + 添加订阅源
-            </button>
-          )}
-          {currentPage === 'reader' && onSyncAll && (
-            <button
-              type="button"
-              className="app-header__sync-btn"
-              onClick={onSyncAll}
-              disabled={syncing}
-            >
-              {syncing ? '同步中…' : '同步文章'}
-            </button>
-          )}
-          {currentPage === 'reader' && onOpmlImport && onOpmlExport && (
-            <OpmlButtons onImport={onOpmlImport} onExport={onOpmlExport} />
-          )}
+          <button
+            type="button"
+            className={`app-header__tool-btn app-header__ai-btn ${aiDockOpen ? 'is-active' : ''}`}
+            onClick={onToggleAiDock}
+            disabled={!aiAvailable}
+            title={aiAvailable ? (aiDockOpen ? '关闭 AI 助手' : '打开 AI 助手') : '先打开一篇文章'}
+            aria-label={aiDockOpen ? '关闭 AI 助手' : '打开 AI 助手'}
+            aria-pressed={aiDockOpen}
+            data-testid="app-header__ai"
+          >
+            <WorkbenchIcon name="ai" navigation />
+          </button>
+          <button
+            type="button"
+            className={`app-header__tool-btn ${currentPage === 'settings' ? 'is-active' : ''}`}
+            onClick={onOpenSettings}
+            title="设置"
+            aria-label="打开设置"
+            data-testid="app-header__settings"
+          >
+            <WorkbenchIcon name="settings" />
+          </button>
           <ThemeToggle />
         </div>
       </header>
@@ -300,15 +278,18 @@ export function Layout({
           <button
             type="button"
             className={`activity-bar__reader ${currentPage === 'reader' ? 'is-active' : ''}`}
-            onClick={() => onPageChange('reader')}
-            title="阅读工作区"
+            onClick={onReaderAction}
+            title={readerActionTitle}
+            aria-label={readerActionTitle}
             aria-current={currentPage === 'reader' ? 'page' : undefined}
+            data-directory-mode={directoryMode}
+            data-page-key="reader"
           >
             <WorkbenchIcon name="reader" />
             <span className="activity-bar__label">阅读</span>
           </button>
           <div className="activity-bar__separator" />
-          <nav className="app-header__nav" aria-label="页面导航">
+          <nav className="app-header__nav" aria-label="内容工具">
             {navItems.map((item) => (
               <button
                 key={item.id}
@@ -329,52 +310,79 @@ export function Layout({
           </nav>
         </aside>
 
-        {currentPage === 'reader' ? (
+        <div
+          ref={contentRef}
+          className={`app-workbench__content ${sidebarVisible ? '' : 'is-sidebar-hidden'} ${articleDirectoryVisible ? '' : 'is-list-hidden'}`}
+          data-directory-mode={directoryMode}
+          style={{ gridTemplateColumns: contentColumns }}
+        >
+          {sidebarVisible && <aside className="pane pane-feeds">{sidebarSlot}</aside>}
+          {sidebarVisible && <ResizeHandle onDrag={handleSidebarDrag} ariaLabel="调整左侧栏宽度" />}
+
           <main
-            ref={mainRef}
-            className={`app-main ${sidebarVisible ? '' : 'is-sidebar-hidden'}`}
-            style={{ gridTemplateColumns }}
+            ref={editorRef}
+            className={`app-main ${sidebarVisible ? '' : 'is-sidebar-hidden'} ${articleDirectoryVisible ? '' : 'is-list-hidden'}`}
+            style={{ gridTemplateColumns: editorColumns }}
           >
-            {sidebarVisible && <aside className="pane pane-feeds">{feedsSlot}</aside>}
-            {sidebarVisible && (
-              <ResizeHandle onDrag={handleSidebarDrag} ariaLabel="调整订阅源栏宽度" />
-            )}
-            <section className="pane pane-list">{articlesSlot}</section>
-            <ResizeHandle onDrag={handleListDrag} ariaLabel="调整文章列表宽度" />
-            <section className="pane pane-reader">{readerSlot}</section>
+            {articleDirectoryVisible && <section className="pane pane-list">{articlesSlot}</section>}
+            {articleDirectoryVisible && <ResizeHandle onDrag={handleListDrag} ariaLabel="调整文章列表宽度" />}
+
+            <section className="app-editor pane pane-reader">
+              {tabs.length > 0 && (
+                <div className="app-page__tabbar" role="tablist" aria-label="工作区标签页">
+                  {tabs.map((tab) => {
+                    const active = tab.id === activeTabId;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        className={`app-page__tab ${active ? 'is-active' : ''}`}
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => onTabSelect(tab.id)}
+                        data-tab-id={tab.id}
+                      >
+                        <WorkbenchIcon name={tab.icon} />
+                        <span className="app-page__tab-label" title={tab.label}>{tab.label}</span>
+                        {tab.closeable && (
+                          <span
+                            className="app-page__tab-close"
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`关闭${tab.label}`}
+                            title={`关闭${tab.label}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onTabClose(tab.id);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onTabClose(tab.id);
+                              }
+                            }}
+                          >
+                            ×
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  <div className="app-page__tabbar-spacer" />
+                </div>
+              )}
+
+              {currentPage === 'reader' ? (
+                readerSlot
+              ) : (
+                <section className="app-page" data-page={currentPage}>
+                  <div className="app-page__content">{pageSlot}</div>
+                </section>
+              )}
+            </section>
           </main>
-        ) : (
-          <div className={`app-secondary ${sidebarVisible ? '' : 'is-sidebar-hidden'}`}>
-            {sidebarVisible && (
-              <aside className="pane pane-feeds app-secondary__sidebar">{feedsSlot}</aside>
-            )}
-            <main className="app-page" data-page={currentPage}>
-              <div className="app-page__tabbar" role="tablist" aria-label="工作区标签页">
-                <div className="app-page__tab is-active" role="tab" aria-selected="true">
-                  {pageMeta && <WorkbenchIcon name={pageMeta.icon} />}
-                  <span className="app-page__tab-label">{pageMeta?.label ?? '工作区'}</span>
-                  <button
-                    type="button"
-                    className="app-page__tab-close"
-                    onClick={() => onPageChange('reader')}
-                    title="关闭并返回阅读"
-                    aria-label={`关闭${pageMeta?.label ?? '当前页'}`}
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-              <div className="app-page__toolbar">
-                <div className="app-page__heading">
-                  {pageMeta && <WorkbenchIcon name={pageMeta.icon} />}
-                  <span>{pageMeta?.label ?? '工作区'}</span>
-                </div>
-                <span className="app-page__context">聚合拾遗工作区</span>
-              </div>
-              <div className="app-page__content">{pageSlot}</div>
-            </main>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -128,7 +128,11 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filt
             <EmptyView
               // P2 体验打磨:统一"还没有 X"格式 + 给出明确操作指引
               title={filterHint ?? '还没有匹配的文章'}
-              hint={filterHint ? '换筛选条件或回到"所有订阅源"试试' : '从侧栏切换其他订阅源或搜索关键词'}
+              hint={
+                filterHint
+                  ? '换个筛选条件，或回到“所有订阅源”试试。'
+                  : '从订阅源目录切换其他订阅源，或搜索关键词。'
+              }
             />
           </li>
         ) : (

@@ -13,6 +13,7 @@ import type { Article, Note, NoteCreateInput } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
+import { EmptyView } from '../../components/StatusView/EmptyView';
 import './NotesPage.css';
 
 export interface NotesPageProps {
@@ -141,7 +142,11 @@ export function NotesPage({ onToast }: NotesPageProps) {
       ) : notes === null ? (
         <LoadingView message="正在加载笔记…" />
       ) : notes.length === 0 ? (
-        <p className="notes-page__empty">{selectedArticleId ? '该文章还没有笔记。' : '请先选择一篇文章。'}</p>
+        <EmptyView
+          className="notes-page__empty"
+          title={selectedArticleId ? '该文章还没有笔记' : '选择一篇文章'}
+          hint={selectedArticleId ? '在上方输入 Markdown 内容并添加笔记。' : '先从上方列表中选择一篇文章。'}
+        />
       ) : (
         <ul className="notes-page__list">
           {notes.map((n) => (

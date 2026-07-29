@@ -1,5 +1,9 @@
 .digests-page {
-  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  max-width: 880px;
   margin: 0 auto;
   padding: 24px 32px 64px;
 }
@@ -15,6 +19,10 @@
   flex-direction: column;
   gap: 8px;
   margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
 }
 
 .digests-page__input {
@@ -39,11 +47,15 @@
   font-family: inherit;
 }
 
+.digests-page__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .digests-page__btn--primary {
   background: var(--accent);
   border-color: var(--accent);
   color: white;
-  align-self: flex-start;
 }
 
 .digests-page__btn--danger {
@@ -95,12 +107,91 @@
 }
 
 .digests-page__empty {
-  font-size: 13px;
-  color: var(--fg-soft);
+  flex: 1 1 auto;
+  min-height: 180px;
+}
+
+.digests-page__note-picker {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.digests-page__note-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.digests-page__note-picker-head strong {
+  font-size: 12px;
+}
+
+.digests-page__note-picker-head span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.digests-page__note-list {
+  max-height: 230px;
+  overflow-y: auto;
+}
+
+.digests-page__note-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--border-soft);
+  cursor: pointer;
+}
+
+.digests-page__note-option:last-child {
+  border-bottom: 0;
+}
+
+.digests-page__note-option:hover {
+  background: var(--bg-elev-hover);
+}
+
+.digests-page__note-option input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.digests-page__note-option span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.digests-page__note-option strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.digests-page__note-option small,
+.digests-page__note-empty {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.digests-page__note-empty {
   margin: 0;
-  padding: 16px;
-  text-align: center;
-  background: var(--bg-elev);
-  border: 1px dashed var(--border);
-  border-radius: 4px;
+  padding: 14px 11px;
+}
+
+.digests-page__form-actions {
+  display: flex;
+  justify-content: flex-end;
 }

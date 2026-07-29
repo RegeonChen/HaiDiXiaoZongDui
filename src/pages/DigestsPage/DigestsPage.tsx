@@ -2,19 +2,25 @@
  * DigestsPage — 文摘管理
  *
  *  - 列全部 digest（ds.digestList）
- *  - 新建：name + 从 NotesPage 选 noteIds（这里简化为手动输入 noteId，多个用逗号）
+ *  - 新建：name + 从现有笔记中勾选
  *  - 导出：选 markdown/html/pdf，调 ds.digestExport
  *  - 删除：ds.digestDelete
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { Digest, ExportFormat } from '@shared/types';
+import type { Digest, ExportFormat, Note } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
+import { EmptyView } from '../../components/StatusView/EmptyView';
 import './DigestsPage.css';
 
 export interface DigestsPageProps {
   onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
+}
+
+interface DigestNoteOption {
+  note: Note;
+  articleTitle: string;
 }
 
 export function DigestsPage({ onToast }: DigestsPageProps) {
@@ -22,15 +28,37 @@ export function DigestsPage({ onToast }: DigestsPageProps) {
   const [digests, setDigests] = useState<Digest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
-  const [newNoteIds, setNewNoteIds] = useState('');
+  const [noteOptions, setNoteOptions] = useState<DigestNoteOption[] | null>(null);
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
-    const r = await ds.digestList();
-    if (r.kind === 'ready') {
-      setDigests(r.data);
+    const [digestResult, articleResult] = await Promise.all([
+      ds.digestList(),
+      ds.articles({ limit: 200 })
+    ]);
+    if (digestResult.kind === 'ready') {
+      setDigests(digestResult.data);
       setError(null);
     } else {
-      setError(r.kind === 'error' ? r.error : '加载失败');
+      setError(digestResult.kind === 'error' ? digestResult.error : '加载失败');
+    }
+
+    if (articleResult.kind === 'ready') {
+      const noteResults = await Promise.all(
+        articleResult.data.map(async (article) => ({
+          article,
+          result: await ds.noteListByArticle(article.id)
+        }))
+      );
+      const options = noteResults.flatMap(({ article, result }) =>
+        result.kind === 'ready'
+          ? result.data.map((note) => ({ note, articleTitle: article.title }))
+          : []
+      );
+      options.sort((a, b) => Date.parse(b.note.updatedAt) - Date.parse(a.note.updatedAt));
+      setNoteOptions(options);
+    } else {
+      setNoteOptions([]);
     }
   }, [ds]);
 
@@ -42,26 +70,32 @@ export function DigestsPage({ onToast }: DigestsPageProps) {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newName.trim()) return;
-      const noteIds = newNoteIds
-        .split(/[,\s]+/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
+      const noteIds = Array.from(selectedNoteIds);
       if (noteIds.length === 0) {
-        onToast('请至少填一个笔记 ID', 'error');
+        onToast('请至少选择一条笔记', 'error');
         return;
       }
       const r = await ds.digestCreate({ name: newName.trim(), noteIds });
       if (r.kind === 'ready') {
         onToast(`文摘「${newName.trim()}」已创建`, 'success');
         setNewName('');
-        setNewNoteIds('');
+        setSelectedNoteIds(new Set());
         void load();
       } else {
         onToast(`创建失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
       }
     },
-    [ds, newName, newNoteIds, load, onToast]
+    [ds, newName, selectedNoteIds, load, onToast]
   );
+
+  const toggleNote = useCallback((noteId: string) => {
+    setSelectedNoteIds((current) => {
+      const next = new Set(current);
+      if (next.has(noteId)) next.delete(noteId);
+      else next.add(noteId);
+      return next;
+    });
+  }, []);
 
   const handleDelete = useCallback(
     async (id: string, name: string) => {
@@ -105,19 +139,50 @@ export function DigestsPage({ onToast }: DigestsPageProps) {
           placeholder="文摘名称（必填）"
           required
         />
-        <input
-          className="digests-page__input"
-          value={newNoteIds}
-          onChange={(e) => setNewNoteIds(e.target.value)}
-          placeholder="笔记 ID 列表（逗号或空格分隔，暂需手动从数据库/NotesPage 获取）"
-        />
-        <button type="submit" className="digests-page__btn digests-page__btn--primary">
-          + 新建文摘
-        </button>
+        <div className="digests-page__note-picker">
+          <div className="digests-page__note-picker-head">
+            <strong>选择笔记</strong>
+            <span>{selectedNoteIds.size} 条已选择</span>
+          </div>
+          {noteOptions === null ? (
+            <p className="digests-page__note-empty">正在加载笔记…</p>
+          ) : noteOptions.length === 0 ? (
+            <p className="digests-page__note-empty">还没有可用笔记。先在文章阅读页添加笔记。</p>
+          ) : (
+            <div className="digests-page__note-list">
+              {noteOptions.map(({ note, articleTitle }) => (
+                <label key={note.id} className="digests-page__note-option">
+                  <input
+                    type="checkbox"
+                    checked={selectedNoteIds.has(note.id)}
+                    onChange={() => toggleNote(note.id)}
+                  />
+                  <span>
+                    <strong>{note.markdownContent.slice(0, 90) || '空笔记'}</strong>
+                    <small>{articleTitle}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="digests-page__form-actions">
+          <button
+            type="submit"
+            className="digests-page__btn digests-page__btn--primary"
+            disabled={selectedNoteIds.size === 0}
+          >
+            + 新建文摘
+          </button>
+        </div>
       </form>
 
       {digests.length === 0 ? (
-        <p className="digests-page__empty">还没有文摘。创建一个开始聚合你的笔记。</p>
+        <EmptyView
+          className="digests-page__empty"
+          title="还没有文摘"
+          hint="从上方选择笔记并创建文摘。"
+        />
       ) : (
         <ul className="digests-page__list">
           {digests.map((d) => (

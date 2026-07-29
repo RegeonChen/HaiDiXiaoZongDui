@@ -124,7 +124,17 @@
 }
 
 .topic-detail__content {
+  display: flex;
+  flex-direction: column;
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 16px 24px;
+}
+
+.topic-detail__content > .status-view {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 240px;
+  box-sizing: border-box;
 }
