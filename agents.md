@@ -95,6 +95,7 @@
 
 截至 2026-07-29：
 
+- **v0.3.1 release 已发布**（`639de80` + tag `v0.3.1`）：完成 IDE 四段式工作台、文章上下文 AI 对话、搜索分页与订阅源操作闭环、新应用图标和内容清洗增强；同步将 `fast-xml-parser` 升级至 5.10.1，生产依赖审计为 0 项已知漏洞。发布前通过 typecheck、130 项单测、生产构建与 12 组关键 Electron/IPC smoke；GitHub Actions 成功生成并发布 `Juhe-Shiyi-0.3.1-arm64.dmg` 与 `Juhe-Shiyi-Setup-0.3.1-x64.exe`，远端下载后的版本、图标资源与 SHA-256 均已复核。
 - **应用图标已完成跨平台工程化（`0497eb6` 原始设计 + `f437fad` 圆角方向 + `6e2c596` 资源处理，合并于 `1b74960`）**：保留团队提交的象牙米黄奏章造型与透明圆角意图，将误用 `.png` 扩展名的 JPEG 美术源改为 `art/icon-source.jpg`，裁去过量外边距并增加透明圆角安全区；输出 1024×1024 打包 PNG、512×512 运行时 PNG 和 128×128 favicon。生产环境通过 `extraResources` 从 `process.resourcesPath/icon.png` 读取窗口图标，避免引用不会进入应用包的 `build/` 路径。`verify:icons` 检查真实格式、尺寸、RGBA 与透明/不透明像素；macOS DMG 的 ICNS 与源 PNG 逐像素一致，Windows EXE 内含 16–256 七档图标。
 - **IDE 工作台四段式布局（`8ca0998`，已发布）**：页面固定为“竖向功能栏 / 一级订阅源目录 / 二级文章目录 / 灵活窗口”。打开文章、标签、笔记、文摘、专题或设置时，前两级目录保持挂载且不被页面替换；仅最右灵活窗口切换内容。灵活窗口顶部保留可切换、可关闭的 IDE 标签条，但不创建永久“阅读器”标签。一级/二级目录分别设 218px/260px 最小宽度，工具按钮统一禁止文字换行。添加订阅源、导入 OPML、导出 OPML和添加订阅源组统一收进一级目录右上角“+”菜单。顶栏小三角、左上角重复阅读入口和右上角全局同步按钮均已移除；在阅读界面重复点击竖向首个“阅读”功能键，目录按“全开 → 收起一级 → 再收起二级 → 全开”循环，从其他页面点击则只返回阅读。“所有订阅源”与具体订阅源统一在二级目录标题下显示“同步 / 全部已读”，前者作用于全部源、后者只作用于当前源；未读、星标和标签筛选不显示范围含糊的批量操作。`Layout.test.ts` 验证固定结构、最小宽度、重复入口移除和三态目录，`FeedList.test.ts` 锁定“+”菜单操作。
 - **代码审查修复（`8ca0998`，已发布）**：移除受 50 条分页限制却被误当作全集的 `allArticles` 缓存；删除确认和单源未读数改用数据库精确计数。切换订阅源会退出旧文章标签态，关闭文章或删除来源会同步清理文章快照；已读/星标写入改为成功后更新界面并显式报告失败。本地日志已接入设置工作区，Main 进程以 2 MB 轮转 JSONL 持久化脱敏后的启动、同步和 OPML 事件，并支持原生保存对话框导出。
@@ -175,12 +176,13 @@
 ## 路线图
 
 1. Phase 1–4.3、3.7、4.1、4.2：✅ 全部完成
-2. Phase 5：v0.3.0 release 已发布（`v0.3.0` tag + 2 个 artifact）/ 三平台 UI 验证 / 课程交付资料准备（进行中）
+2. Phase 5：v0.3.1 release 已发布（`v0.3.1` tag + 2 个 artifact）/ Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
 ## 近期记录（按 commit 倒序）
 
+- **`639de80`（张宇凡）**：v0.3.1 release — 版本升至 0.3.1，修复 `fast-xml-parser` 生产依赖漏洞并补充完整发布说明；本地与 GitHub Actions 双平台打包成功，Release 资产下载复核通过。
 - **`1b74960`（合并提交）**：合并团队并行提交的圆角图标实现 `f437fad`，保留其提交历史与跨平台圆角方向；最终统一使用分尺寸资源、可重复生成/校验脚本和包外运行时路径。
 - **`f437fad`（xingguang0626）**：将奏章图标升级为带透明圆角的 RGBA 版本，并提供首版 Python 生成原型。
 - **`6e2c596`（张宇凡）**：将团队奏章 Logo 处理为真实 RGBA PNG 与跨平台尺寸，修正打包后窗口图标路径，移除重复资源和误提交的 `commit-msg.txt`，增加可重复生成脚本及格式/透明度校验。`typecheck`、130 项单元测试、`build`、基础 smoke、`smoke:phase4.2`、macOS DMG 和 Windows NSIS 均通过。
@@ -222,6 +224,6 @@
 - **API Key 明文存储**：`ai_providers.api_key` 以明文写入 SQLite。计划 Phase 5 用 `safeStorage.encryptString/decryptString` 加密（Linux 降级到 libsecret）。A 写主进程集成 + smoke 探针；陈冠中 review + 同步 migration。
 - **部分数据库仓储缺少单元测试**：Tag / Note / Digest / AIProvider / AiResultCache 的测试覆盖不足（Phase 5 增量补齐）。
 - **AI 真实生成未被自动化测试覆盖**：smoke 探针中 AI section 允许 skipped（需真 API key）。
-- **跨平台行为测试**：仅在 Windows 跑过完整 smoke + dist:win；macOS / Linux 待张宇凡、陈冠中验证（`npm run dist:mac` / Linux build）。
-- **npm audit**：Electron 31、Vite 5/electron-vite 2 存在 4 组工具链公告（2 moderate、2 high），需在发布前升级。
+- **跨平台行为测试**：macOS 已完成完整 smoke、DMG 挂载与图标核验；Windows NSIS 已完成本地和云端构建及资源解析，但仍需 Windows 真机安装验证；Linux 尚未构建。
+- **开发工具链审计**：生产依赖 `npm audit --omit=dev` 为 0；完整审计仍有 22 项工具链公告（3 moderate、19 high），集中在 Electron 31、Vite 5、electron-builder 及其传递依赖，需跨大版本升级并做兼容性回归。GitHub Actions 同时提示部分官方 actions 的 Node 20 运行时已由平台强制切换到 Node 24。
 - **不同 OpenAI-compatible Provider 兼容性**：当前默认测过 1 家 Provider，需在多 Provider 上兼容性测试。
