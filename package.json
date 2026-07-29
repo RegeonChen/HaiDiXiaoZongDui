@@ -8,13 +8,15 @@
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "npm run verify:icons && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck:node": "tsc -p tsconfig.node.json --noEmit",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test": "vitest run",
     "test:watch": "vitest",
+    "generate:icons": "bash scripts/generate-icons.sh",
+    "verify:icons": "node scripts/verify-icon-assets.cjs",
     "test:real-feeds": "node scripts/test-real-feeds.cjs",
     "smoke": "npm run build && node scripts/smoke-1.1.cjs",
     "smoke:db": "npm run build && node scripts/smoke-2.3.cjs",
@@ -83,7 +85,14 @@
     ],
     "files": [
       "out/**/*",
+      "!out/renderer/icon.png",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "src/public/icon.png",
+        "to": "icon.png"
+      }
     ],
     "directories": {
       "output": "dist"

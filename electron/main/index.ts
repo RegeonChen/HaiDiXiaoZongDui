@@ -190,12 +190,14 @@ function getTrustedRendererUrl(): string {
     pathToFileURL(path.join(__dirname, '../renderer/index.html')).toString();
 }
 
+function getAppIconPath(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'icon.png');
+  }
+  return path.join(process.cwd(), 'src/public/icon.png');
+}
+
 async function createMainWindow(trustedRendererUrl: string): Promise<void> {
-  // 应用图标 — 奏章风格米黄竹纸 (cream-v1-tassel, 1K×1K PNG)
-  //   - out/main/index.js 路径下相对解析,所以选 path.join(__dirname, ...)
-  //   - dev 模式 (electron-vite dev) 也走同一个产物目录,共享 icon
-  //   - 生产模式 electron-builder 用 build/icon.png 自动生成 .icns / .ico
-  const appIconPath = path.join(__dirname, '../../build/icon.png');
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -204,7 +206,7 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
     show: false,
     backgroundColor: '#1f1f23',
     title: '聚合拾遗',
-    icon: appIconPath,
+    icon: getAppIconPath(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
