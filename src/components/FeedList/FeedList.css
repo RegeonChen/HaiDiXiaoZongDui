@@ -163,10 +163,12 @@
   padding: 4px 0;
 }
 
+/* 分组标题只在可点击子元素上缩放一次，避免父子 em 叠乘。 */
 .feed-list__group-title {
   padding: 6px 16px 4px;
   font-size: inherit;
-  color: var(--muted);
+  color: var(--fg);
+  letter-spacing: 0.04em;
   font-weight: 600;
 }
 
@@ -183,9 +185,9 @@
   appearance: none;
   border: none;
   background: transparent;
-  color: var(--muted);
-  font-size: 0.86em;  /* 分组标题只缩放一次，避免父子 em 叠乘后过小 */
-  letter-spacing: 0.02em;
+  color: var(--fg);
+  font-size: 0.93em;  /* 与 .feed-list__item 一致(根=14 时 ≈13px) */
+  letter-spacing: 0.04em;
   font-weight: 600;
   flex: 1;
   display: flex;
@@ -201,7 +203,7 @@
 
 .feed-list__group-toggle:hover {
   background: var(--bg);
-  color: var(--fg);
+  color: var(--accent);
 }
 
 .feed-list__group-arrow {
