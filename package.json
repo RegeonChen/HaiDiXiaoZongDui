@@ -76,6 +76,7 @@
   "build": {
     "appId": "com.juheshivi.reader",
     "productName": "聚合拾遗",
+    "icon": "build/icon.png",
     "asar": true,
     "asarUnpack": [
       "node_modules/sql.js/dist/sql-wasm.wasm"

@@ -1,0 +1,31 @@
+feat(icon): 应用图标采用象牙米黄奏章风格(cream-v1-tassel)
+
+应用图标(奏章样式)落地:
+- 源文件: art/icon-source.png(cream-v1-tassel.png,1K×1K PNG)
+  - 象牙米黄竹纸折子 + 顶部朱红印章 + 角挂朱红丝穗
+  - 米色背景,clean flat illustration 风格
+- build/icon.png:electron-builder 读取位置(自动生成 .icns/.ico)
+- src/public/icon.png:dev 模式 BrowserWindow.icon(被 vite 复制到 out/renderer/)
+- src/public/favicon.png:浏览器 favicon(被 vite 复制)
+
+配置改动:
+- package.json: build.icon = "build/icon.png"
+- electron/main/index.ts: BrowserWindow 加 icon 参数
+  - path.join(__dirname, '../../build/icon.png') 解析为项目根的 build/icon.png
+  - dev/prod 模式都走同一路径
+- src/index.html: <link rel="icon" type="image/png" href="./favicon.png" />
+
+vite publicDir 默认 src/public/(相对于 src root),
+所以 src/public/icon.png + favicon.png 会被自动复制到 out/renderer/
+
+验证:
+- npm run typecheck 双端通过
+- electron-vite build 3 段全部成功(main + preload + renderer)
+- out/renderer/ 包含 favicon.png + icon.png(398 KB each)
+- smoke-1.1 全过
+- smoke:phase4.2 全过
+
+后续 v0.3.1 release 时,这套图标会被 electron-builder 自动打包到:
+- macOS: Juhe-Shiyi.app/Contents/Resources/*.icns
+- Windows: Juhe-Shiyi Setup.exe 内嵌 icon
+- Linux: 512x512 PNG 在 .desktop / AppImage launcher
