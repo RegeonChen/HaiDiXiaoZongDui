@@ -678,6 +678,12 @@ export interface AppSettings {
    * 默认 true。
    */
   sidebarVisible: boolean;
+  /**
+   * 新手引导是否已完成。
+   * false 时首次启动自动触发引导；用户完成或跳过引导后设为 true。
+   * 默认 false（即首次启动触发引导）。
+   */
+  onboardingCompleted: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -698,6 +704,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   listPercent: 28,
   systemFontSize: 14,
   sidebarVisible: true,
+  onboardingCompleted: false,
 };
 
 // ---- Log（日志） ----

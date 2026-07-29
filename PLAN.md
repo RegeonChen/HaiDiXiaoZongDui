@@ -672,6 +672,70 @@
   - 点击"隐藏左栏" → 左栏平滑收起 → 中栏和右栏自动扩展 → 所有阅读模式内容正常 → 重启后左栏保持隐藏。
   - 系统字号调节 + 正文字号调节 + 左栏隐藏/显示 + 视觉主题切换的组合操作下，界面无闪烁、无布局错位、无内容丢失。
 
+## Phase 4.3: Onboarding (New User Guide)
+
+**Overall Goal:** 实现桌面端新手引导功能：首次启动自动触发全屏遮罩式引导，逐步骤介绍核心功能；用户可随时跳过，完成后不再自动弹出；设置页保留手动重新查看入口。
+
+### Task 4.3.1 - UI: Onboarding Overlay & Guide Flow (张晨阳)
+
+- **Task Detail:**
+  1. **触发机制**：检测 `AppSettings.onboardingCompleted`，首次启动（`false`）时自动触发新手引导；完成或跳过引导后设为 `true`，下次启动不再自动弹出。
+  2. **引导浮层组件**：实现 `<OnboardingOverlay>` 全屏组件，包含：
+     - 半透明遮罩层（封锁下方所有按钮的点击交互）
+     - 高亮镂空区（被介绍的目标按钮/区域清晰可见，其余区域暗化）
+     - 指示箭头（从悬浮卡片指向目标元素）
+     - 悬浮步骤卡片（步骤标题 + 描述文字 + 进度指示点 + 操作按钮）
+  3. **引导步骤**（共 8 步，按顺序介绍）：
+     - 步骤 1 侧栏订阅源列表：介绍订阅源管理和分组
+     - 步骤 2 添加订阅按钮：介绍添加 RSS/Atom 和 OPML 导入
+     - 步骤 3 文章列表：介绍文章列表和已读/未读状态
+     - 步骤 4 同步按钮：介绍单源同步和批量同步
+     - 步骤 5 阅读区：介绍正文阅读和三种阅读模式
+     - 步骤 6 隐藏左栏按钮：介绍反复点击切换左栏显示状态
+     - 步骤 7 AI 功能按钮：介绍 AI 设置入口
+     - 步骤 8 搜索框：介绍模糊搜索功能
+  4. **步骤导航**：每步卡片底部提供"上一步""下一步""跳过引导"三个按钮；最后一步"下一步"替换为"开始使用"；支持进度指示点（`第 N / 8 步`）。
+  5. **动态定位**：使用 `getBoundingClientRect()` + `ResizeObserver` + `window.resize` + `scroll` + `fullscreenchange` 事件实时跟踪目标元素位置，确保窗口缩放、全屏切换、侧栏拖拽/折叠时高亮镂空和箭头始终准确指向目标。
+  6. **元素缺失处理**：若某步骤的目标元素因当前页面状态不可见（如未选中订阅源时无同步按钮），自动跳过该步骤，不中断引导流程；必要时通过 `requiredPage` 先导航到目标页面。
+  7. **步骤切换动画**：步骤间切换使用 200ms fade 过渡，遮罩镂空位置平滑移动。
+  8. **设置页入口**：在 `UnifiedSettingsPage` 中新增"新手引导"行，点击后重新触发完整引导流程。
+  9. **多语言**：全部 8 步的标题、描述文案以及操作按钮文案纳入多语言资源（中/英）。卡片和按钮在不同语言切换时即时刷新。
+- **Affected Areas:** 新增 `src/components/OnboardingOverlay/`（组件 + CSS + `useTargetRect` / `useOnboarding` hook）、`src/App.tsx`（集成 Overlay + 触发逻辑）、`src/pages/UnifiedSettingsPage/`（新手引导入口）、多语言资源文件。
+- **Verification:**
+  - 清空数据库或首次启动 → 自动弹出新手引导 → 遮罩覆盖全屏 → 下方所有按钮不可点击（仅卡片内按钮可交互）。
+  - 8 个步骤依次介绍，每步高亮镂空准确指向目标元素，卡片标题和描述正确。
+  - 点击"跳过引导"→ 遮罩和卡片消失 → 界面恢复可交互 → 重启后不再自动弹出。
+  - 走完最后一步点击"开始使用"→ 引导完成 → `onboardingCompleted = true`。
+  - 进入设置页 → 点击"新手引导"→ 从步骤 1 重新开始完整引导。
+  - 引导过程中拖拽窗口 → 高亮和箭头实时跟随 → 无偏移无闪烁。
+  - 引导过程中进入/退出全屏 → 高亮位置正确。
+  - 引导过程中点击隐藏左栏 → 目标元素坐标更新正确。
+  - 中英文切换 → 卡片内文案同步切换。
+  - 浅色/深色/纸质三套主题下卡片文字和遮罩均可读。
+
+### Task 4.3.2 - Database: Onboarding State Persistence (陈冠中)
+
+- **Task Detail:**
+  1. 在 `AppSettings` 类型（`shared/types.ts`）中新增 `onboardingCompleted` 字段（`boolean`，默认值 `false`）。
+  2. 在 `DEFAULT_SETTINGS` 中同步添加默认值。
+  3. 在 `electron/main/db/sqlite-settings.ts` 的 `isSettingValue()` 中新增 `onboardingCompleted` 的类型校验（`typeof value === 'boolean'`）。
+  4. 旧版本升级兼容：缺失字段由 `merge()` 自动填充默认值 `false`（首次启动时触发引导），零 migration 负担。
+- **Affected Areas:** `shared/types.ts`（`AppSettings` 接口 + `DEFAULT_SETTINGS`）、`electron/main/db/sqlite-settings.ts`（`isSettingValue` 校验）。
+- **Verification:**
+  - 首次启动（无历史设置）→ `onboardingCompleted` 为 `false` → 触发引导。
+  - 完成引导后 → 数据库中 `onboardingCompleted` 值为 `true` → 重启后不再弹出。
+  - 设置页重新触发引导 → `onboardingCompleted` 重置为 `false`。
+  - 旧版本升级 → `onboardingCompleted` 自动填充 `false`，应用正常启动。
+
+### Phase 4.3 Integration (张晨阳 + 陈冠中)
+
+- 张晨阳完成引导浮层 UI + 触发逻辑 + 设置页入口 → 接通陈冠中的 `onboardingCompleted` 持久化。
+- **Verification:**
+  - 全新安装 → 自动弹出引导 → 完成 8 步走完 → 点击"开始使用"→ 引导关闭 → 重启 → 不再弹出。
+  - 设置页 → 点击"新手引导"→ 引导重新开始 → 中途跳过 → 行为与初次一致。
+  - 窗口缩放、全屏、侧栏折叠等操作不破坏引导定位。
+  - 中英文切换不破坏引导文案。
+
 ## Phase 5: Cross-platform Acceptance
 
 **Overall Goal:** 完成三平台验证、问题修复和课程交付准备。

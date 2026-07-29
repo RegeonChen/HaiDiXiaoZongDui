@@ -140,6 +140,8 @@ function isSettingValue(key: keyof AppSettings, value: unknown): boolean {
       return typeof value === 'string' && value.trim().length > 0 && value.length <= 64;
     case 'sidebarVisible':
       return typeof value === 'boolean';
+    case 'onboardingCompleted':
+      return typeof value === 'boolean';
   }
 }
 
