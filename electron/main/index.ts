@@ -1926,18 +1926,29 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.feedsGroup.checks.batchDeleteBtnDisabledWhenEmpty =
             batchDeleteBtn instanceof HTMLButtonElement && batchDeleteBtn.disabled;
           // 全选 → 验证 selectedForBatch size
-          document.querySelector('[data-testid="feed-list__batch-select-all"]')?.click();
+          //   Phase 4.x UI 打磨:全选 + 清空合并为 toggle 按钮
+          //   第一次点击(0 选中):全选 → size > 0
+          //   第二次点击(>0 选中):取消全选 → size = 0
+          const toggleBtn = document.querySelector('[data-testid="feed-list__batch-toggle-select-all"]');
+          report.feedsGroup.checks.batchToggleBtnExists = !!toggleBtn;
+          toggleBtn?.click();
           await sleep(150);
           const selectedAfterAll = document.querySelectorAll('.feed-list__item-wrap.is-selected').length;
           report.feedsGroup.checks.batchSelectAllWorks = selectedAfterAll >= 2;
           // 选完之后删除按钮 enabled
           report.feedsGroup.checks.batchDeleteBtnEnabledAfterSelect =
             batchDeleteBtn instanceof HTMLButtonElement && !batchDeleteBtn.disabled;
-          // 清空 → selectedForBatch 清 0
-          document.querySelector('[data-testid="feed-list__batch-clear"]')?.click();
+          // toggle 按钮文字变成"取消全选"
+          report.feedsGroup.checks.batchToggleBtnShowsCancelWhenSelected =
+            toggleBtn instanceof HTMLButtonElement && (toggleBtn.textContent || '').trim() === '取消全选';
+          // 再点一次 → 取消全选 → selectedForBatch 清 0
+          toggleBtn?.click();
           await sleep(150);
-          const selectedAfterClear = document.querySelectorAll('.feed-list__item-wrap.is-selected').length;
-          report.feedsGroup.checks.batchClearWorks = selectedAfterClear === 0;
+          const selectedAfterToggleOff = document.querySelectorAll('.feed-list__item-wrap.is-selected').length;
+          report.feedsGroup.checks.batchToggleOffWorks = selectedAfterToggleOff === 0;
+          // toggle 按钮文字变回"全选"
+          report.feedsGroup.checks.batchToggleBtnShowsSelectWhenEmpty =
+            toggleBtn instanceof HTMLButtonElement && (toggleBtn.textContent || '').trim() === '全选';
           // 选 1 个 feed,绕过 confirm 直接调 IPC 验证路径(模拟用户确认)
           const firstFeedCheckbox = document.querySelector(
             '[data-testid^="feed-list__batch-checkbox-"]'
@@ -2021,9 +2032,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             'moreMenuInViewport', 'moreMenuInsideFeedList', 'moreMenuHitTest',
             'moreMenuHasEnterBatch',
             'batchToolbarVisible', 'batchCheckboxesRendered',
-            'batchDeleteBtnDisabledWhenEmpty', 'batchSelectAllWorks',
-            'batchDeleteBtnEnabledAfterSelect', 'batchClearWorks',
-            'batchExitWorks',
+            'batchDeleteBtnDisabledWhenEmpty', 'batchToggleBtnExists',
+            'batchSelectAllWorks', 'batchDeleteBtnEnabledAfterSelect',
+            'batchToggleBtnShowsCancelWhenSelected', 'batchToggleOffWorks',
+            'batchToggleBtnShowsSelectWhenEmpty', 'batchExitWorks',
             'testTagsCreated', 'usedTagRendered', 'unusedTagRendered',
             'tagDeleteIpcOk', 'unusedTagRemovedFromDom', 'usedTagStillVisible',
             'tagsMoreMenuHasEnterBatch'

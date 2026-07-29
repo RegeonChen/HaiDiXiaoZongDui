@@ -125,7 +125,7 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
   return (
     <div className="settings-page settings-surface">
       <header className="settings-surface__header">
-        <h1 className="settings-page__title settings-surface__title">AI 与模型</h1>
+        <h1 className="settings-page__title settings-surface__title">AI模型</h1>
         <p className="settings-page__intro settings-surface__intro">
           配置文章摘要、翻译和右侧 AI 助手使用的默认模型。
         </p>

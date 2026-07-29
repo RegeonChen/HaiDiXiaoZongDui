@@ -40,7 +40,7 @@ export function UnifiedSettingsPage({ onToast }: UnifiedSettingsPageProps) {
           >
             <span className="settings-workspace__ai-mark" aria-hidden="true">AI</span>
             <span>
-              <strong>AI 与模型</strong>
+              <strong>AI模型</strong>
               <small>默认值与 Provider</small>
             </span>
           </button>

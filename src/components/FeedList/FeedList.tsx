@@ -199,18 +199,24 @@ export function FeedList({
       return next;
     });
   }, []);
-  const selectAllBatch = useCallback(() => {
-    if (tab === 'sources') {
-      // 选所有 feeds(简化版:全选,不区分是否折叠;折叠组里的也会被选中,
-      // 用户点删除时能意识到组里也有 — 反正删除就是删除)
+  // 批量全选/清空合并为 toggle 按钮(根因:全选 + 清空是两个互斥动作,合并为一个 toggle 按钮)
+  //   - 没选 → 显示"全选",点击 → 选所有
+  //   - 选了一部分或全部 → 显示"取消全选",点击 → 清空 selectedForBatch
+  //   - 避免两个按钮占位 + 与 GitHub / VSCode 等桌面应用批量管理 UX 一致
+  const toggleSelectAllBatch = useCallback(() => {
+    // 计算当前 tab 下"全部"的数量(feeds 或 tags)
+    const totalCount = tab === 'sources' ? feeds.length : (tags?.length ?? 0);
+    if (totalCount === 0) return;
+    if (selectedForBatch.size > 0) {
+      // 已选部分或全部 → 取消全选
+      setSelectedForBatch(new Set());
+    } else if (tab === 'sources') {
+      // 没选 → 选所有 feeds(简化版:不区分是否折叠;折叠组里的也会被选中)
       setSelectedForBatch(new Set(feeds.map((f) => f.id)));
     } else if (tab === 'tags' && tags) {
       setSelectedForBatch(new Set(tags.map((t) => t.id)));
     }
-  }, [tab, feeds, tags]);
-  const clearBatchSelect = useCallback(() => {
-    setSelectedForBatch(new Set());
-  }, []);
+  }, [tab, feeds, tags, selectedForBatch.size]);
   const onBatchDelete = useCallback(() => {
     if (selectedForBatch.size === 0) return;
     const ids = Array.from(selectedForBatch);
@@ -492,7 +498,9 @@ export function FeedList({
         </div>
       </div>
 
-      {/* Bug 2 修复:批量管理工具条(覆盖在 topbar 下方,固定不滚动) */}
+      {/* Bug 2 修复:批量管理工具条(覆盖在 topbar 下方,固定不滚动)
+         Phase 4.x UI 打磨:全选 + 清空合并为 toggle 按钮
+           "全选"(0 选中)/ "取消全选"(>0 选中) */}
       {batchMode && (
         <div className="feed-list__batch-toolbar" data-testid="feed-list__batch-toolbar">
           <span className="feed-list__batch-toolbar-label">
@@ -501,19 +509,10 @@ export function FeedList({
           <button
             type="button"
             className="feed-list__batch-btn"
-            onClick={selectAllBatch}
-            data-testid="feed-list__batch-select-all"
+            onClick={toggleSelectAllBatch}
+            data-testid="feed-list__batch-toggle-select-all"
           >
-            全选
-          </button>
-          <button
-            type="button"
-            className="feed-list__batch-btn"
-            onClick={clearBatchSelect}
-            disabled={selectedForBatch.size === 0}
-            data-testid="feed-list__batch-clear"
-          >
-            清空
+            {selectedForBatch.size > 0 ? '取消全选' : '全选'}
           </button>
           <button
             type="button"

@@ -887,7 +887,9 @@ export class MockDataSource implements DataSource {
     sidebarPercent: 18,
     listPercent: 28,
     systemFontSize: 14,
-    sidebarVisible: true
+    sidebarVisible: true,
+    // Phase 4.3:首次启动引导(陈冠中 AppSettings 扩展)
+    onboardingCompleted: false
   };
 
   async settingsGet(): Promise<DataSourceState<AppSettings>> {
