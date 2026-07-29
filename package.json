@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:real-feeds": "node scripts/test-real-feeds.cjs",
+    "icon:make": "python scripts/make-rounded-icon.py",
     "smoke": "npm run build && node scripts/smoke-1.1.cjs",
     "smoke:db": "npm run build && node scripts/smoke-2.3.cjs",
     "smoke:ui": "npm run build && node scripts/smoke-2.1.cjs",

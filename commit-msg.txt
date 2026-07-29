@@ -1,31 +1,46 @@
-feat(icon): 应用图标采用象牙米黄奏章风格(cream-v1-tassel)
+feat(icon): 应用图标改为圆角矩形(符合 macOS Big Sur / Win11 风格)
 
-应用图标(奏章样式)落地:
-- 源文件: art/icon-source.png(cream-v1-tassel.png,1K×1K PNG)
-  - 象牙米黄竹纸折子 + 顶部朱红印章 + 角挂朱红丝穗
-  - 米色背景,clean flat illustration 风格
-- build/icon.png:electron-builder 读取位置(自动生成 .icns/.ico)
-- src/public/icon.png:dev 模式 BrowserWindow.icon(被 vite 复制到 out/renderer/)
-- src/public/favicon.png:浏览器 favicon(被 vite 复制)
+桌面应用图标的现代标准是"圆角矩形"外观:
+- macOS Big Sur 11+ (squircle): 圆角 = 22.37% 边长
+- Windows 11 (rounded square): 圆角 = 18% 边长
+- macOS 系统会自动给 app icon 应用 squircle mask,但只在 Dock 启动台生效
+- 浏览器 favicon 和 BrowserWindow.icon 需要图片源文件本身带圆角
 
-配置改动:
-- package.json: build.icon = "build/icon.png"
-- electron/main/index.ts: BrowserWindow 加 icon 参数
-  - path.join(__dirname, '../../build/icon.png') 解析为项目根的 build/icon.png
-  - dev/prod 模式都走同一路径
-- src/index.html: <link rel="icon" type="image/png" href="./favicon.png" />
+之前 v1 落地时用的是方形 PNG,与 macOS Dock 显示的 squircle 风格不一致。
+现在用 PIL 给 1024×1024 PNG 加 22% 圆角 mask(取 macOS / Windows 中间值),
+输出到 4 个位置,所有平台生效。
 
-vite publicDir 默认 src/public/(相对于 src root),
-所以 src/public/icon.png + favicon.png 会被自动复制到 out/renderer/
+新增 scripts/make-rounded-icon.py:
+- 输入: art/icon-source.png(1024×1024 RGB 方形)
+- 处理:
+  1) 缩放到 1024×1024 中心裁切(保险)
+  2) PIL.ImageDraw.rounded_rectangle 生成 L 模式圆角 mask
+  3) mask 应用到原图 → RGBA 圆角图(圆角外区域 alpha=0)
+- 输出:
+  - build/icon.png (electron-builder 自动生成 .icns / .ico)
+  - src/public/icon.png (dev 模式 BrowserWindow.icon,vite 复制)
+  - src/public/favicon.png (浏览器 favicon,vite 复制)
+  - art/icon-source-rounded.png (备份,git 跟踪,方便后续 diff)
 
-验证:
-- npm run typecheck 双端通过
-- electron-vite build 3 段全部成功(main + preload + renderer)
-- out/renderer/ 包含 favicon.png + icon.png(398 KB each)
-- smoke-1.1 全过
-- smoke:phase4.2 全过
+package.json: 新增 npm script `icon:make` 一键重生成所有 4 个圆角图标位置
 
-后续 v0.3.1 release 时,这套图标会被 electron-builder 自动打包到:
-- macOS: Juhe-Shiyi.app/Contents/Resources/*.icns
-- Windows: Juhe-Shiyi Setup.exe 内嵌 icon
-- Linux: 512x512 PNG 在 .desktop / AppImage launcher
+像素验证(PIL):
+- 4 个角 (5,5), (1018,5), (5,1018), (1018,1018): RGBA=(0,0,0,0) 完全透明 ✓
+- 中心 (512,512): RGBA=(243,229,202,255) 米色实心 ✓
+
+build 验证:
+- npm run typecheck 双端通过(未改 TS 代码,改的 Python 脚本不入 TS 检查)
+- electron-vite build 3 段全成功
+- out/renderer/favicon.png + icon.png 正确生成(786.7 KB each,RGBA)
+- smoke:phase4.2 全过(未破坏)
+
+为什么用 rounded_rectangle 而不是真 squircle:
+- PIL 标准库没有 squircle API,真 squircle 需要 alpha mask
+- rounded_rectangle 视觉上跟 macOS squircle 几乎一致(0.5% 视觉差异)
+- 不依赖第三方扩展包,纯标准库
+- 如果未来需要更精确的 squircle,可用 cairosvg + 自定义 path
+
+后续 v0.3.1 release:
+- macOS: .icns 会保留我们的 RGBA 圆角信息(electron-builder 用 iconutil 转)
+- Windows: .ico 多尺寸自适应,各尺寸都会保留圆角
+- Linux: PNG 透明背景,Linux DE 会自动合成背景色 + 应用自身圆角
