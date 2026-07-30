@@ -24,3 +24,7 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# 临时课程汇报导出（正式交付物应放入明确的课程资料目录）
+AI使用感受_极简版.pptx
+AI使用感受与收获_小组汇报.pptx
