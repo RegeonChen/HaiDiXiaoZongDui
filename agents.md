@@ -93,7 +93,7 @@
 
 ## 当前状态
 
-截至 2026-07-29：
+截至 2026-07-30：
 
 - **v0.3.1 release 已发布**（`639de80` + tag `v0.3.1`）：完成 IDE 四段式工作台、文章上下文 AI 对话、搜索分页与订阅源操作闭环、新应用图标和内容清洗增强；同步将 `fast-xml-parser` 升级至 5.10.1，生产依赖审计为 0 项已知漏洞。发布前通过 typecheck、130 项单测、生产构建与 12 组关键 Electron/IPC smoke；GitHub Actions 成功生成并发布 `Juhe-Shiyi-0.3.1-arm64.dmg` 与 `Juhe-Shiyi-Setup-0.3.1-x64.exe`，远端下载后的版本、图标资源与 SHA-256 均已复核。
 - **应用图标已完成跨平台工程化（`0497eb6` 原始设计 + `f437fad` 圆角方向 + `6e2c596` 资源处理，合并于 `1b74960`）**：保留团队提交的象牙米黄奏章造型与透明圆角意图，将误用 `.png` 扩展名的 JPEG 美术源改为 `art/icon-source.jpg`，裁去过量外边距并增加透明圆角安全区；输出 1024×1024 打包 PNG、512×512 运行时 PNG 和 128×128 favicon。生产环境通过 `extraResources` 从 `process.resourcesPath/icon.png` 读取窗口图标，避免引用不会进入应用包的 `build/` 路径。`verify:icons` 检查真实格式、尺寸、RGBA 与透明/不透明像素；macOS DMG 的 ICNS 与源 PNG 逐像素一致，Windows EXE 内含 16–256 七档图标。
