@@ -124,7 +124,8 @@ const migrations: Migration[] = [
   {
     version: 4,
     up(db) {
-      // AI Provider 配置表（API Key 以明文存储于本地 SQLite，Phase 5 改 safeStorage 加密）
+      // AI Provider 配置表。早期版本写入明文；Phase 5 启动流程会在
+      // safeStorage 可用时把 api_key 原地迁移为带版本前缀的密文。
       db.run(`
         CREATE TABLE IF NOT EXISTS ai_providers (
           id         TEXT PRIMARY KEY,

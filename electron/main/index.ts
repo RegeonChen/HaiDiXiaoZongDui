@@ -15,6 +15,7 @@ import {
   ipcMain,
   net,
   protocol,
+  safeStorage,
   session,
   shell,
   type IpcMainInvokeEvent,
@@ -29,6 +30,7 @@ import { initDatabase, closeDatabase } from './db/connection.js';
 import { runMigrations } from './db/migration.js';
 import { loadSettings, saveSettings } from './db/sqlite-settings.js';
 import { AiProviderRepository } from './db/ai-provider-repository.js';
+import { configureAiCredentialStorage } from './db/ai-provider-credentials.js';
 import { TagRepository } from './db/tag-repository.js';
 import { NoteRepository } from './db/note-repository.js';
 import { DigestRepository } from './db/digest-repository.js';
@@ -5253,6 +5255,35 @@ app.whenReady().then(async () => {
 
   await initDatabase();
   runMigrations();
+  configureAiCredentialStorage({
+    isEncryptionAvailable: () => {
+      if (!safeStorage.isEncryptionAvailable()) return false;
+      if (process.platform !== 'linux') return true;
+      const backend = safeStorage.getSelectedStorageBackend();
+      return backend !== 'basic_text' && backend !== 'unknown';
+    },
+    getBackendName: () => process.platform === 'linux'
+      ? safeStorage.getSelectedStorageBackend()
+      : process.platform === 'darwin'
+        ? 'keychain'
+        : process.platform === 'win32'
+          ? 'dpapi'
+          : process.platform,
+    encryptString: (plainText) => safeStorage.encryptString(plainText),
+    decryptString: (encrypted) => safeStorage.decryptString(encrypted)
+  });
+  const credentialMigration = AiProviderRepository.migrateLegacyApiKeys();
+  if (credentialMigration.migrated > 0) {
+    recordLocalLog('info', 'security:credentials', '已迁移历史 AI Provider 凭证', {
+      migrated: credentialMigration.migrated,
+      backend: credentialMigration.backend
+    });
+  } else if (credentialMigration.skipped > 0) {
+    recordLocalLog('warn', 'security:credentials', '系统安全存储不可用，历史凭证暂未迁移', {
+      skipped: credentialMigration.skipped,
+      backend: credentialMigration.backend
+    });
+  }
   if (SMOKE_FLAGS.smokeTopic) seedTopicSmokeData();
 
   const trustedRendererUrl = getTrustedRendererUrl();

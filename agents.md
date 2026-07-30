@@ -99,6 +99,7 @@
 - **应用图标已完成跨平台工程化（`0497eb6` 原始设计 + `f437fad` 圆角方向 + `6e2c596` 资源处理，合并于 `1b74960`）**：保留团队提交的象牙米黄奏章造型与透明圆角意图，将误用 `.png` 扩展名的 JPEG 美术源改为 `art/icon-source.jpg`，裁去过量外边距并增加透明圆角安全区；输出 1024×1024 打包 PNG、512×512 运行时 PNG 和 128×128 favicon。生产环境通过 `extraResources` 从 `process.resourcesPath/icon.png` 读取窗口图标，避免引用不会进入应用包的 `build/` 路径。`verify:icons` 检查真实格式、尺寸、RGBA 与透明/不透明像素；macOS DMG 的 ICNS 与源 PNG 逐像素一致，Windows EXE 内含 16–256 七档图标。
 - **IDE 工作台四段式布局（`8ca0998`，已发布）**：页面固定为“竖向功能栏 / 一级订阅源目录 / 二级文章目录 / 灵活窗口”。打开文章、标签、笔记、文摘、专题或设置时，前两级目录保持挂载且不被页面替换；仅最右灵活窗口切换内容。灵活窗口顶部保留可切换、可关闭的 IDE 标签条，但不创建永久“阅读器”标签。一级/二级目录分别设 218px/260px 最小宽度，工具按钮统一禁止文字换行。添加订阅源、导入 OPML、导出 OPML和添加订阅源组统一收进一级目录右上角“+”菜单。顶栏小三角、左上角重复阅读入口和右上角全局同步按钮均已移除；在阅读界面重复点击竖向首个“阅读”功能键，目录按“全开 → 收起一级 → 再收起二级 → 全开”循环，从其他页面点击则只返回阅读。“所有订阅源”与具体订阅源统一在二级目录标题下显示“同步 / 全部已读”，前者作用于全部源、后者只作用于当前源；未读、星标和标签筛选不显示范围含糊的批量操作。`Layout.test.ts` 验证固定结构、最小宽度、重复入口移除和三态目录，`FeedList.test.ts` 锁定“+”菜单操作。
 - **代码审查修复（`8ca0998`，已发布）**：移除受 50 条分页限制却被误当作全集的 `allArticles` 缓存；删除确认和单源未读数改用数据库精确计数。切换订阅源会退出旧文章标签态，关闭文章或删除来源会同步清理文章快照；已读/星标写入改为成功后更新界面并显式报告失败。本地日志已接入设置工作区，Main 进程以 2 MB 轮转 JSONL 持久化脱敏后的启动、同步和 OPML 事件，并支持原生保存对话框导出。
+- **AI Provider 凭证安全存储（Phase 5）**：新建和更新的 API Key 通过 Electron `safeStorage` 加密后，以 `safe-storage:v1:` 版本化密文写入 SQLite；应用启动时幂等迁移历史明文。macOS 使用 Keychain、Windows 使用 DPAPI；Linux 只接受 libsecret/KWallet 等安全后端，检测到 `basic_text` 时拒绝保存新 Key。列表与 Renderer 仍只获得 `apiKeySet`，解密后的 Key 仅在 Main 进程调用 Provider 时短暂使用。
 - **Phase 1–4.2、3.7、4.1、4.2 已完成并通过验收；Phase 4.3 仅完成数据库设置字段，UI 新手引导与端到端验收仍在进行。**
 - **Phase 4.2.1 Navbar 图标 + 系统字号 + 侧栏折叠**（张晨阳，4.2.3 陈冠中在 `ec45c68` 落地 AppSettings 字段 + 持久化）：
   - **Task 4.2.1.1 AI 入口图标 → 粗体 "AI" 字母**（`Layout.tsx`）：navItems 用 `iconType='ai-bold'` 渲染 `<strong class="app-header__nav-icon--ai">AI</strong>`，font-weight 800 + letter-spacing -0.04em 让两字母紧凑如一个 logo；三主题下 active 态 `var(--accent)`、hover 态继承 fg-soft。
@@ -222,7 +223,7 @@
 
 ## 已知问题
 
-- **API Key 明文存储**：`ai_providers.api_key` 以明文写入 SQLite。计划 Phase 5 用 `safeStorage.encryptString/decryptString` 加密（Linux 降级到 libsecret）。A 写主进程集成 + smoke 探针；陈冠中 review + 同步 migration。
+- **Linux 凭证后端要求**：AI Provider API Key 已接入 `safeStorage`；Linux 必须提供 libsecret/KWallet 等安全后端。若 Electron 只能选择 `basic_text`，应用会保留历史 Key 的兼容读取，但拒绝新增或更新 Key，避免重新写入弱保护凭证。
 - **部分数据库仓储缺少单元测试**：Tag / Note / Digest / AIProvider / AiResultCache 的测试覆盖不足（Phase 5 增量补齐）。
 - **AI 真实生成未被自动化测试覆盖**：smoke 探针中 AI section 允许 skipped（需真 API key）。
 - **跨平台行为测试**：macOS 已完成完整 smoke、DMG 挂载与图标核验；Windows NSIS 已完成本地和云端构建及资源解析，但仍需 Windows 真机安装验证；Linux 尚未构建。

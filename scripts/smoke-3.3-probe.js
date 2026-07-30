@@ -98,6 +98,15 @@
 
       var pd = await api.ai.providerDelete(pid);
       R.prov.checks.delete = pd.success;
+      var persisted = await api.ai.providerCreate({
+        name: 'Credential Storage Smoke',
+        baseUrl: AI_URL,
+        modelName: 'm1',
+        apiKey: AI_KEY + '-persisted',
+        isDefault: true
+      });
+      R.prov.checks.persistedCredentialCreated =
+        persisted.success && persisted.data.apiKeySet === true;
       R.prov.ok = OK(R.prov.checks);
     } catch (e) { R.prov.error = String(e); }
   } else { R.prov.skipped = 'No AI'; }

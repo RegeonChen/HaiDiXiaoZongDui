@@ -127,12 +127,20 @@ server.listen(0, '127.0.0.1', () => {
     child.kill('SIGKILL');
   }, 60_000);
 
-  child.on('exit', (code) => {
+  child.on('exit', async (code) => {
     clearTimeout(timer);
     const reportMatch = out.match(/SMOKE_REPORT_JSON\s+({[\s\S]*?})\n/);
     const report = reportMatch ? JSON.parse(reportMatch[1]) : null;
 
-    const passed = /SMOKE_REPORT_PASS/.test(out);
+    let passed = /SMOKE_REPORT_PASS/.test(out);
+    try {
+      const credentialCheck = await inspectPersistedCredential();
+      console.log(`[smoke-3.3] credential storage: ${JSON.stringify(credentialCheck)}`);
+      passed = passed && credentialCheck.encrypted && credentialCheck.plaintextAbsent;
+    } catch (error) {
+      console.error(`[smoke-3.3] credential storage 检查失败: ${String(error)}`);
+      passed = false;
+    }
     console.log(`[smoke-3.3] electron 退出 code=${code}`);
 
     if (report) {
@@ -161,6 +169,23 @@ server.listen(0, '127.0.0.1', () => {
     });
   });
 });
+
+async function inspectPersistedCredential() {
+  const initSqlJs = require('sql.js');
+  const SQL = await initSqlJs();
+  const databasePath = path.join(temporaryDirectory, 'juhe-shivi.db');
+  const database = new SQL.Database(fs.readFileSync(databasePath));
+  const rows = database.exec(
+    `SELECT api_key FROM ai_providers
+     WHERE name = 'Credential Storage Smoke' LIMIT 1`
+  );
+  const stored = String(rows[0]?.values[0]?.[0] ?? '');
+  database.close();
+  return {
+    encrypted: stored.startsWith('safe-storage:v1:'),
+    plaintextAbsent: !stored.includes('smoke-test-key-persisted')
+  };
+}
 
 function printChecks(label, obj) {
   if (!obj) return;

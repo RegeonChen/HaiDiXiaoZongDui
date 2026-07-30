@@ -9,6 +9,13 @@
 
 import crypto from 'node:crypto';
 import { getDatabase, saveDatabase } from './connection';
+import {
+  canProtectApiKeys,
+  getCredentialBackendName,
+  isProtectedApiKey,
+  protectApiKey,
+  revealApiKey
+} from './ai-provider-credentials.js';
 import type { AIProvider, AIProviderCreateInput, AIProviderUpdateInput } from '../../../shared/types';
 
 function now(): string {
@@ -49,7 +56,16 @@ export const AiProviderRepository = {
     db.run(
       `INSERT INTO ai_providers (id, name, base_url, model_name, api_key, is_default, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, input.name, input.baseUrl, input.modelName, input.apiKey, input.isDefault ? 1 : 0, timestamp, timestamp]
+      [
+        id,
+        input.name,
+        input.baseUrl,
+        input.modelName,
+        protectApiKey(input.apiKey),
+        input.isDefault ? 1 : 0,
+        timestamp,
+        timestamp
+      ]
     );
 
     saveDatabase();
@@ -68,7 +84,7 @@ export const AiProviderRepository = {
     const name = input.name ?? existing.name;
     const baseUrl = input.baseUrl ?? existing.baseUrl;
     const modelName = input.modelName ?? existing.modelName;
-    const apiKey = input.apiKey !== undefined ? input.apiKey : undefined;
+    const apiKey = input.apiKey !== undefined ? protectApiKey(input.apiKey) : undefined;
     const isDefault = input.isDefault !== undefined ? input.isDefault : existing.isDefault;
     const timestamp = now();
 
@@ -108,7 +124,7 @@ export const AiProviderRepository = {
     const o = rowToRaw(rows[0].columns, rows[0].values[0]);
     return {
       ...rowToProvider(rows[0].columns, rows[0].values[0]),
-      _apiKey: o.api_key as string
+      _apiKey: revealApiKey(o.api_key as string)
     };
   },
 
@@ -122,8 +138,62 @@ export const AiProviderRepository = {
     const o = rowToRaw(rows[0].columns, rows[0].values[0]);
     return {
       ...rowToProvider(rows[0].columns, rows[0].values[0]),
-      _apiKey: o.api_key as string
+      _apiKey: revealApiKey(o.api_key as string)
     };
+  },
+
+  /**
+   * 应用启动时把 v0.3.1 及更早版本留下的明文 API Key 原地改写为
+   * Electron safeStorage 密文。迁移幂等：带版本前缀的值不会重复加密。
+   */
+  migrateLegacyApiKeys(): {
+    migrated: number;
+    skipped: number;
+    backend: string;
+  } {
+    const db = getDatabase();
+    const rows = db.exec(
+      `SELECT id, api_key FROM ai_providers
+       WHERE api_key IS NOT NULL AND api_key <> ''`
+    );
+    const result = {
+      migrated: 0,
+      skipped: 0,
+      backend: getCredentialBackendName()
+    };
+    if (rows.length === 0 || rows[0].values.length === 0) return result;
+
+    const idIndex = rows[0].columns.indexOf('id');
+    const keyIndex = rows[0].columns.indexOf('api_key');
+    const legacyRows = rows[0].values.filter((row) => {
+      const stored = String(row[keyIndex] ?? '');
+      return stored.length > 0 && !isProtectedApiKey(stored);
+    });
+    if (legacyRows.length === 0) return result;
+
+    if (!canProtectApiKeys()) {
+      result.skipped = legacyRows.length;
+      return result;
+    }
+
+    db.run('BEGIN TRANSACTION');
+    try {
+      for (const row of legacyRows) {
+        const id = String(row[idIndex]);
+        const plainText = String(row[keyIndex]);
+        db.run(
+          'UPDATE ai_providers SET api_key = ?, updated_at = ? WHERE id = ?',
+          [protectApiKey(plainText), now(), id]
+        );
+        result.migrated += 1;
+      }
+      db.run('COMMIT');
+      saveDatabase();
+      return result;
+    } catch (error) {
+      db.run('ROLLBACK');
+      throw error;
+    }
   }
 };
 
