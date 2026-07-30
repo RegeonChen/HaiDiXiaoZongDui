@@ -898,6 +898,16 @@ export class MockDataSource implements DataSource {
 
   async settingsUpdate(settings: Partial<AppSettings>): Promise<DataSourceState<AppSettings>> {
     this.settingsState = { ...this.settingsState, ...settings };
+    // Phase 4.3.1:mock 模式也通知 useAppearance 等订阅者重拉 settings
+    //   - IPC 模式下 settings:update 不会跨进程通知,只在使用 useAppearance.setXxx() 时
+    //     才会同步 setState;
+    //   - 但 mock 模式 + smoke 探针直接调 ds.settingsUpdate 改语言,
+    //     不会经过 useAppearance 的 update,需要事件通知 React 重新拉。
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('juhe:settings-changed', { detail: { ...this.settingsState } })
+      );
+    }
     return { kind: 'ready', data: { ...this.settingsState } };
   }
 

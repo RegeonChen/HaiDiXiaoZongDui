@@ -14,6 +14,13 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useDataSource } from '../context/DataSourceContext';
+import type { AppSettings } from '../../shared/types';
+
+/**
+ * Phase 4.3.1 复用:多语言代码（中/英）。
+ * 与 shared/types.ts 的 Language 保持语义一致;在此独立定义避免循环依赖。
+ */
+export type Language = 'zh' | 'en';
 
 export interface AppearanceSettings {
   fontTheme: string;
@@ -23,6 +30,13 @@ export interface AppearanceSettings {
   systemFontSize: number;
   /** 左栏（订阅源侧栏）是否可见 */
   sidebarVisible: boolean;
+  /**
+   * Phase 4.3.1:新手引导是否已完成。
+   * - true: 不再自动弹引导
+   * - false: 首次启动触发
+   * 由 useAppearance 统一读写;持久化走 settings:update IPC。
+   */
+  onboardingCompleted: boolean;
 }
 
 const DEFAULTS: AppearanceSettings = {
@@ -30,7 +44,8 @@ const DEFAULTS: AppearanceSettings = {
   visualTheme: 'classic',
   language: 'zh',
   systemFontSize: 14,
-  sidebarVisible: true
+  sidebarVisible: true,
+  onboardingCompleted: false
 };
 
 /**
@@ -112,6 +127,10 @@ export interface UseAppearanceResult {
   readingWidth: number;
   systemFontSize: number;
   sidebarVisible: boolean;
+  /**
+   * Phase 4.3.1:新手引导是否已完成（与 AppSettings.onboardingCompleted 同步）
+   */
+  onboardingCompleted: boolean;
   loaded: boolean;
   setFontTheme: (next: string) => Promise<boolean>;
   setVisualTheme: (next: 'classic' | 'paper') => Promise<boolean>;
@@ -120,6 +139,7 @@ export interface UseAppearanceResult {
   setReadingWidth: (next: number) => Promise<boolean>;
   setSystemFontSize: (next: number) => Promise<boolean>;
   setSidebarVisible: (next: boolean) => Promise<boolean>;
+  setOnboardingCompleted: (next: boolean) => Promise<boolean>;
 }
 
 export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAppearanceResult {
@@ -145,7 +165,8 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
           fontSize: r.data.fontSize,
           readingWidth: r.data.readingWidth,
           systemFontSize: r.data.systemFontSize,
-          sidebarVisible: r.data.sidebarVisible
+          sidebarVisible: r.data.sidebarVisible,
+          onboardingCompleted: r.data.onboardingCompleted
         };
         setState(next);
         applyToHtml(
@@ -176,6 +197,32 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
     state.systemFontSize, state.sidebarVisible
   ]);
 
+  // Phase 4.3.1:监听 mock 模式派发的 settings:changed 事件
+  //   - mock 模式 ds.settingsUpdate 不通过 useAppearance 的 update,直接修改内部 state
+  //   - 事件让 React 重新拉 settings,与 IPC 模式下 useAppearance.setXxx() 行为对齐
+  //   - IPC 模式不会派发这个事件(useAppearance.update 已直接 setState),订阅是 no-op
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = async (event: Event) => {
+      const detail = (event as CustomEvent<Partial<AppSettings>>).detail;
+      if (!detail) return;
+      // 直接用事件 detail 更新 state(避免再调一次 settingsGet 引起循环)
+      setState((prev) => ({
+        ...prev,
+        language: (detail.language ?? prev.language) as typeof prev.language,
+        fontTheme: detail.fontTheme ?? prev.fontTheme,
+        visualTheme: (detail.visualTheme ?? prev.visualTheme) as typeof prev.visualTheme,
+        fontSize: detail.fontSize ?? prev.fontSize,
+        readingWidth: detail.readingWidth ?? prev.readingWidth,
+        systemFontSize: detail.systemFontSize ?? prev.systemFontSize,
+        sidebarVisible: detail.sidebarVisible ?? prev.sidebarVisible,
+        onboardingCompleted: detail.onboardingCompleted ?? prev.onboardingCompleted
+      }));
+    };
+    window.addEventListener('juhe:settings-changed', handler);
+    return () => window.removeEventListener('juhe:settings-changed', handler);
+  }, []);
+
   const update = useCallback(
     async (
       patch: Partial<AppearanceSettings & { fontSize: number; readingWidth: number }>
@@ -189,7 +236,8 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
           fontSize: r.data.fontSize,
           readingWidth: r.data.readingWidth,
           systemFontSize: r.data.systemFontSize,
-          sidebarVisible: r.data.sidebarVisible
+          sidebarVisible: r.data.sidebarVisible,
+          onboardingCompleted: r.data.onboardingCompleted
         };
         setState(next);
         applyToHtml(
@@ -212,6 +260,7 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
     readingWidth: state.readingWidth,
     systemFontSize: state.systemFontSize,
     sidebarVisible: state.sidebarVisible,
+    onboardingCompleted: state.onboardingCompleted,
     loaded,
     setFontTheme: (next) => update({ fontTheme: next }),
     setVisualTheme: (next) => update({ visualTheme: next }),
@@ -219,6 +268,7 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
     setFontSize: (next) => update({ fontSize: next }),
     setReadingWidth: (next) => update({ readingWidth: next }),
     setSystemFontSize: (next) => update({ systemFontSize: next }),
-    setSidebarVisible: (next) => update({ sidebarVisible: next })
+    setSidebarVisible: (next) => update({ sidebarVisible: next }),
+    setOnboardingCompleted: (next) => update({ onboardingCompleted: next })
   };
 }

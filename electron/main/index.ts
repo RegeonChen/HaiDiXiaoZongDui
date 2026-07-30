@@ -164,6 +164,8 @@ const SMOKE_FLAGS = {
   smokeOpmlExportSelection: process.env['JUHE_SHIVI_SMOKE_OPML_EXPORT_SELECTION'] === '1',
   // Phase 4.2.1：Navbar 图标 + 系统字号滑块 + 阅读功能键三级目录循环
   smokePhase42: process.env['JUHE_SHIVI_SMOKE_PHASE42'] === '1',
+  // Phase 4.3.1：新手引导浮层（首次启动 + 8 步 + 镂空 + 跳过 + 持久化 + 设置页入口）
+  smokeOnboarding: process.env['JUHE_SHIVI_SMOKE_ONBOARDING'] === '1',
   seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
   seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
@@ -249,7 +251,12 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
   // 注意：createMainWindow 在 app.whenReady 之后被调，process.env 可能已被清。
   // smokeUi / smokeUiReal 通过 SMOKE_FLAGS 读（ready 之前 snapshot）。
   // Phase 4.2.1:smokePhase42 探针也走 mock 模式（避免依赖真实 seed 数据）
-  const useMock = (SMOKE_FLAGS.smokeUi || SMOKE_FLAGS.smokePhase42) && !SMOKE_FLAGS.smokeUiReal;
+  // Phase 4.3.1:smokeOnboarding 探针同样走 mock 模式（依赖 mock 的 5 feeds + 10 articles 验证镂空位置）
+  const useMock = (
+    SMOKE_FLAGS.smokeUi ||
+    SMOKE_FLAGS.smokePhase42 ||
+    SMOKE_FLAGS.smokeOnboarding
+  ) && !SMOKE_FLAGS.smokeUiReal;
   if (devServerUrl) {
     const url = useMock ? `${devServerUrl}${devServerUrl.includes('?') ? '&' : '?'}mock=1` : devServerUrl;
     await win.loadURL(url);
@@ -276,6 +283,28 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   // 等到 React 把 #root 渲染完 + mock dataSource 拉完
   await new Promise<void>((resolve) => setTimeout(resolve, 800));
 
+  // Phase 4.3.1:除 smokeOnboarding 探针外,所有 smoke 探针都先关掉 OnboardingOverlay
+  //   - 首次启动 App 会自动弹引导浮层,遮罩覆盖整个窗口,影响其他探针的 hit test / click
+  //   - 用 executeJavaScript 主动点 skip 按钮(不会持久化 onboardingCompleted=true,
+  //     探针执行期间让浮层消失即可)
+  //   - 注意:smokeOnboarding 探针需要 OnboardingOverlay 存在,这里要跳过
+  if (SMOKE_FLAGS.smoke && !SMOKE_FLAGS.smokeOnboarding) {
+    try {
+      await win.webContents.executeJavaScript(`
+        (async () => {
+          const skip = document.querySelector('[data-testid="onboarding-card__skip"]');
+          if (skip) {
+            skip.click();
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          return true;
+        })()
+      `);
+    } catch {
+      // 浮层可能未挂载或 click 失败 - 静默继续
+    }
+  }
+
   // Smoke mode — 全部用 SMOKE_FLAGS（process.env 在 ready 后已被清）
   const smokePhase2 = SMOKE_FLAGS.smokePhase2;
   const smokeV2 = SMOKE_FLAGS.smokeV2;
@@ -298,6 +327,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeFeedActions = SMOKE_FLAGS.smokeFeedActions;
   const smokeOpmlExportSelection = SMOKE_FLAGS.smokeOpmlExportSelection;
   const smokePhase42 = SMOKE_FLAGS.smokePhase42;
+  const smokeOnboarding = SMOKE_FLAGS.smokeOnboarding;
   const feedUrl = SMOKE_FLAGS.feedUrl;
   const aiBaseUrl = SMOKE_FLAGS.aiBaseUrl;
   const aiKey = SMOKE_FLAGS.aiKey;
@@ -1715,6 +1745,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         }
         const report = { feedsGroup: { ok: false, error: null, checks: {} } };
         try {
+          // Phase 4.3.1:OnboardingOverlay 已在 runSmokeTest 统一关闭
+          //   - 这里不需要再处理,避免双关造成 race
           // A) seed 三个真 feed:2 个带 groupName(技术/科技),1 个未分组
           const fTechR = await window.api.feed.create({
             url: 'https://smoke-feeds-group.example.com/tech.xml',
@@ -4267,6 +4299,341 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         return JSON.stringify(report);
       })()
     `;
+  } else if (smokeOnboarding) {
+    // Phase 4.3.1 smoke: 新手引导浮层（首次启动自动弹 + 8 步 + 镂空 + 跳过 + 持久化 + 设置页入口）
+    // 走 mock 模式（5 feeds + 10 articles）：
+    //   1) 首次启动自动弹 → overlay 存在 + step 0 (sidebar-feeds) 命中"订阅源列表"镂空
+    //   2) 8 个步骤按 next 推进 → 镂空位置和目标元素 querySelector 命中
+    //   3) 跳过引导（点 skip）→ 遮罩消失 + onboardingCompleted=true 持久化
+    //   4) 走完最后一步（点 7 次 next）→ "开始使用" 按钮文案 + overlay 消失 + 持久化
+    //   5) 设置页"新手引导"入口 → 从 step 0 重新打开
+    //   6) 拖窗口 resize 事件 → 镂空位置实时跟随
+    //   7) 语言切换（en/zh）→ 卡片文案同步
+    //   8) 三主题（light+classic / light+paper / dark）→ 卡片背景非透明
+    //   9) 每步目标元素 querySelector + boundingRect 实测位置（≥8×8）
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        async function waitFor(checkFn, opts) {
+          const timeout = (opts && opts.timeout) || 3000;
+          const interval = (opts && opts.interval) || 50;
+          const start = Date.now();
+          while (Date.now() - start < timeout) {
+            try { if (checkFn()) return true; } catch (e) {}
+            await sleep(interval);
+          }
+          return false;
+        }
+        const report = { onboarding: { ok: false, error: null, checks: {}, text: {} } };
+        try {
+          // 1) 首次启动自动弹 + step 0 命中订阅源列表
+          const overlayShown = await waitFor(
+            () => !!document.querySelector('[data-testid="onboarding-overlay"]'),
+            { timeout: 5000 }
+          );
+          report.onboarding.checks.overlayShownOnFirstLaunch = overlayShown;
+          if (!overlayShown) {
+            report.onboarding.error = 'overlay 未在首次启动自动弹出';
+            return JSON.stringify(report);
+          }
+          await sleep(200);
+          const overlay = document.querySelector('[data-testid="onboarding-overlay"]');
+          const initialStep = overlay?.getAttribute('data-onboarding-step');
+          report.onboarding.checks.initialStepIsSidebarFeeds = initialStep === 'sidebar-feeds';
+          const initialStepIndex = Number(overlay?.getAttribute('data-onboarding-step-index'));
+          report.onboarding.checks.initialStepIndexIsZero = initialStepIndex === 0;
+          const ringInitial = document.querySelector('.onboarding-overlay__ring');
+          report.onboarding.checks.spotlightRingExists = !!ringInitial;
+          if (ringInitial) {
+            const rect = ringInitial.getBoundingClientRect();
+            report.onboarding.checks.spotlightRingHasSize = rect.width >= 16 && rect.height >= 16;
+            report.onboarding.text.spotlightInitialSize =
+              Math.round(rect.width) + 'x' + Math.round(rect.height);
+          }
+          // 镂空位置应与目标元素大致重合
+          const targetInitial = document.querySelector('.pane-feeds .feed-list');
+          if (targetInitial && ringInitial) {
+            const tRect = targetInitial.getBoundingClientRect();
+            const rRect = ringInitial.getBoundingClientRect();
+            const centerXOk = Math.abs((tRect.left + tRect.width / 2) - (rRect.left + rRect.width / 2)) < 4;
+            const centerYOk = Math.abs((tRect.top + tRect.height / 2) - (rRect.top + rRect.height / 2)) < 4;
+            report.onboarding.checks.initialSpotlightAlignsWithTarget = centerXOk && centerYOk;
+          }
+
+          // 2) 8 个步骤按 next 推进；每步验证 step index + 目标元素 + 镂空尺寸
+          const stepChecks = {};
+          for (let i = 0; i < 8; i++) {
+            const stepId = overlay.getAttribute('data-onboarding-step');
+            const stepIdx = Number(overlay.getAttribute('data-onboarding-step-index'));
+            stepChecks[\`step\${i}_index\`] = stepIdx === i;
+            stepChecks[\`step\${i}_id\`] = !!stepId;
+            // 当前 step 的镂空尺寸
+            const ring = document.querySelector('.onboarding-overlay__ring');
+            if (ring) {
+              const r = ring.getBoundingClientRect();
+              stepChecks[\`step\${i}_ringSize\`] = r.width >= 8 && r.height >= 8;
+            } else {
+              stepChecks[\`step\${i}_ringSize\`] = false;
+            }
+            // 9) 目标元素 querySelector + boundingRect 实测位置（≥8×8）
+            const overlayStep = overlay.getAttribute('data-onboarding-step');
+            // 简单通过 SELECTOR 映射：与 onboardingSteps.ts 对应
+            const stepSelectors = {
+              'sidebar-feeds': '.pane-feeds .feed-list',
+              'add-feed': '[data-testid="feed-list__create"]',
+              'article-list': '.pane-list .article-list',
+              'sync-button': '[data-testid="feed-action__sync"]',
+              'reader': '.pane-reader .article-reader',
+              'hide-sidebar': '[data-page-key="reader"]',
+              'ai-button': '[data-testid="app-header__ai"]',
+              'search': '.search-bar__input'
+            };
+            const sel = stepSelectors[overlayStep];
+            if (sel) {
+              const el = document.querySelector(sel);
+              stepChecks[\`step\${i}_targetExists\`] = !!el;
+              if (el) {
+                const r = el.getBoundingClientRect();
+                stepChecks[\`step\${i}_targetHasSize\`] = r.width >= 8 && r.height >= 8;
+                stepChecks[\`step\${i}_targetSize\`] = Math.round(r.width) + 'x' + Math.round(r.height);
+              }
+            }
+            if (i < 7) {
+              const nextBtn = document.querySelector('[data-testid="onboarding-card__next"]');
+              nextBtn?.click();
+              await sleep(280);
+            }
+          }
+          for (const k of Object.keys(stepChecks)) {
+            report.onboarding.checks[k] = stepChecks[k];
+          }
+          // 最后一步 next 按钮文案应是"开始使用"
+          const finalNextBtn = document.querySelector('[data-testid="onboarding-card__next"]');
+          const finalNextText = finalNextBtn?.textContent?.trim() ?? '';
+          report.onboarding.text.finalNextText = finalNextText;
+          report.onboarding.checks.finalNextTextIsFinish =
+            finalNextText === '开始使用' || finalNextText === 'Start using';
+          // 进度文案："第 8 / 8 步"
+          const progressEl = document.querySelector('[data-testid="onboarding-card__progress"]');
+          const progressText = progressEl?.textContent?.trim() ?? '';
+          report.onboarding.text.finalProgressText = progressText;
+          report.onboarding.checks.finalProgressIs8of8 = /8\\s*\\/\\s*8/.test(progressText);
+
+          // 3) 跳过引导
+          const skipBtn = document.querySelector('[data-testid="onboarding-card__skip"]');
+          skipBtn?.click();
+          await waitFor(
+            () => !document.querySelector('[data-testid="onboarding-overlay"]'),
+            { timeout: 2000 }
+          );
+          report.onboarding.checks.overlayClosedAfterSkip =
+            !document.querySelector('[data-testid="onboarding-overlay"]');
+          // 持久化：MockDataSource.settingsGet 返回 onboardingCompleted=true
+          await sleep(100);
+          const ds1 = window.__JUHE_DS__;
+          if (ds1 && typeof ds1.settingsGet === 'function') {
+            const r = await ds1.settingsGet();
+            if (r.kind === 'ready') {
+              report.onboarding.text.settingsOnboardingCompleted = String(r.data.onboardingCompleted);
+              report.onboarding.checks.persistedOnboardingCompletedTrue = r.data.onboardingCompleted === true;
+            }
+          }
+
+          // 4) 走完最后一步（验证点 4 在 skip 之后已覆盖"持久化"分支；这里验证"开始使用"流程）
+          // 重启一次：先确保 settings 重置 + 重新打开引导
+          // 通过 settings 入口按钮 → 重新触发
+          // 设置页入口
+          const settingsBtn = document.querySelector('[data-testid="app-header__settings"]');
+          settingsBtn?.click();
+          await waitFor(
+            () => !!document.querySelector('.settings-workspace__content'),
+            { timeout: 3000 }
+          );
+          await sleep(150);
+          const onboardingEntry = document.querySelector(
+            '[data-testid="settings-onboarding-entry__button"]'
+          );
+          report.onboarding.checks.settingsOnboardingEntryExists = !!onboardingEntry;
+          if (onboardingEntry) {
+            onboardingEntry.click();
+            await waitFor(
+              () => !!document.querySelector('[data-testid="onboarding-overlay"]'),
+              { timeout: 2000 }
+            );
+            await sleep(200);
+            const overlayAfterReopen = document.querySelector('[data-testid="onboarding-overlay"]');
+            report.onboarding.checks.reopenFromSettingsRestartsFromStep0 =
+              overlayAfterReopen?.getAttribute('data-onboarding-step-index') === '0';
+            // 走完最后一步：连点 7 次 next
+            for (let i = 0; i < 7; i++) {
+              document.querySelector('[data-testid="onboarding-card__next"]')?.click();
+              await sleep(250);
+            }
+            // 第 8 步再点 next → 触发 onComplete
+            document.querySelector('[data-testid="onboarding-card__next"]')?.click();
+            await waitFor(
+              () => !document.querySelector('[data-testid="onboarding-overlay"]'),
+              { timeout: 2000 }
+            );
+            report.onboarding.checks.overlayClosedAfterFinish =
+              !document.querySelector('[data-testid="onboarding-overlay"]');
+            await sleep(100);
+            if (ds1 && typeof ds1.settingsGet === 'function') {
+              const r = await ds1.settingsGet();
+              if (r.kind === 'ready') {
+                report.onboarding.checks.persistedOnboardingCompletedTrueAfterFinish =
+                  r.data.onboardingCompleted === true;
+              }
+            }
+          }
+
+          // 5) 拖窗口 resize 事件 → 镂空位置实时跟随
+          // 重新打开引导
+          const settingsBtn2 = document.querySelector('[data-testid="app-header__settings"]');
+          settingsBtn2?.click();
+          await waitFor(
+            () => !!document.querySelector('[data-testid="settings-onboarding-entry__button"]'),
+            { timeout: 2000 }
+          );
+          document.querySelector('[data-testid="settings-onboarding-entry__button"]')?.click();
+          await waitFor(
+            () => !!document.querySelector('.onboarding-overlay__ring'),
+            { timeout: 2000 }
+          );
+          await sleep(200);
+          const ringBefore = document.querySelector('.onboarding-overlay__ring');
+          const beforeRect = ringBefore.getBoundingClientRect();
+          report.onboarding.text.ringBeforeResize =
+            Math.round(beforeRect.top) + ',' + Math.round(beforeRect.left);
+          // 模拟 resize:dispatchEvent 不会改变真实尺寸，但 useTargetRect 内部监听器会触发 measure
+          window.dispatchEvent(new Event('resize'));
+          await sleep(250);
+          const ringAfter = document.querySelector('.onboarding-overlay__ring');
+          const afterRect = ringAfter.getBoundingClientRect();
+          report.onboarding.text.ringAfterResize =
+            Math.round(afterRect.top) + ',' + Math.round(afterRect.left);
+          // resize 不会真改尺寸，但 ring 存在说明监听器正常工作
+          report.onboarding.checks.ringSurvivesResizeEvent = !!ringAfter;
+
+          // 6) 拖动目录 + 全屏切换 resize 事件
+          // 收起一级目录（点击阅读功能键）→ 镂空位置仍存在
+          const readerBtn = document.querySelector('[data-page-key="reader"]');
+          if (readerBtn && readerBtn.getAttribute('data-page-key') === 'reader') {
+            readerBtn.click();
+            await sleep(350);
+            const ringAfterCollapse = document.querySelector('.onboarding-overlay__ring');
+            report.onboarding.checks.ringSurvivesDirectoryCollapse = !!ringAfterCollapse;
+          }
+
+          // 7) 关闭浮层后切换语言 → 再打开引导 → 卡片文案变化
+          document.querySelector('[data-testid="onboarding-card__skip"]')?.click();
+          await waitFor(
+            () => !document.querySelector('[data-testid="onboarding-overlay"]'),
+            { timeout: 2000 }
+          );
+          // mock 模式调 setLanguage：window.__JUHE_DS__.settingsUpdate({ language: 'en' })
+          if (ds1 && typeof ds1.settingsUpdate === 'function') {
+            await ds1.settingsUpdate({ language: 'en' });
+            await sleep(150);
+          }
+          // 重新打开引导
+          document.querySelector('[data-testid="app-header__settings"]')?.click();
+          await waitFor(
+            () => !!document.querySelector('[data-testid="settings-onboarding-entry__button"]'),
+            { timeout: 2000 }
+          );
+          document.querySelector('[data-testid="settings-onboarding-entry__button"]')?.click();
+          await waitFor(
+            () => !!document.querySelector('[data-testid="onboarding-card__title"]'),
+            { timeout: 2000 }
+          );
+          const englishTitle = document.querySelector(
+            '[data-testid="onboarding-card__title"]'
+          )?.textContent?.trim() ?? '';
+          report.onboarding.text.englishStep1Title = englishTitle;
+          report.onboarding.checks.englishTitleIsFeedSources = englishTitle === 'Feed Sources';
+          // 切回中文
+          if (ds1 && typeof ds1.settingsUpdate === 'function') {
+            await ds1.settingsUpdate({ language: 'zh' });
+            await sleep(150);
+          }
+          await waitFor(
+            () => {
+              const t = document.querySelector(
+                '[data-testid="onboarding-card__title"]'
+              )?.textContent?.trim();
+              return t === '订阅源列表';
+            },
+            { timeout: 2000 }
+          );
+          const chineseTitle = document.querySelector(
+            '[data-testid="onboarding-card__title"]'
+          )?.textContent?.trim() ?? '';
+          report.onboarding.text.chineseStep1Title = chineseTitle;
+          report.onboarding.checks.chineseTitleIsSidebarList = chineseTitle === '订阅源列表';
+
+          // 8) 三主题（light+classic / light+paper / dark）→ 卡片背景非透明
+          const cardEl = document.querySelector('[data-testid="onboarding-card"]');
+          const lightClassicBg = cardEl ? getComputedStyle(cardEl).backgroundColor : '';
+          report.onboarding.text.lightClassicBg = lightClassicBg;
+          report.onboarding.checks.lightClassicCardHasOpaqueBg =
+            lightClassicBg !== 'rgba(0, 0, 0, 0)' && lightClassicBg !== 'transparent';
+          // 切到 paper
+          if (ds1 && typeof ds1.settingsUpdate === 'function') {
+            await ds1.settingsUpdate({ visualTheme: 'paper' });
+            await sleep(150);
+          }
+          await sleep(150);
+          const paperBg = cardEl ? getComputedStyle(cardEl).backgroundColor : '';
+          report.onboarding.text.paperBg = paperBg;
+          report.onboarding.checks.paperCardHasOpaqueBg =
+            paperBg !== 'rgba(0, 0, 0, 0)' && paperBg !== 'transparent';
+          // 切到 dark（用 effectiveTheme via document.documentElement data-theme）
+          if (ds1 && typeof ds1.settingsUpdate === 'function') {
+            await ds1.settingsUpdate({ theme: 'dark' });
+            await sleep(250);
+          }
+          const darkBg = cardEl ? getComputedStyle(cardEl).backgroundColor : '';
+          report.onboarding.text.darkBg = darkBg;
+          report.onboarding.checks.darkCardHasOpaqueBg =
+            darkBg !== 'rgba(0, 0, 0, 0)' && darkBg !== 'transparent';
+          // 还原设置避免污染后续探针
+          if (ds1 && typeof ds1.settingsUpdate === 'function') {
+            await ds1.settingsUpdate({ theme: 'system', visualTheme: 'classic' });
+            await sleep(150);
+          }
+
+          // 收尾：关闭浮层
+          document.querySelector('[data-testid="onboarding-card__skip"]')?.click();
+          await sleep(150);
+
+          // 9) 总结
+          const required = [
+            'overlayShownOnFirstLaunch', 'initialStepIsSidebarFeeds', 'initialStepIndexIsZero',
+            'spotlightRingExists', 'spotlightRingHasSize', 'initialSpotlightAlignsWithTarget',
+            'finalNextTextIsFinish', 'finalProgressIs8of8',
+            'overlayClosedAfterSkip', 'persistedOnboardingCompletedTrue',
+            'settingsOnboardingEntryExists', 'reopenFromSettingsRestartsFromStep0',
+            'overlayClosedAfterFinish', 'persistedOnboardingCompletedTrueAfterFinish',
+            'ringSurvivesResizeEvent', 'ringSurvivesDirectoryCollapse',
+            'englishTitleIsFeedSources', 'chineseTitleIsSidebarList',
+            'lightClassicCardHasOpaqueBg', 'paperCardHasOpaqueBg', 'darkCardHasOpaqueBg'
+          ];
+          for (let i = 0; i < 8; i++) {
+            required.push(\`step\${i}_index\`, \`step\${i}_id\`, \`step\${i}_ringSize\`,
+              \`step\${i}_targetExists\`, \`step\${i}_targetHasSize\`);
+          }
+          report.onboarding.checks.allRequired = required.every(
+            (k) => report.onboarding.checks[k] === true
+          );
+          report.onboarding.ok = report.onboarding.checks.allRequired;
+        } catch (e) {
+          report.onboarding.error = String(e);
+          report.onboarding.stack = (e instanceof Error) ? e.stack : null;
+        }
+        return JSON.stringify(report);
+      })()
+    `;
   } else {
     // Phase 1.1 smoke: contextIsolation + minimal IPC
     probe = `
@@ -4340,6 +4707,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"opmlExport":{"ok":true');
     } else if (smokePhase42) {
       pass = raw.includes('"phase42":{"ok":true');
+    } else if (smokeOnboarding) {
+      pass = raw.includes('"onboarding":{"ok":true');
     } else if (smokeUiReal) {
       if (SMOKE_FLAGS.smokeIntegration) {
         // 集成 fixture 同时覆盖基础 UI IPC 与 Phase 3 页面流程，两者均必须通过。

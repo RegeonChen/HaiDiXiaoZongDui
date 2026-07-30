@@ -1,0 +1,245 @@
+/* ============================================================
+ * Phase 4.3.1：新手引导浮层样式
+ *
+ * 配色策略：
+ *   - 主题色用 var(--accent) 复用全局强调色（浅色 #4f8cff / 深色 #6ea8fe / 纸质 #d97706）
+ *   - 卡片背景 var(--bg-elev)；前景 var(--fg)；边框 var(--border)
+ *   - 遮罩用 rgba(0,0,0,0.65) 跨主题统一
+ *   - 镂空边框用 var(--accent) 2px 实线 + 外发光
+ * ============================================================ */
+
+.onboarding-overlay {
+  --onboarding-accent: var(--accent, #4f8cff);
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.65);
+  pointer-events: auto;
+  animation: onboarding-fade-in 200ms ease forwards;
+}
+
+.onboarding-overlay.is-target-hidden {
+  /* 目标元素不在 DOM 中时不显示箭头/镂空 */
+}
+
+.onboarding-overlay__pane {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.65);
+  pointer-events: auto;
+}
+
+.onboarding-overlay__ring {
+  position: fixed;
+  border: 2px solid var(--onboarding-accent);
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 4px rgba(79, 140, 255, 0.18),
+    0 4px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  transition: top 200ms ease, left 200ms ease, width 200ms ease, height 200ms ease;
+  z-index: 1;
+}
+
+.onboarding-overlay__arrow {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ----- 步骤卡片 ----- */
+
+.onboarding-card {
+  position: fixed;
+  bottom: 32px;
+  z-index: 10;
+  background: var(--bg-elev, #ffffff);
+  color: var(--fg, #1f1f23);
+  border: 1px solid var(--border, #d0d4dc);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  padding: 18px 20px 16px;
+  pointer-events: auto;
+  animation: onboarding-card-rise 240ms ease forwards;
+}
+
+.onboarding-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--fg-soft, #6b7280);
+}
+
+.onboarding-card__progress {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.onboarding-card__close {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--fg-soft, #6b7280);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.onboarding-card__close:hover {
+  background: var(--bg-elev-hover, #e8eaef);
+  color: var(--fg, #1f1f23);
+}
+
+.onboarding-card__title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--fg, #1f1f23);
+}
+
+.onboarding-card__description {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg-soft, #4b5563);
+}
+
+.onboarding-card__dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.onboarding-card__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border, #d0d4dc);
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.onboarding-card__dot.is-passed {
+  background: var(--fg-soft, #9ca3af);
+}
+
+.onboarding-card__dot.is-active {
+  background: var(--onboarding-accent);
+  transform: scale(1.4);
+}
+
+.onboarding-card__footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onboarding-card__spacer {
+  flex: 1;
+}
+
+.onboarding-card__btn {
+  appearance: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+  border: 1px solid transparent;
+}
+
+.onboarding-card__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.onboarding-card__btn--ghost {
+  background: transparent;
+  color: var(--fg-soft, #6b7280);
+  border-color: var(--border, #d0d4dc);
+}
+
+.onboarding-card__btn--ghost:hover:not(:disabled) {
+  background: var(--bg-elev-hover, #e8eaef);
+  color: var(--fg, #1f1f23);
+}
+
+.onboarding-card__btn--primary {
+  background: var(--onboarding-accent);
+  color: #ffffff;
+  border-color: var(--onboarding-accent);
+}
+
+.onboarding-card__btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.onboarding-overlay__hidden-hint {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 8px 16px;
+  background: var(--bg-elev, #ffffff);
+  color: var(--fg-soft, #6b7280);
+  border: 1px solid var(--border, #d0d4dc);
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* ----- 动画 ----- */
+
+@keyframes onboarding-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes onboarding-card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ----- 主题适配 ----- */
+
+/* 浅色 + 经典：默认 */
+html[data-theme='light'][data-visual-theme='classic'] {
+  --onboarding-card-bg: #ffffff;
+}
+
+/* 浅色 + 纸质：暖黄 */
+html[data-theme='light'][data-visual-theme='paper'] {
+  --onboarding-card-bg: #f4ecd8;
+}
+
+/* 深色（不管 visualTheme 都被覆盖为经典） */
+html[data-theme='dark'] {
+  --onboarding-card-bg: #1f1f23;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-overlay,
+  .onboarding-card,
+  .onboarding-overlay__ring,
+  .onboarding-card__dot {
+    animation: none;
+    transition: none;
+  }
+}

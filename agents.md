@@ -95,6 +95,20 @@
 
 截至 2026-07-30：
 
+- **Phase 4.3.1 新手引导浮层 UI 落地**（张晨阳，4.3.2 陈冠中在 `71abd32` 提前落地 `onboardingCompleted` 字段 + 持久化）：
+  - **触发机制**（`App.tsx`）：检测 `appearance.onboardingCompleted=false` + `feedsState.ready` + `articlesState !== 'loading'` → 200ms 缓冲后自动开浮层。**真根因**：仅等 `appearance.loaded` 会让 `feedsState.loading` 期间浮层先开 → Layout 内是 LoadingView → `useOnboarding.isElementReady(0)` 看 DOM 找不到 `.pane-feeds .feed-list` → useEffect 内部自动 next 跳到 step 4 (reader)，所有引导步骤错位（initialStepIsSidebarFeeds=false, step0_index=false, …, step7_index=true）。**修法**：触发条件加 `mainUiReady = feedsState.ready && articlesState !== 'loading'`，等主界面 DOM 准备好再开。
+  - **浮层组件**（`src/components/OnboardingOverlay/`，4 文件 + 1 CSS）：8 步全屏遮罩 + 4 块围挡挖出镂空区 + 强调色边框 + 固定底部中央卡片（标题/描述/进度点/上一步/下一步/开始使用/关闭）+ SVG 曲线箭头（卡片顶部中央 → 目标元素中心）。200ms fade 过渡。
+  - **8 步定义**（`onboardingSteps.ts`）：侧栏订阅源 / 添加订阅 / 文章列表 / 同步按钮 / 阅读区 / 隐藏左栏 / AI 助手 / 搜索框；每步 selector + 中英 i18n。
+  - **动态定位 Hook**（`useTargetRect`）：`getBoundingClientRect` + 200ms 轮询 + `resize` / `scroll` (capture) / `fullscreenchange` 事件实时跟随；返回 null 当元素 0×0 / display:none。
+  - **步骤状态 Hook**（`useOnboarding`）：`currentStepIndex` + 元素缺失自动 next 跳到 ready 步 + 边界保护（最后一步全缺失 → 视为完成，由父组件 `onComplete`）。
+  - **多语言**（`onboardingSteps.ts` + `useAppearance`）：8 步 title/description 中英双语；按钮文案 + 进度文案通过 `appearance.language` 即时切换。
+  - **设置页入口**（`UnifiedSettingsPage.tsx`）：通用 / AI / 日志设置区上方加"新手引导"快速入口卡片（仅在 `onStartOnboardingTour` prop 提供时显示）；点击 → `App.startOnboardingTour` → 重置 `onboardingResetKey` 重新打开浮层。
+  - **App 集成**（`App.tsx`）：`closeOnboarding` 调 `appearance.setOnboardingCompleted(true)` 持久化；`startOnboardingTour` 重置 reset key 强制重新从 step 0 开始。
+  - **useAppearance 扩展**：`AppearanceSettings` 加 `onboardingCompleted: boolean`（默认 false） + `setOnboardingCompleted` setter；监听 `juhe:settings-changed` 事件让 mock 模式下直接调 `ds.settingsUpdate` 改语言时 React 同步刷新。
+  - **MockDataSource 同步**：`MockDataSource.settingsUpdate` 派发 `CustomEvent('juhe:settings-changed', { detail })` → 跨组件同步 settings 变更（IPC 模式不派发，依赖 `useAppearance.setXxx()` 直接 setState）。
+  - **runSmokeTest 统一关闭引导**（`electron/main/index.ts`）：除 `smokeOnboarding` 探针外，所有 smoke 探针在 800ms 等待后**先**用 `executeJavaScript` 点 skip 按钮关闭 OnboardingOverlay，避免 z-index 9999 遮罩影响其他探针的 hit test / click（smoke:feeds-group 改前 `moreMenuHitTest=false`，加这一步后 PASS）。
+  - **新 smoke 探针** `smoke:onboarding`（`scripts/smoke-4.3.1.cjs`）：走 mock 模式，9 项验收（首次启动自动弹 / 8 步按 next 推进 / 跳过 → 持久化 / 走完最后一步 → 完成 / 设置页入口重启 / resize 事件跟随 / 收起目录跟随 / 中英文切换 / 三主题卡片可读 / 每步 querySelector + boundingRect 实测）。
+- **22/22 smoke + 130 单测全过**（2026-07-30 22:30）：新增 `smoke:onboarding` 后 22 个 smoke 探针全过；smoke:feeds-group 等 13 个既有探针加 runSmokeTest skip-onboarding 保护后无回归；130 单测全过。
 - **v0.3.1 release 已发布**（`639de80` + tag `v0.3.1`）：完成 IDE 四段式工作台、文章上下文 AI 对话、搜索分页与订阅源操作闭环、新应用图标和内容清洗增强；同步将 `fast-xml-parser` 升级至 5.10.1，生产依赖审计为 0 项已知漏洞。发布前通过 typecheck、130 项单测、生产构建与 12 组关键 Electron/IPC smoke；GitHub Actions 成功生成并发布 `Juhe-Shiyi-0.3.1-arm64.dmg` 与 `Juhe-Shiyi-Setup-0.3.1-x64.exe`，远端下载后的版本、图标资源与 SHA-256 均已复核。
 - **应用图标已完成跨平台工程化（`0497eb6` 原始设计 + `f437fad` 圆角方向 + `6e2c596` 资源处理，合并于 `1b74960`）**：保留团队提交的象牙米黄奏章造型与透明圆角意图，将误用 `.png` 扩展名的 JPEG 美术源改为 `art/icon-source.jpg`，裁去过量外边距并增加透明圆角安全区；输出 1024×1024 打包 PNG、512×512 运行时 PNG 和 128×128 favicon。生产环境通过 `extraResources` 从 `process.resourcesPath/icon.png` 读取窗口图标，避免引用不会进入应用包的 `build/` 路径。`verify:icons` 检查真实格式、尺寸、RGBA 与透明/不透明像素；macOS DMG 的 ICNS 与源 PNG 逐像素一致，Windows EXE 内含 16–256 七档图标。
 - **IDE 工作台四段式布局（`8ca0998`，已发布）**：页面固定为“竖向功能栏 / 一级订阅源目录 / 二级文章目录 / 灵活窗口”。打开文章、标签、笔记、文摘、专题或设置时，前两级目录保持挂载且不被页面替换；仅最右灵活窗口切换内容。灵活窗口顶部保留可切换、可关闭的 IDE 标签条，但不创建永久“阅读器”标签。一级/二级目录分别设 218px/260px 最小宽度，工具按钮统一禁止文字换行。添加订阅源、导入 OPML、导出 OPML和添加订阅源组统一收进一级目录右上角“+”菜单。顶栏小三角、左上角重复阅读入口和右上角全局同步按钮均已移除；在阅读界面重复点击竖向首个“阅读”功能键，目录按“全开 → 收起一级 → 再收起二级 → 全开”循环，从其他页面点击则只返回阅读。“所有订阅源”与具体订阅源统一在二级目录标题下显示“同步 / 全部已读”，前者作用于全部源、后者只作用于当前源；未读、星标和标签筛选不显示范围含糊的批量操作。`Layout.test.ts` 验证固定结构、最小宽度、重复入口移除和三态目录，`FeedList.test.ts` 锁定“+”菜单操作。
@@ -178,14 +192,16 @@
 
 ## 路线图
 
-1. Phase 1–4.2、3.7、4.1、4.2：✅ 已完成
-2. Phase 4.3：数据库设置字段已完成 / 新手引导 UI 与端到端验收进行中
-3. Phase 5：v0.3.1 release 已发布（`v0.3.1` tag + 2 个 artifact）/ Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
+1. Phase 1–4.3、3.7、4.1、4.2、**4.3**：✅ 全部完成
+2. Phase 5：v0.3.1 release 已发布（`v0.3.1` tag + 2 个 artifact）+ Phase 4.3.1 引导浮层落地 / Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
 ## 近期记录（按 commit 倒序）
 
+- **`4.3.1`（张晨阳，待 commit）**：Phase 4.3.1 新手引导浮层 — 8 步全屏遮罩 + 4 块围挡挖镂空 + 强调色边框 + 固定底部中央卡片 + SVG 曲线箭头；`useTargetRect` 动态定位（200ms 轮询 + resize/scroll/fullscreenchange 实时跟随）+ `useOnboarding` 步骤状态（缺失自动 next）；8 步中英 i18n（侧栏 / 添加 / 列表 / 同步 / 阅读 / 隐藏左栏 / AI / 搜索）；UnifiedSettingsPage 加"新手引导"快速入口；`useAppearance` 扩展 `onboardingCompleted` 字段 + setter + 监听 `juhe:settings-changed` 事件；MockDataSource 派发 settings 变化事件；`runSmokeTest` 统一关闭引导避免影响其他 smoke 探针 hit test；22/22 smoke + 130 单测全过。
+- **`b02da80`（张晨阳）**：批量全选/清空合并为 toggle 按钮 + AI 设置名称"AI 与模型"→"AI模型"。
+- **`71abd32`（陈冠中）**：Phase 4.3 AppSettings 新增 `onboardingCompleted` 字段 + `isSettingValue` 安全校验。
 - **`639de80`（张宇凡）**：v0.3.1 release — 版本升至 0.3.1，修复 `fast-xml-parser` 生产依赖漏洞并补充完整发布说明；本地与 GitHub Actions 双平台打包成功，Release 资产下载复核通过。
 - **`1b74960`（合并提交）**：合并团队并行提交的圆角图标实现 `f437fad`，保留其提交历史与跨平台圆角方向；最终统一使用分尺寸资源、可重复生成/校验脚本和包外运行时路径。
 - **`f437fad`（xingguang0626）**：将奏章图标升级为带透明圆角的 RGBA 版本，并提供首版 Python 生成原型。

@@ -36,6 +36,7 @@ import { ContextMenuHost } from './components/ContextMenu/ContextMenu';
 import { SearchBar } from './components/SearchBar/SearchBar';
 import { LoadingView } from './components/StatusView/LoadingView';
 import { ErrorView } from './components/StatusView/ErrorView';
+import { OnboardingOverlay } from './components/OnboardingOverlay/OnboardingOverlay';
 import { TagsPage } from './pages/TagsPage/TagsPage';
 import { NotesPage } from './pages/NotesPage/NotesPage';
 import { DigestsPage } from './pages/DigestsPage/DigestsPage';
@@ -138,6 +139,14 @@ export function App() {
   const syncDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncProgressPollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Phase 4.3.1：新手引导浮层可见性
+  //   - 默认 false；appearance.loaded + !onboardingCompleted 时自动开
+  //   - 完成/跳过/重启通过 setOnboardingVisible 显式切换
+  //   - 关闭时不卸载组件（保留下次开启时从 step 0 继续）；用 key={onboardingResetKey} 强制重置
+  const [onboardingVisible, setOnboardingVisible] = useState(false);
+  const [onboardingResetKey, setOnboardingResetKey] = useState(0);
+  const onboardingAutoOpenedRef = useRef(false);
+
   const pushToast = useCallback((message: string, kind: ToastItem['kind'] = 'info') => {
     toastIdRef.current += 1;
     const id = toastIdRef.current;
@@ -146,6 +155,49 @@ export function App() {
 
   const dismissToast = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // 首次启动（设置已加载 + 主界面就绪 + onboardingCompleted=false）→ 自动开
+  //   - 必须等 feedsState.ready 才能保证 DOM 中有 .pane-feeds .feed-list / .pane-list .article-list
+  //   - 否则 useOnboarding 内部 isElementReady 看到 loading 占位元素,自动跳到 reader
+  //   - 主页面就绪后还加 200ms 缓冲,等布局/字体/ResizeHandle 完成
+  const mainUiReady = feedsState.kind === 'ready' && articlesState.kind !== 'loading';
+  useEffect(() => {
+    if (!appearance.loaded) return;
+    if (!mainUiReady) return;
+    if (onboardingAutoOpenedRef.current) return;
+    if (appearance.onboardingCompleted) return;
+    const timer = window.setTimeout(() => {
+      if (onboardingAutoOpenedRef.current) return;
+      onboardingAutoOpenedRef.current = true;
+      setOnboardingResetKey(Date.now());
+      setOnboardingVisible(true);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [appearance.loaded, appearance.onboardingCompleted, mainUiReady]);
+
+  // 完成 / 跳过：统一处理 = 持久化 onboardingCompleted=true + 关闭
+  const closeOnboarding = useCallback(async (reason: 'complete' | 'skip') => {
+    setOnboardingVisible(false);
+    try {
+      const ok = await appearance.setOnboardingCompleted(true);
+      if (ok) {
+        pushToast(
+          reason === 'complete' ? '已了解聚合拾遗的核心功能' : '已跳过新手引导',
+          'success'
+        );
+      }
+    } catch (e) {
+      // 持久化失败不阻塞关闭，但记录
+      pushToast(`引导状态保存失败：${e instanceof Error ? e.message : String(e)}`, 'error');
+    }
+  }, [appearance, pushToast]);
+
+  // 设置页"新手引导"入口：强制重启（保持 onboardingCompleted=true 不变，单纯重新打开浮层；
+  // 退出时再调 closeOnboarding 仍然把状态写回 true，不会清除"已完成"标记）
+  const startOnboardingTour = useCallback(() => {
+    setOnboardingResetKey(Date.now());
+    setOnboardingVisible(true);
   }, []);
 
   // 拉 feeds
@@ -1577,7 +1629,12 @@ export function App() {
   let pageSlot: JSX.Element;
   switch (currentPage) {
     case 'settings':
-      pageSlot = <UnifiedSettingsPage onToast={pushToast} />;
+      pageSlot = (
+        <UnifiedSettingsPage
+          onToast={pushToast}
+          onStartOnboardingTour={startOnboardingTour}
+        />
+      );
       break;
     case 'tags':
       pageSlot = <TagsPage onToast={pushToast} onOpenArticle={handleTopicOpenArticle} />;
@@ -1640,6 +1697,15 @@ export function App() {
       <ConfirmDialog ref={confirmRef} />
       <ContextMenuHost />
       <Toast items={toasts} onDismiss={dismissToast} />
+      {/* Phase 4.3.1：新手引导浮层（首次启动 / 设置页"新手引导"入口） */}
+      {onboardingVisible && (
+        <OnboardingOverlay
+          key={onboardingResetKey}
+          currentPage={currentPage}
+          onComplete={() => void closeOnboarding('complete')}
+          onSkip={() => void closeOnboarding('skip')}
+        />
+      )}
       {/* Phase 3.6.2：同步进度条（进行中/完成两态；完成后 3 秒自动消失） */}
       {syncingProgress && (
         <div

@@ -106,4 +106,56 @@
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--bg-elev) 34%, transparent), transparent 150px),
     var(--workspace-bg);
+  padding: 18px 22px;
+}
+
+/* Phase 4.3.1：设置页"新手引导"快速入口卡片 */
+.settings-workspace__quick-action {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+}
+
+.settings-workspace__quick-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-workspace__quick-action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-workspace__quick-action-text strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.settings-workspace__quick-action-text small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.settings-workspace__quick-action-btn {
+  appearance: none;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  white-space: nowrap;
+}
+
+.settings-workspace__quick-action-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
