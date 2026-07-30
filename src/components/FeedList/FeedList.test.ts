@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOCK_ARTICLES, MOCK_FEEDS } from '../../data/mockData';
 import { FeedList, type FeedListProps } from './FeedList';
 
-describe('FeedList create menu', () => {
+describe('FeedList', () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -125,5 +125,63 @@ describe('FeedList create menu', () => {
     expect(
       container.querySelector(`[data-feed-id="${feed.id}"] .feed-list__count`)?.textContent
     ).toBe('73');
+  });
+
+  it('offers select all for a partial batch selection and cancel only after all are selected', async () => {
+    const feeds = MOCK_FEEDS.slice(0, 3);
+    const props: FeedListProps = {
+      feeds,
+      articles: [],
+      selected: 'all',
+      onSelect: vi.fn(),
+      onDeleteFeed: vi.fn()
+    };
+
+    await act(async () => {
+      root.render(createElement(FeedList, props));
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="feed-list__more"]')?.click();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="feed-list__enter-batch"]')?.click();
+    });
+
+    const toggleSelectAll = () => (
+      container.querySelector<HTMLButtonElement>(
+        '[data-testid="feed-list__batch-toggle-select-all"]'
+      )
+    );
+    const batchLabel = () => container.querySelector('.feed-list__batch-toolbar-label');
+    const batchCheckboxes = () => (
+      Array.from(
+        container.querySelectorAll<HTMLInputElement>('[data-testid^="feed-list__batch-checkbox-"]')
+      )
+    );
+
+    expect(toggleSelectAll()?.textContent).toBe('全选');
+
+    await act(async () => {
+      batchCheckboxes()[0]?.click();
+    });
+    expect(batchLabel()?.textContent).toContain('已选 1 个');
+    expect(toggleSelectAll()?.textContent).toBe('全选');
+    expect(toggleSelectAll()?.getAttribute('aria-pressed')).toBe('false');
+
+    await act(async () => {
+      toggleSelectAll()?.click();
+    });
+    expect(batchCheckboxes()).toHaveLength(feeds.length);
+    expect(batchCheckboxes().every((checkbox) => checkbox.checked)).toBe(true);
+    expect(batchLabel()?.textContent).toContain(`已选 ${feeds.length} 个`);
+    expect(toggleSelectAll()?.textContent).toBe('取消全选');
+    expect(toggleSelectAll()?.getAttribute('aria-pressed')).toBe('true');
+
+    await act(async () => {
+      toggleSelectAll()?.click();
+    });
+    expect(batchCheckboxes().every((checkbox) => !checkbox.checked)).toBe(true);
+    expect(batchLabel()?.textContent).toContain('已选 0 个');
+    expect(toggleSelectAll()?.textContent).toBe('全选');
   });
 });

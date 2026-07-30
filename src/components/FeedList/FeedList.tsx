@@ -141,6 +141,28 @@ export function FeedList({
   // Bug 2 修复：批量管理模式( ... 改为批量删除入口)
   const [batchMode, setBatchMode] = useState(false);
   const [selectedForBatch, setSelectedForBatch] = useState<Set<string>>(new Set());
+  const batchItemIds = useMemo(
+    () => (
+      tab === 'sources'
+        ? feeds.map((feed) => feed.id)
+        : (tags ?? []).map((tag) => tag.id)
+    ),
+    [feeds, tab, tags]
+  );
+  const allBatchItemsSelected = (
+    batchItemIds.length > 0 &&
+    batchItemIds.every((id) => selectedForBatch.has(id))
+  );
+
+  // 数据刷新或切换 tab 后，移除当前列表中已经不存在的选择，避免计数和操作对象失真。
+  useEffect(() => {
+    const validIds = new Set(batchItemIds);
+    setSelectedForBatch((prev) => {
+      if (Array.from(prev).every((id) => validIds.has(id))) return prev;
+      return new Set(Array.from(prev).filter((id) => validIds.has(id)));
+    });
+  }, [batchItemIds]);
+
   // 同步折叠状态到 localStorage
   useEffect(() => {
     try {
@@ -199,24 +221,16 @@ export function FeedList({
       return next;
     });
   }, []);
-  // 批量全选/清空合并为 toggle 按钮(根因:全选 + 清空是两个互斥动作,合并为一个 toggle 按钮)
-  //   - 没选 → 显示"全选",点击 → 选所有
-  //   - 选了一部分或全部 → 显示"取消全选",点击 → 清空 selectedForBatch
-  //   - 避免两个按钮占位 + 与 GitHub / VSCode 等桌面应用批量管理 UX 一致
+  // 批量全选/取消全选使用标准三态语义：
+  //   - 未选或部分选中 → 显示"全选"，点击后选中当前 tab 的全部项目
+  //   - 全部选中 → 显示"取消全选"，点击后清空选择
   const toggleSelectAllBatch = useCallback(() => {
-    // 计算当前 tab 下"全部"的数量(feeds 或 tags)
-    const totalCount = tab === 'sources' ? feeds.length : (tags?.length ?? 0);
-    if (totalCount === 0) return;
-    if (selectedForBatch.size > 0) {
-      // 已选部分或全部 → 取消全选
-      setSelectedForBatch(new Set());
-    } else if (tab === 'sources') {
-      // 没选 → 选所有 feeds(简化版:不区分是否折叠;折叠组里的也会被选中)
-      setSelectedForBatch(new Set(feeds.map((f) => f.id)));
-    } else if (tab === 'tags' && tags) {
-      setSelectedForBatch(new Set(tags.map((t) => t.id)));
-    }
-  }, [tab, feeds, tags, selectedForBatch.size]);
+    if (batchItemIds.length === 0) return;
+    setSelectedForBatch((prev) => {
+      const isAllSelected = batchItemIds.every((id) => prev.has(id));
+      return isAllSelected ? new Set() : new Set(batchItemIds);
+    });
+  }, [batchItemIds]);
   const onBatchDelete = useCallback(() => {
     if (selectedForBatch.size === 0) return;
     const ids = Array.from(selectedForBatch);
@@ -498,9 +512,7 @@ export function FeedList({
         </div>
       </div>
 
-      {/* Bug 2 修复:批量管理工具条(覆盖在 topbar 下方,固定不滚动)
-         Phase 4.x UI 打磨:全选 + 清空合并为 toggle 按钮
-           "全选"(0 选中)/ "取消全选"(>0 选中) */}
+      {/* Bug 2 修复:批量管理工具条(覆盖在 topbar 下方,固定不滚动) */}
       {batchMode && (
         <div className="feed-list__batch-toolbar" data-testid="feed-list__batch-toolbar">
           <span className="feed-list__batch-toolbar-label">
@@ -510,9 +522,10 @@ export function FeedList({
             type="button"
             className="feed-list__batch-btn"
             onClick={toggleSelectAllBatch}
+            aria-pressed={allBatchItemsSelected}
             data-testid="feed-list__batch-toggle-select-all"
           >
-            {selectedForBatch.size > 0 ? '取消全选' : '全选'}
+            {allBatchItemsSelected ? '取消全选' : '全选'}
           </button>
           <button
             type="button"
