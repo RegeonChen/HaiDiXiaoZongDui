@@ -115,7 +115,7 @@ function createHarness(): {
   hostListeners: Map<string, HostListener>;
   guestListeners: Map<string, NavigationListener>;
   guest: WebContents;
-  openExternal: ReturnType<typeof vi.fn>;
+  openExternal: (url: string) => void;
   permissionCheckHandler?: (...args: unknown[]) => boolean;
   permissionRequestHandler?: (...args: unknown[]) => void;
   devicePermissionHandler?: (...args: unknown[]) => boolean;

@@ -1,8 +1,8 @@
 # 聚合拾遗
 
-跨平台、本地优先的桌面 RSS 阅读器。Electron 31 + React 18 + TypeScript strict + SQLite。
+跨平台、本地优先的桌面 RSS 阅读器。Electron 43 + React 18 + TypeScript strict + SQLite。
 
-**当前版本：0.2.0 | 开发阶段：Phase 4（专题追踪）**
+**当前版本：0.3.1 | 开发阶段：Phase 5（交付准备）**
 
 ## 功能特性
 
@@ -169,5 +169,5 @@ git push origin v0.2.0
 | Phase 3.4 | ✅ | Bug 修复 + 搜索 + 通用设置弹窗 |
 | Phase 3.5 | ✅ | 悬浮摘要窗 + 逐段翻译 + AI 持久化 |
 | Phase 3.6 | ✅ | 翻译纯译文 + 同步进度 + 侧栏计数 |
-| Phase 4 | 🔜 | 专题追踪（4.3 后端待接入） |
-| Phase 5 | ⏳ | 三平台验证 + 交付准备 |
+| Phase 4 | 🟡 | 专题追踪已完成；4.3 仅完成数据库字段，新手引导 UI 暂缓 |
+| Phase 5 | 🟡 | 凭证加密与工具链升级已完成；三平台真机验收暂缓 |
