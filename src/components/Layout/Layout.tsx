@@ -29,6 +29,8 @@ export interface WorkbenchTab {
   articleId?: string;
   icon: WorkbenchIconName;
   closeable?: boolean;
+  /** 普通单击打开的临时标签；双击后固定。 */
+  preview?: boolean;
 }
 
 export type DirectoryMode = 'both' | 'secondary' | 'none';
@@ -54,6 +56,7 @@ export interface LayoutProps {
   tabs: WorkbenchTab[];
   activeTabId: string;
   onTabSelect: (tabId: string) => void;
+  onTabPin: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
   aiDockOpen: boolean;
   aiAvailable: boolean;
@@ -175,6 +178,7 @@ export function Layout({
   tabs,
   activeTabId,
   onTabSelect,
+  onTabPin,
   onTabClose,
   aiDockOpen,
   aiAvailable,
@@ -336,11 +340,14 @@ export function Layout({
                       <button
                         key={tab.id}
                         type="button"
-                        className={`app-page__tab ${active ? 'is-active' : ''}`}
+                        className={`app-page__tab ${active ? 'is-active' : ''} ${tab.preview ? 'is-preview' : ''}`}
                         role="tab"
                         aria-selected={active}
                         onClick={() => onTabSelect(tab.id)}
+                        onDoubleClick={() => onTabPin(tab.id)}
                         data-tab-id={tab.id}
+                        data-preview={tab.preview ? 'true' : 'false'}
+                        title={tab.preview ? '预览标签；双击固定' : undefined}
                       >
                         <WorkbenchIcon name={tab.icon} />
                         <span className="app-page__tab-label" title={tab.label}>{tab.label}</span>
@@ -351,6 +358,7 @@ export function Layout({
                             tabIndex={0}
                             aria-label={`关闭${tab.label}`}
                             title={`关闭${tab.label}`}
+                            onDoubleClick={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.stopPropagation();
                               onTabClose(tab.id);

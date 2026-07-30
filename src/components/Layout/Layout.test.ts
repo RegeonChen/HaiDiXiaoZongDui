@@ -38,6 +38,7 @@ describe('Layout fixed directory structure', () => {
   });
 
   it('keeps both directory columns mounted while pages switch only inside the flexible editor', async () => {
+    const onTabPin = vi.fn();
     const props: LayoutProps = {
       sidebarSlot: createElement('div', { 'data-testid': 'primary-directory' }, '一级目录'),
       articlesSlot: createElement('div', { 'data-testid': 'secondary-directory' }, '二级目录'),
@@ -54,10 +55,12 @@ describe('Layout fixed directory structure', () => {
         label: '设置',
         page: 'settings',
         icon: 'settings',
-        closeable: true
+        closeable: true,
+        preview: true
       }],
       activeTabId: 'page:settings',
       onTabSelect: vi.fn(),
+      onTabPin,
       onTabClose: vi.fn(),
       aiDockOpen: false,
       aiAvailable: false,
@@ -96,6 +99,14 @@ describe('Layout fixed directory structure', () => {
     expect(workbenchContent?.style.gridTemplateColumns).toContain('minmax(218px');
     expect(appMain?.style.gridTemplateColumns).toContain('minmax(260px');
     expect(appMain?.style.gridTemplateColumns).toContain('minmax(320px');
+
+    const previewTab = container.querySelector<HTMLElement>('[data-tab-id="page:settings"]');
+    expect(previewTab?.getAttribute('data-preview')).toBe('true');
+    expect(previewTab?.classList.contains('is-preview')).toBe(true);
+    await act(async () => {
+      previewTab?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    });
+    expect(onTabPin).toHaveBeenCalledWith('page:settings');
   });
 
   it('cycles both directories to secondary-only, then none, then both', async () => {
@@ -117,6 +128,7 @@ describe('Layout fixed directory structure', () => {
       tabs: [],
       activeTabId: 'reader',
       onTabSelect: vi.fn(),
+      onTabPin: vi.fn(),
       onTabClose: vi.fn(),
       aiDockOpen: false,
       aiAvailable: false,

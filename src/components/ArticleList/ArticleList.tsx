@@ -19,6 +19,8 @@ export interface ArticleListProps {
   articles: Article[];
   selectedArticleId: string | null;
   onSelect: (id: string) => void;
+  /** 双击文章时将预览标签固定。 */
+  onOpenPermanent?: (id: string) => void;
   filterLabel: string;
   /** 当前的 filter 描述，用于空态提示（Phase 3.4.4.5） */
   filterHint?: string;
@@ -59,7 +61,7 @@ function formatAbsolute(iso: string | null): string {
   return new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filterLabel, filterHint, total, hasMore, onLoadMore, loadingMore, actionBar }: ArticleListProps) {
+export function ArticleList({ feeds, articles, selectedArticleId, onSelect, onOpenPermanent, filterLabel, filterHint, total, hasMore, onLoadMore, loadingMore, actionBar }: ArticleListProps) {
   // Phase 自动加载:IntersectionObserver 监听末尾哨兵
   //   哨兵进入视口(用户滚到底)→ 自动调 onLoadMore()
   //   哨兵必须位于 ul 滚动容器内部，root 也必须明确指向 ul；否则哨兵会始终
@@ -155,6 +157,7 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, filt
                   type="button"
                   className={`article-list__item ${isSelected ? 'is-active' : ''} ${a.isRead ? 'is-read' : 'is-unread'}`}
                   onClick={() => onSelect(a.id)}
+                  onDoubleClick={() => onOpenPermanent?.(a.id)}
                   title={`${cleanTitle}\n${a.author ?? ''}`}
                 >
                   <div className="article-list__row1">

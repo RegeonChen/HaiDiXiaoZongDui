@@ -42,6 +42,10 @@ import { DigestsPage } from './pages/DigestsPage/DigestsPage';
 import { TopicsPage } from './pages/TopicsPage/TopicsPage';
 import { OpmlExportPage } from './pages/OpmlExportPage/OpmlExportPage';
 import { UnifiedSettingsPage } from './pages/UnifiedSettingsPage/UnifiedSettingsPage';
+import {
+  openWorkbenchTab as mergeWorkbenchTab,
+  pinWorkbenchTab
+} from './utils/workbench-tabs';
 import './index.css';
 import './styles/workbench-polish.css';
 
@@ -363,6 +367,18 @@ export function App() {
     return f?.siteTitle || f?.title || '未知';
   }, [feeds, tags, selection.feedId]);
 
+  const showWorkbenchTab = useCallback((tab: WorkbenchTab) => {
+    setOpenTabs((prev) => {
+      const result = mergeWorkbenchTab(prev, tab);
+      const replacedArticleId = result.replacedTab?.articleId;
+      if (replacedArticleId && replacedArticleId !== tab.articleId) {
+        articleTabSnapshotsRef.current.delete(replacedArticleId);
+      }
+      return result.tabs;
+    });
+    setActiveTabId(tab.id);
+  }, []);
+
   const ensurePageTab = useCallback((page: AppPage) => {
     if (page === 'reader') {
       const selectedArticleTabId = selection.articleId ? `article:${selection.articleId}` : null;
@@ -382,11 +398,13 @@ export function App() {
       'opml-export': { label: '导出 OPML', icon: 'export', closeable: true }
     };
     const id = `page:${page}`;
-    setOpenTabs((prev) => prev.some((tab) => tab.id === id)
-      ? prev
-      : [...prev, { id, page, ...metadata[page] }]);
-    setActiveTabId(id);
-  }, [openTabs, selection.articleId]);
+    showWorkbenchTab({
+      id,
+      page,
+      ...metadata[page],
+      preview: true
+    });
+  }, [openTabs, selection.articleId, showWorkbenchTab]);
 
   const handleReaderAction = useCallback(() => {
     if (currentPage !== 'reader') {
@@ -401,26 +419,20 @@ export function App() {
     }
   }, [appearance, currentPage, directoryMode, ensurePageTab]);
 
-  const openArticleTab = useCallback((article: Article) => {
+  const openArticleTab = useCallback((article: Article, permanent = false) => {
     articleTabSnapshotsRef.current.set(article.id, article);
     const id = `article:${article.id}`;
     const label = article.title.trim() || '未命名文章';
-    setOpenTabs((prev) => {
-      const existing = prev.find((tab) => tab.id === id);
-      if (existing) {
-        return prev.map((tab) => tab.id === id ? { ...tab, label } : tab);
-      }
-      return [...prev, {
-        id,
-        label,
-        page: 'reader',
-        articleId: article.id,
-        icon: 'article',
-        closeable: true
-      }];
+    showWorkbenchTab({
+      id,
+      label,
+      page: 'reader',
+      articleId: article.id,
+      icon: 'article',
+      closeable: true,
+      preview: !permanent
     });
-    setActiveTabId(id);
-  }, []);
+  }, [showWorkbenchTab]);
 
   const activateWorkbenchTab = useCallback((tab: WorkbenchTab) => {
     setActiveTabId(tab.id);
@@ -444,6 +456,10 @@ export function App() {
     const tab = openTabs.find((item) => item.id === tabId);
     if (tab) activateWorkbenchTab(tab);
   }, [activateWorkbenchTab, openTabs]);
+
+  const handleTabPin = useCallback((tabId: string) => {
+    setOpenTabs((prev) => pinWorkbenchTab(prev, tabId));
+  }, []);
 
   const handleTabClose = useCallback((tabId: string) => {
     const closingIndex = openTabs.findIndex((tab) => tab.id === tabId);
@@ -538,6 +554,15 @@ export function App() {
     },
     [articles, ds, openArticleTab, pushToast, refreshCounts, selectArticle, updateArticleEverywhere]
   );
+
+  const handleOpenArticlePermanent = useCallback((id: string) => {
+    const article = articles.find((item) => item.id === id)
+      ?? articleTabSnapshotsRef.current.get(id);
+    if (!article) return;
+    setExternalSelectedArticle(null);
+    selectArticle(id);
+    openArticleTab(article, true);
+  }, [articles, openArticleTab, selectArticle]);
 
   const handleToggleStar = useCallback(
     (id: string, isStarred: boolean) => {
@@ -1471,6 +1496,7 @@ export function App() {
         articles={articles}
         selectedArticleId={selection.articleId}
         onSelect={handleSelectArticle}
+        onOpenPermanent={handleOpenArticlePermanent}
         filterLabel={filterLabel}
         filterHint={
           // P2 体验打磨：统一空态 title 为"还没有 X"格式
@@ -1591,6 +1617,7 @@ export function App() {
         tabs={openTabs}
         activeTabId={activeTabId}
         onTabSelect={handleTabSelect}
+        onTabPin={handleTabPin}
         onTabClose={handleTabClose}
         aiDockOpen={aiDockOpen}
         aiAvailable={currentPage === 'reader' && selectedArticle !== null}

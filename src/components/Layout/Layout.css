@@ -342,6 +342,10 @@
   white-space: nowrap;
 }
 
+.app-page__tab.is-preview .app-page__tab-label {
+  font-style: italic;
+}
+
 .app-page__tab-close {
   display: inline-flex;
   width: 18px;

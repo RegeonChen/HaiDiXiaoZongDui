@@ -144,4 +144,30 @@ describe('ArticleList automatic pagination', () => {
     nextObserver?.trigger(true);
     expect(onLoadMore).toHaveBeenCalledTimes(2);
   });
+
+  it('offers a permanent open action on article double click', async () => {
+    const onSelect = vi.fn();
+    const onOpenPermanent = vi.fn();
+    await act(async () => {
+      root.render(
+        createElement(ArticleList, {
+          feeds: [],
+          articles: articles.slice(0, 1),
+          selectedArticleId: null,
+          onSelect,
+          onOpenPermanent,
+          filterLabel: '所有订阅源'
+        })
+      );
+    });
+
+    const item = container.querySelector<HTMLElement>('.article-list__item');
+    await act(async () => {
+      item?.click();
+      item?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    });
+
+    expect(onSelect).toHaveBeenCalledWith('article-1');
+    expect(onOpenPermanent).toHaveBeenCalledWith('article-1');
+  });
 });

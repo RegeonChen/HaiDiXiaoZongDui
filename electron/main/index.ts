@@ -3140,6 +3140,21 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               const el = document.querySelector(cp.selector);
               integrationReport.checks['page_' + cp.page + 'Rendered'] = !!el;
             }
+            const previewTabsAfterNavigation = Array.from(
+              document.querySelectorAll('[data-tab-id]')
+            );
+            integrationReport.checks.previewTabReused =
+              previewTabsAfterNavigation.length === 1 &&
+              previewTabsAfterNavigation[0]?.getAttribute('data-tab-id') === 'page:topics' &&
+              previewTabsAfterNavigation[0]?.getAttribute('data-preview') === 'true';
+
+            // VS Code 风格：双击预览标签后固定，后续普通打开不得替换它。
+            previewTabsAfterNavigation[0]?.dispatchEvent(
+              new MouseEvent('dblclick', { bubbles: true })
+            );
+            await sleep(50);
+            integrationReport.checks.previewTabPinned =
+              document.querySelector('[data-tab-id="page:topics"]')?.getAttribute('data-preview') === 'false';
 
             // 3) 右上角设置入口打开统一设置页；通用与 AI 配置在同一页内切换。
             const settingsBtn = document.querySelector('[data-testid="app-header__settings"]');
@@ -3147,6 +3162,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             await waitFor(() => !!document.querySelector('.general-modal'), { timeout: 2000 });
             integrationReport.checks.settingsWorkspaceRendered =
               !!document.querySelector('.settings-workspace');
+            integrationReport.checks.pinnedTabRetained =
+              document.querySelectorAll('[data-tab-id]').length === 2 &&
+              document.querySelector('[data-tab-id="page:topics"]')?.getAttribute('data-preview') === 'false' &&
+              document.querySelector('[data-tab-id="page:settings"]')?.getAttribute('data-preview') === 'true';
             const fontCards = document.querySelectorAll('.general-modal__font-card');
             const visualCards = document.querySelectorAll('.general-modal__visual-card');
             integrationReport.checks.fontThemeCount = fontCards.length;
@@ -3296,9 +3315,12 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             integrationReport.checks.topicsEmptyState = !!document.querySelector('.topics-page .status-view');
 
             // 10) 回到 reader：文章工具栏与右上角 AI 入口
-            const openArticleTab = document.querySelector('[data-tab-id^="article:"]');
-            openArticleTab?.click();
-            await waitFor(() => !!document.querySelector('.app-main'), { timeout: 2000 });
+            document.querySelector('.article-list__item')?.click();
+            await waitFor(
+              () => !!document.querySelector('[data-tab-id^="article:"]') &&
+                !!document.querySelector('.article-reader'),
+              { timeout: 2000 }
+            );
             // 确保有 article 被选中（前面 uiClickWorks 应该已点过）
             const articleSelected = !!document.querySelector('.article-reader');
             // 等 ArticleReader 完全 mount + 工具栏渲染
@@ -3329,6 +3351,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             const integrationChecks = [
               'navBtnsOk', 'page_tagsRendered', 'page_notesRendered',
               'page_digestsRendered', 'page_topicsRendered',
+              'previewTabReused', 'previewTabPinned', 'pinnedTabRetained',
               'settingsWorkspaceRendered', 'aiSettingsRendered',
               'fontThemesOk', 'visualThemesOk', 'fontToggled', 'visualToggled',
               'tagCreated', 'tagDeleted', 'noteCreated', 'digestPageRendered',
