@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { GeneralSettingsModal } from '../../components/GeneralSettingsModal/GeneralSettingsModal';
 import { SettingsPage } from '../SettingsPage/SettingsPage';
-import { LogsPage } from '../LogsPage/LogsPage';
 import './UnifiedSettingsPage.css';
 
 export interface UnifiedSettingsPageProps {
@@ -10,7 +9,7 @@ export interface UnifiedSettingsPageProps {
   language: 'zh' | 'en';
 }
 
-type SettingsSection = 'general' | 'ai' | 'logs';
+type SettingsSection = 'general' | 'ai';
 
 export function UnifiedSettingsPage({
   onToast,
@@ -53,18 +52,6 @@ export function UnifiedSettingsPage({
               <small>默认值与 Provider</small>
             </span>
           </button>
-          <button
-            type="button"
-            className={section === 'logs' ? 'is-active' : ''}
-            onClick={() => setSection('logs')}
-            data-settings-section="logs"
-          >
-            <span aria-hidden="true">≡</span>
-            <span>
-              <strong>本地日志</strong>
-              <small>查看与导出诊断记录</small>
-            </span>
-          </button>
           <div className="settings-workspace__nav-separator" />
           <button
             type="button"
@@ -89,10 +76,8 @@ export function UnifiedSettingsPage({
             onClose={() => undefined}
             onToast={onToast}
           />
-        ) : section === 'ai' ? (
-          <SettingsPage onToast={onToast} />
         ) : (
-          <LogsPage onToast={onToast} />
+          <SettingsPage onToast={onToast} />
         )}
       </main>
     </div>

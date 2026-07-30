@@ -100,7 +100,7 @@
 
 ### Task 3.1 - Feature Interfaces (张晨阳)
 
-- **Task Detail:** 实现 Provider 设置、摘要、双语翻译、标签管理、笔记文摘、导出、多语言切换和日志查看界面。
+- **Task Detail:** 实现 Provider 设置、摘要、双语翻译、标签管理、笔记文摘、导出和多语言切换。日志查看界面曾在本阶段实现，后续产品决策将其移除，仅保留 Main 进程诊断日志。
     追加（字体与视觉主题）：字体主题选择器 UI 组件（至少 3 套预设：宋体/黑体/楷体等中文字体栈 + serif/sans-serif/monospace 英文字体栈）、视觉主题选择器 UI 组件（至少 2 套："经典"白色简约 / "纸质"暖黄护眼）、CSS 变量驱动全局即时切换（字体 + 色彩），无需重启。
 - **Affected Areas:** 设置页、阅读器工具区、标签页、笔记与文摘页、本地化资源、全局 CSS 变量体系（`--bg-primary` / `--text-primary` / `--accent` / `--sidebar-bg` / `--toolbar-bg`）、`AppSettings.fontTheme` 和 `AppSettings.visualTheme` 字段。
 - **Verification:** 所有功能都有完整的正常、加载、空数据和错误状态，界面能够调用约定的本地接口。切换字体/视觉主题后全界面即时刷新，无闪烁或布局错位。

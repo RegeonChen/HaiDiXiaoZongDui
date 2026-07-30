@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 export interface TargetRect {
   top: number;
@@ -11,10 +11,12 @@ export interface TargetRect {
 
 function readRect(element: Element, padding: number): TargetRect {
   const rect = element.getBoundingClientRect();
-  const left = Math.max(4, rect.left - padding);
-  const top = Math.max(4, rect.top - padding);
-  const right = Math.min(window.innerWidth - 4, rect.right + padding);
-  const bottom = Math.min(window.innerHeight - 4, rect.bottom + padding);
+  const pixelRatio = window.devicePixelRatio || 1;
+  const snap = (value: number) => Math.round(value * pixelRatio) / pixelRatio;
+  const left = snap(Math.max(4, rect.left - padding));
+  const top = snap(Math.max(4, rect.top - padding));
+  const right = snap(Math.min(window.innerWidth - 4, rect.right + padding));
+  const bottom = snap(Math.min(window.innerHeight - 4, rect.bottom + padding));
   return {
     top,
     right,
@@ -25,17 +27,30 @@ function readRect(element: Element, padding: number): TargetRect {
   };
 }
 
+function rectsMatch(previous: TargetRect | null, next: TargetRect | null): boolean {
+  if (previous === next) return true;
+  if (!previous || !next) return false;
+  return Math.abs(previous.top - next.top) < 0.25 &&
+    Math.abs(previous.right - next.right) < 0.25 &&
+    Math.abs(previous.bottom - next.bottom) < 0.25 &&
+    Math.abs(previous.left - next.left) < 0.25 &&
+    Math.abs(previous.width - next.width) < 0.25 &&
+    Math.abs(previous.height - next.height) < 0.25;
+}
+
 export function useTargetRect(
   selector: string | null,
   padding: number,
   onMissing: () => void
 ): TargetRect | null {
   const [rect, setRect] = useState<TargetRect | null>(null);
+  const rectRef = useRef<TargetRect | null>(null);
   const onMissingRef = useRef(onMissing);
   onMissingRef.current = onMissing;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!selector) {
+      rectRef.current = null;
       setRect(null);
       return;
     }
@@ -46,8 +61,14 @@ export function useTargetRect(
     const resizeObserver = typeof ResizeObserver === 'undefined'
       ? null
       : new ResizeObserver(() => schedule());
+    const commitRect = (next: TargetRect | null) => {
+      if (rectsMatch(rectRef.current, next)) return;
+      rectRef.current = next;
+      setRect(next);
+    };
 
     const update = () => {
+      frame = 0;
       const element = document.querySelector(selector);
       if (element !== observedElement) {
         resizeObserver?.disconnect();
@@ -55,7 +76,7 @@ export function useTargetRect(
         if (element) resizeObserver?.observe(element);
       }
       if (!element) {
-        setRect(null);
+        commitRect(null);
         if (missingTimer === null) {
           missingTimer = setTimeout(() => {
             missingTimer = null;
@@ -68,17 +89,24 @@ export function useTargetRect(
         clearTimeout(missingTimer);
         missingTimer = null;
       }
-      setRect(readRect(element, padding));
+      commitRect(readRect(element, padding));
     };
 
     const schedule = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(update);
+      if (frame === 0) frame = requestAnimationFrame(update);
     };
 
-    const mutationObserver = new MutationObserver(schedule);
+    const mutationObserver = new MutationObserver((records) => {
+      const appChanged = records.some((record) => {
+        const target = record.target;
+        const element = target instanceof Element ? target : target.parentElement;
+        return !element?.closest('.onboarding-overlay');
+      });
+      if (appChanged) schedule();
+    });
     mutationObserver.observe(document.body, {
       attributes: true,
+      attributeFilter: ['class', 'style', 'hidden', 'data-directory-mode'],
       childList: true,
       subtree: true
     });
@@ -88,7 +116,7 @@ export function useTargetRect(
     update();
 
     return () => {
-      cancelAnimationFrame(frame);
+      if (frame !== 0) cancelAnimationFrame(frame);
       if (missingTimer !== null) clearTimeout(missingTimer);
       mutationObserver.disconnect();
       resizeObserver?.disconnect();

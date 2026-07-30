@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import {
   ONBOARDING_COPY,
   ONBOARDING_STEPS,
@@ -8,6 +14,14 @@ import { type TargetRect, useTargetRect } from './useTargetRect';
 import './OnboardingOverlay.css';
 
 type Placement = 'left' | 'right' | 'top' | 'bottom' | 'center';
+const STEP_TRANSITION_MS = 220;
+
+type SpotlightStyle = CSSProperties & {
+  '--onboarding-spotlight-x'?: string;
+  '--onboarding-spotlight-y'?: string;
+  '--onboarding-spotlight-width'?: string;
+  '--onboarding-spotlight-height'?: string;
+};
 
 export interface CoachmarkPosition {
   left: number;
@@ -80,9 +94,11 @@ export function OnboardingOverlay({
   onDismiss
 }: OnboardingOverlayProps) {
   const [stepIndex, setStepIndex] = useState(0);
+  const [stepTransitioning, setStepTransitioning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const step = ONBOARDING_STEPS[stepIndex];
   const copy = ONBOARDING_COPY[language];
   const stepCopy = copy.steps[step.id];
@@ -90,10 +106,33 @@ export function OnboardingOverlay({
 
   useEffect(() => {
     if (!open) return;
+    if (transitionTimerRef.current !== null) {
+      clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = null;
+    }
     setStepIndex(0);
+    setStepTransitioning(false);
     setSaveError(false);
     requestAnimationFrame(() => cardRef.current?.focus());
   }, [open]);
+
+  useEffect(() => () => {
+    if (transitionTimerRef.current !== null) {
+      clearTimeout(transitionTimerRef.current);
+    }
+  }, []);
+
+  const moveToStep = (nextIndex: number) => {
+    if (transitionTimerRef.current !== null) {
+      clearTimeout(transitionTimerRef.current);
+    }
+    setStepTransitioning(true);
+    setStepIndex(Math.max(0, Math.min(nextIndex, ONBOARDING_STEPS.length - 1)));
+    transitionTimerRef.current = setTimeout(() => {
+      transitionTimerRef.current = null;
+      setStepTransitioning(false);
+    }, STEP_TRANSITION_MS);
+  };
 
   const commitDismiss = async (reason: 'completed' | 'skipped') => {
     if (busy) return;
@@ -110,7 +149,7 @@ export function OnboardingOverlay({
       void commitDismiss('completed');
       return;
     }
-    setStepIndex((current) => Math.min(current + 1, ONBOARDING_STEPS.length - 1));
+    moveToStep(stepIndex + 1);
   };
 
   const targetRect = useTargetRect(
@@ -126,6 +165,15 @@ export function OnboardingOverlay({
     ),
     [targetRect]
   );
+  const spotlightStyle = useMemo<SpotlightStyle | undefined>(() => {
+    if (!targetRect) return undefined;
+    return {
+      '--onboarding-spotlight-x': `${targetRect.left}px`,
+      '--onboarding-spotlight-y': `${targetRect.top}px`,
+      '--onboarding-spotlight-width': `${targetRect.width}px`,
+      '--onboarding-spotlight-height': `${targetRect.height}px`
+    };
+  }, [targetRect]);
 
   if (!open) return null;
 
@@ -135,12 +183,12 @@ export function OnboardingOverlay({
       void commitDismiss('completed');
       return;
     }
-    setStepIndex((current) => current + 1);
+    moveToStep(stepIndex + 1);
   };
 
   const goPrevious = () => {
     setSaveError(false);
-    setStepIndex((current) => Math.max(0, current - 1));
+    moveToStep(stepIndex - 1);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -174,7 +222,9 @@ export function OnboardingOverlay({
       className="onboarding-overlay"
       data-testid="onboarding-overlay"
       data-onboarding-step={step.id}
+      data-step-transitioning={stepTransitioning ? 'true' : 'false'}
       onKeyDown={handleKeyDown}
+      style={spotlightStyle}
     >
       <svg className="onboarding-overlay__shade" aria-hidden="true">
         <defs>
@@ -182,10 +232,7 @@ export function OnboardingOverlay({
             <rect width="100%" height="100%" fill="white" />
             {targetRect && (
               <rect
-                x={targetRect.left}
-                y={targetRect.top}
-                width={targetRect.width}
-                height={targetRect.height}
+                className="onboarding-overlay__mask-cutout"
                 rx="7"
                 fill="black"
               />
@@ -204,102 +251,102 @@ export function OnboardingOverlay({
         <div
           className="onboarding-overlay__spotlight"
           data-testid="onboarding-spotlight"
-          style={{
-            left: targetRect.left,
-            top: targetRect.top,
-            width: targetRect.width,
-            height: targetRect.height
-          }}
         />
       )}
 
       <div
-        key={step.id}
-        ref={cardRef}
-        className="onboarding-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="onboarding-title"
-        aria-describedby="onboarding-description"
+        className="onboarding-card-positioner"
         data-placement={position.placement}
-        data-testid="onboarding-card"
-        tabIndex={-1}
-        style={{ left: position.left, top: position.top }}
+        style={{
+          transform: `translate3d(${position.left}px, ${position.top}px, 0)`
+        }}
       >
-        <header className="onboarding-card__header">
-          <div className="onboarding-card__brand" aria-hidden="true">
-            <span className="onboarding-card__brand-mark">拾</span>
-            <span>{copy.eyebrow}</span>
-          </div>
-          <button
-            type="button"
-            className="onboarding-card__skip"
-            onClick={() => void commitDismiss('skipped')}
-            disabled={busy}
-            data-testid="onboarding-skip"
-          >
-            {copy.skip}
-          </button>
-        </header>
-
         <div
-          className="onboarding-card__progress"
-          role="progressbar"
-          aria-valuemin={1}
-          aria-valuemax={ONBOARDING_STEPS.length}
-          aria-valuenow={stepIndex + 1}
-          aria-label={copy.progress(stepIndex + 1, ONBOARDING_STEPS.length)}
+          ref={cardRef}
+          className="onboarding-card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="onboarding-title"
+          aria-describedby="onboarding-description"
+          data-placement={position.placement}
+          data-testid="onboarding-card"
+          tabIndex={-1}
         >
-          <div className="onboarding-card__progress-meta">
-            <span>{copy.progress(stepIndex + 1, ONBOARDING_STEPS.length)}</span>
-            <span>{stepCopy.hint}</span>
-          </div>
-          <div className="onboarding-card__progress-track">
-            <span style={{ width: `${((stepIndex + 1) / ONBOARDING_STEPS.length) * 100}%` }} />
-          </div>
-        </div>
-
-        <main className="onboarding-card__body">
-          <span className="onboarding-card__step-number" aria-hidden="true">
-            {String(stepIndex + 1).padStart(2, '0')}
-          </span>
-          <div>
-            <h2 id="onboarding-title">{stepCopy.title}</h2>
-            <p id="onboarding-description">{stepCopy.description}</p>
-            {!targetRect && (
-              <p className="onboarding-card__locating" role="status">{copy.locating}</p>
-            )}
-          </div>
-        </main>
-
-        <footer className="onboarding-card__footer">
-          <div>
-            <p className="onboarding-card__reopen-hint">{copy.reopenHint}</p>
-            {saveError && (
-              <p className="onboarding-card__error" role="alert">{copy.saveError}</p>
-            )}
-          </div>
-          <div className="onboarding-card__actions">
+          <header className="onboarding-card__header">
+            <div className="onboarding-card__brand" aria-hidden="true">
+              <span className="onboarding-card__brand-mark">拾</span>
+              <span>{copy.eyebrow}</span>
+            </div>
             <button
               type="button"
-              className="onboarding-card__button"
-              onClick={goPrevious}
-              disabled={stepIndex === 0 || busy}
-              data-testid="onboarding-previous"
-            >
-              {copy.previous}
-            </button>
-            <button
-              type="button"
-              className="onboarding-card__button onboarding-card__button--primary"
-              onClick={goNext}
+              className="onboarding-card__skip"
+              onClick={() => void commitDismiss('skipped')}
               disabled={busy}
-              data-testid="onboarding-next"
+              data-testid="onboarding-skip"
             >
-              {isLast ? copy.finish : copy.next}
+              {copy.skip}
             </button>
+          </header>
+
+          <div
+            className="onboarding-card__progress"
+            role="progressbar"
+            aria-valuemin={1}
+            aria-valuemax={ONBOARDING_STEPS.length}
+            aria-valuenow={stepIndex + 1}
+            aria-label={copy.progress(stepIndex + 1, ONBOARDING_STEPS.length)}
+          >
+            <div className="onboarding-card__progress-meta">
+              <span>{copy.progress(stepIndex + 1, ONBOARDING_STEPS.length)}</span>
+              <span>{stepCopy.hint}</span>
+            </div>
+            <div className="onboarding-card__progress-track">
+              <span style={{ width: `${((stepIndex + 1) / ONBOARDING_STEPS.length) * 100}%` }} />
+            </div>
           </div>
-        </footer>
+
+          <main key={step.id} className="onboarding-card__body">
+            <span className="onboarding-card__step-number" aria-hidden="true">
+              {String(stepIndex + 1).padStart(2, '0')}
+            </span>
+            <div>
+              <h2 id="onboarding-title">{stepCopy.title}</h2>
+              <p id="onboarding-description">{stepCopy.description}</p>
+              {!targetRect && (
+                <p className="onboarding-card__locating" role="status">{copy.locating}</p>
+              )}
+            </div>
+          </main>
+
+          <footer className="onboarding-card__footer">
+            <div>
+              <p className="onboarding-card__reopen-hint">{copy.reopenHint}</p>
+              {saveError && (
+                <p className="onboarding-card__error" role="alert">{copy.saveError}</p>
+              )}
+            </div>
+            <div className="onboarding-card__actions">
+              <button
+                type="button"
+                className="onboarding-card__button"
+                onClick={goPrevious}
+                disabled={stepIndex === 0 || busy}
+                data-testid="onboarding-previous"
+              >
+                {copy.previous}
+              </button>
+              <button
+                type="button"
+                className="onboarding-card__button onboarding-card__button--primary"
+                onClick={goNext}
+                disabled={busy}
+                data-testid="onboarding-next"
+              >
+                {isLast ? copy.finish : copy.next}
+              </button>
+            </div>
+          </footer>
+        </div>
       </div>
     </div>
   );

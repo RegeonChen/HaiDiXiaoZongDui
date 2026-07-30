@@ -2913,6 +2913,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             ];
             const seenSteps = [];
             let allTargetsLocated = true;
+            const persistentCard = document.querySelector('[data-testid="onboarding-card"]');
+            let cardStayedMounted = !!persistentCard;
+            let stepTransitionTriggered = true;
+            let spotlightUsesCompositorTransform = true;
             for (let index = 0; index < expectedSteps.length; index += 1) {
               const expected = expectedSteps[index];
               const reached = await waitFor(
@@ -2930,14 +2934,49 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               if (!spotlightRect || spotlightRect.width <= 0 || spotlightRect.height <= 0) {
                 allTargetsLocated = false;
               }
+              const spotlightStyle = spotlight ? getComputedStyle(spotlight) : null;
+              if (
+                !spotlightStyle ||
+                spotlightStyle.transform === 'none' ||
+                !spotlightStyle.willChange.includes('transform')
+              ) {
+                spotlightUsesCompositorTransform = false;
+              }
               if (index < expectedSteps.length - 1) {
                 document.querySelector('[data-testid="onboarding-next"]')?.click();
+                const transitionCommitted = await waitFor(
+                  () => document.querySelector('[data-testid="onboarding-overlay"]')
+                    ?.getAttribute('data-step-transitioning') === 'true',
+                  500
+                );
+                const transitioningOverlay =
+                  document.querySelector('[data-testid="onboarding-overlay"]');
+                const transitioningSpotlight =
+                  document.querySelector('[data-testid="onboarding-spotlight"]');
+                if (
+                  !transitionCommitted ||
+                  transitioningOverlay?.getAttribute('data-step-transitioning') !== 'true' ||
+                  !transitioningSpotlight ||
+                  !getComputedStyle(transitioningSpotlight)
+                    .transitionProperty.includes('transform')
+                ) {
+                  stepTransitionTriggered = false;
+                }
                 await sleep(80);
+                if (
+                  document.querySelector('[data-testid="onboarding-card"]') !== persistentCard
+                ) {
+                  cardStayedMounted = false;
+                }
               }
             }
             report.onboarding.checks.eightStepsInOrder =
               seenSteps.join(',') === expectedSteps.join(',');
             report.onboarding.checks.allTargetsLocated = allTargetsLocated;
+            report.onboarding.checks.cardStayedMounted = cardStayedMounted;
+            report.onboarding.checks.stepTransitionTriggered = stepTransitionTriggered;
+            report.onboarding.checks.spotlightUsesCompositorTransform =
+              spotlightUsesCompositorTransform;
             report.onboarding.checks.lastActionLabel =
               document.querySelector('[data-testid="onboarding-next"]')?.textContent?.trim() === '开始使用';
 
@@ -3281,7 +3320,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const allChecks = [...boolChecks, ...checks251];
 
           // ============== Phase 3 Integration 探针 ==============
-          // 6 个页面入口 + 页面切换 + AI 工具栏 + 主题切换
+          // 4 个内容工具 + 设置页切换 + AI 工具栏 + 主题切换
           const integrationReport = { ok: false, error: null, checks: {} };
           try {
             // 1) Activity Bar 只保留 4 个内容工具；设置与 AI 位于右上角。
@@ -3325,6 +3364,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             await waitFor(() => !!document.querySelector('.general-modal'), { timeout: 2000 });
             integrationReport.checks.settingsWorkspaceRendered =
               !!document.querySelector('.settings-workspace');
+            integrationReport.checks.localLogsEntryRemoved =
+              !document.querySelector('[data-settings-section="logs"]') &&
+              !document.querySelector('.logs-page');
             integrationReport.checks.pinnedTabRetained =
               document.querySelectorAll('[data-tab-id]').length === 2 &&
               document.querySelector('[data-tab-id="page:topics"]')?.getAttribute('data-preview') === 'false' &&
@@ -3515,7 +3557,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               'navBtnsOk', 'page_tagsRendered', 'page_notesRendered',
               'page_digestsRendered', 'page_topicsRendered',
               'previewTabReused', 'previewTabPinned', 'pinnedTabRetained',
-              'settingsWorkspaceRendered', 'aiSettingsRendered',
+              'settingsWorkspaceRendered', 'localLogsEntryRemoved', 'aiSettingsRendered',
               'fontThemesOk', 'visualThemesOk', 'fontToggled', 'visualToggled',
               'tagCreated', 'tagDeleted', 'noteCreated', 'digestPageRendered',
               'topicsPageRendered', 'topicsEmptyState',

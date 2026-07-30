@@ -133,8 +133,7 @@ git push origin v0.2.0
 │   │   ├── TagsPage/            # 标签管理
 │   │   ├── NotesPage/           # 笔记管理
 │   │   ├── DigestsPage/         # 文摘导出
-│   │   ├── TopicsPage/          # 专题追踪
-│   │   └── LogsPage/            # 日志查看
+│   │   └── TopicsPage/          # 专题追踪
 │   ├── hooks/                   # React hooks（useTheme / useAppearance 等）
 │   ├── data/                    # DataSource 抽象层（IpcDataSource / MockDataSource）
 │   ├── utils/                   # 工具函数（markdown 渲染 / html 分块等）

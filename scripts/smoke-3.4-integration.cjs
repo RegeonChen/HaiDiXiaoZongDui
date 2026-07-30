@@ -2,15 +2,15 @@
  * Phase 3 Integration 端到端 smoke
  *
  * 验证项：
- *  - 顶栏 6 个页面入口按钮（设置/标签/笔记/文摘/专题/日志）
- *  - 页面切换：reader → settings/tags/notes/digests/topics/logs → reader
+ *  - 顶栏 4 个内容工具按钮（标签/笔记/文摘/专题），设置位于右上角
+ *  - 页面切换：reader → settings/tags/notes/digests/topics → reader
  *  - SettingsPage：AI Provider + 字体主题 + 视觉主题 入口齐全
+ *  - 设置工作区不再出现本地日志入口或页面
  *  - 切换字体主题 + 视觉主题后 <html data-font-theme> / data-visual-theme 改变
  *  - TagsPage：列出 tag + 新建 + 删除
  *  - NotesPage：选文章 + 添加笔记
  *  - DigestsPage：列出 + 导出按钮存在
  *  - TopicsPage：显示 Phase 4 占位
- *  - LogsPage：显示 Phase 4 占位
  *  - 回到 reader：ArticleReader 工具栏有 5 个 AI 按钮（摘要/翻译/标签/笔记/专题）
  *
  * 运行：npm run smoke:integration
@@ -87,7 +87,7 @@ server.listen(0, '127.0.0.1', () => {
     console.log(`[smoke-integration] electron 退出 code=${code}`);
     console[passed ? 'log' : 'error'](
       passed
-        ? '[smoke-integration] ✓ Phase 3 Integration (6 页面 + AI 工具栏) 全部通过'
+        ? '[smoke-integration] ✓ Phase 3 Integration (设置工作区 + 4 个内容工具 + AI 工具栏) 全部通过'
         : '[smoke-integration] ✗ Phase 3 Integration 验证失败'
     );
     server.close(() => {

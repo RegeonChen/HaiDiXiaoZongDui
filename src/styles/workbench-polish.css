@@ -286,7 +286,6 @@
 .settings-page,
 .notes-page,
 .digests-page,
-.logs-page,
 .opml-export-page,
 .tags-page,
 .topics-page {
@@ -298,15 +297,13 @@
 }
 
 .tags-page,
-.topics-page,
-.logs-page {
+.topics-page {
   max-width: 1240px;
 }
 
 .settings-page__title,
 .notes-page__title,
 .digests-page__title,
-.logs-page__title,
 .opml-export-page__title,
 .tags-page__title,
 .topics-page__title {
@@ -659,10 +656,8 @@
 .settings-page__empty,
 .notes-page__empty,
 .digests-page__empty,
-.logs-page__empty,
 .opml-export-page__empty,
 .tags-page__empty,
-.logs-page__placeholder,
 .status-view {
   border: 0;
   border-radius: 0;
@@ -674,28 +669,10 @@
 .settings-page__empty,
 .notes-page__empty,
 .digests-page__empty,
-.logs-page__empty,
 .opml-export-page__empty,
-.tags-page__empty,
-.logs-page__placeholder {
+.tags-page__empty {
   padding: 32px 16px;
   text-align: center;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.logs-page__placeholder-headline {
-  margin: 0 0 8px;
-  color: var(--fg);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.logs-page__placeholder-body {
-  max-width: 360px;
-  margin: 0 auto;
-  color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -887,30 +864,10 @@
   background: color-mix(in srgb, var(--bg-elev) 76%, var(--bg));
 }
 
-.logs-page__placeholder {
-  margin-top: 0;
-}
-
-.logs-page__table {
-  margin-top: 18px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--bg-elev);
-  box-shadow: var(--shadow-sm);
-}
-
-.logs-page__table th,
-.logs-page__table td {
-  border-color: var(--border-soft);
-  padding: 8px 10px;
-}
-
 @media (max-width: 1050px) {
   .settings-page,
   .notes-page,
   .digests-page,
-  .logs-page,
   .opml-export-page,
   .tags-page,
   .topics-page {

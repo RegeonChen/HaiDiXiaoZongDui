@@ -76,7 +76,15 @@ describe('OnboardingOverlay', () => {
     });
     expect(document.activeElement?.getAttribute('data-testid')).toBe('onboarding-next');
 
-    for (let index = 1; index < 8; index += 1) {
+    const persistentCard = container.querySelector('[data-testid="onboarding-card"]');
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="onboarding-next"]')?.click();
+    });
+    expect(container.querySelector('[data-testid="onboarding-card"]')).toBe(persistentCard);
+    expect(container.querySelector('[data-testid="onboarding-overlay"]')
+      ?.getAttribute('data-step-transitioning')).toBe('true');
+
+    for (let index = 2; index < 8; index += 1) {
       await act(async () => {
         container.querySelector<HTMLButtonElement>('[data-testid="onboarding-next"]')?.click();
       });
