@@ -164,13 +164,23 @@ export function App() {
     setOnboardingOpen(true);
   }, [activeTabId, directoryMode]);
 
+  const mainUiReady = feedsState.kind === 'ready' && articlesState.kind !== 'loading';
   useEffect(() => {
-    if (!appearance.settingsReady || onboardingAutoHandledRef.current) return;
-    onboardingAutoHandledRef.current = true;
-    if (!appearance.onboardingCompleted) showOnboarding();
+    if (
+      !appearance.settingsReady ||
+      !mainUiReady ||
+      onboardingAutoHandledRef.current
+    ) return;
+    const timer = window.setTimeout(() => {
+      if (onboardingAutoHandledRef.current) return;
+      onboardingAutoHandledRef.current = true;
+      if (!appearance.onboardingCompleted) showOnboarding();
+    }, 200);
+    return () => window.clearTimeout(timer);
   }, [
     appearance.onboardingCompleted,
     appearance.settingsReady,
+    mainUiReady,
     showOnboarding
   ]);
 

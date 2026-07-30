@@ -186,6 +186,20 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
     state.systemFontSize, state.sidebarVisible
   ]);
 
+  // Mock smoke 可直接修改 DataSource 设置；事件让当前 hook 与这类外部更新同步。
+  useEffect(() => {
+    const handleSettingsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<
+        Partial<AppearanceSettings & { fontSize: number; readingWidth: number }>
+      >).detail;
+      if (!detail) return;
+      setState((current) => ({ ...current, ...detail }));
+      setSettingsReady(true);
+    };
+    window.addEventListener('juhe:settings-changed', handleSettingsChanged);
+    return () => window.removeEventListener('juhe:settings-changed', handleSettingsChanged);
+  }, []);
+
   const update = useCallback(
     async (
       patch: Partial<AppearanceSettings & { fontSize: number; readingWidth: number }>
