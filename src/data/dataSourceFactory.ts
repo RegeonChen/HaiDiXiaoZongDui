@@ -18,7 +18,9 @@ export function createDataSource(): FullDataSource {
     const params = new URLSearchParams(window.location.search);
     const flag = params.get('mock');
     if (flag === '1') {
-      const ds = new MockDataSource();
+      const ds = new MockDataSource({
+        onboardingCompleted: params.get('onboarding') !== '1'
+      });
       (window as unknown as { __JUHE_DS__?: FullDataSource }).__JUHE_DS__ = ds;
       return ds;
     }

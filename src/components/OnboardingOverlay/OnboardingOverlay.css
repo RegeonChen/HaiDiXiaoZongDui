@@ -1,0 +1,323 @@
+.onboarding-overlay {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.onboarding-overlay__shade {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+  pointer-events: auto;
+}
+
+.onboarding-overlay__spotlight {
+  position: absolute;
+  border: 1px solid color-mix(in srgb, var(--accent) 78%, white);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 3%);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent),
+    0 0 28px color-mix(in srgb, var(--accent) 32%, transparent);
+  pointer-events: auto;
+  transition:
+    top 200ms ease,
+    right 200ms ease,
+    bottom 200ms ease,
+    left 200ms ease,
+    width 200ms ease,
+    height 200ms ease;
+}
+
+.onboarding-card {
+  position: absolute;
+  display: flex;
+  width: min(380px, calc(100vw - 32px));
+  min-height: 270px;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 72%, var(--accent));
+  border-radius: 9px;
+  outline: none;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent-soft) 44%, transparent), transparent 42%),
+    var(--bg-elev);
+  box-shadow:
+    0 22px 64px rgb(0 0 0 / 34%),
+    0 2px 8px rgb(0 0 0 / 18%);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  pointer-events: auto;
+  animation: onboarding-card-enter 200ms ease both;
+}
+
+.onboarding-card::before {
+  content: '';
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border: solid color-mix(in srgb, var(--border-strong) 72%, var(--accent));
+  background: var(--bg-elev);
+  transform: rotate(45deg);
+}
+
+.onboarding-card[data-placement='right']::before {
+  top: 42px;
+  left: -7px;
+  border-width: 0 0 1px 1px;
+}
+
+.onboarding-card[data-placement='left']::before {
+  top: 42px;
+  right: -7px;
+  border-width: 1px 1px 0 0;
+}
+
+.onboarding-card[data-placement='bottom']::before {
+  top: -7px;
+  left: 44px;
+  border-width: 1px 0 0 1px;
+}
+
+.onboarding-card[data-placement='top']::before {
+  bottom: -7px;
+  left: 44px;
+  border-width: 0 1px 1px 0;
+}
+
+.onboarding-card[data-placement='center']::before {
+  display: none;
+}
+
+.onboarding-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 15px 9px;
+}
+
+.onboarding-card__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.onboarding-card__brand-mark {
+  display: inline-flex;
+  width: 23px;
+  height: 23px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: var(--accent);
+  color: white;
+  font-family: var(--font-body);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.onboarding-card__skip {
+  appearance: none;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.onboarding-card__skip:hover:not(:disabled) {
+  background: var(--bg-elev-hover);
+  color: var(--fg);
+}
+
+.onboarding-card__skip:disabled,
+.onboarding-card__button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.onboarding-card__progress {
+  padding: 0 15px 10px;
+}
+
+.onboarding-card__progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.onboarding-card__progress-meta span:last-child {
+  overflow: hidden;
+  max-width: 235px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.onboarding-card__progress-track {
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.onboarding-card__progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 200ms ease;
+}
+
+.onboarding-card__body {
+  display: grid;
+  min-height: 116px;
+  flex: 1 1 auto;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  padding: 17px 18px 14px;
+  border-block: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--bg) 46%, transparent);
+}
+
+.onboarding-card__step-number {
+  color: color-mix(in srgb, var(--accent) 72%, var(--muted));
+  font-size: 25px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.onboarding-card__body h2 {
+  margin: -2px 0 8px;
+  color: var(--fg);
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.onboarding-card__body p {
+  margin: 0;
+  color: var(--fg-soft);
+  font-size: 12px;
+  line-height: 1.68;
+}
+
+.onboarding-card__body .onboarding-card__locating {
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.onboarding-card__footer {
+  display: flex;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+}
+
+.onboarding-card__footer > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+
+.onboarding-card__reopen-hint,
+.onboarding-card__error {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.onboarding-card__error {
+  margin-top: 3px;
+  color: var(--err);
+}
+
+.onboarding-card__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
+.onboarding-card__button {
+  appearance: none;
+  min-width: 64px;
+  height: 29px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.onboarding-card__button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--bg-elev-hover);
+  color: var(--fg);
+}
+
+.onboarding-card__button--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.onboarding-card__button--primary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 78%, black);
+  background: color-mix(in srgb, var(--accent) 88%, black);
+  color: white;
+}
+
+@keyframes onboarding-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 719px) {
+  .onboarding-card {
+    right: 16px;
+    bottom: 16px;
+    left: 16px !important;
+    top: auto !important;
+    width: auto;
+  }
+
+  .onboarding-card__progress-meta span:last-child {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-overlay__spotlight,
+  .onboarding-card,
+  .onboarding-card__progress-track span {
+    animation: none;
+    transition: none;
+  }
+}

@@ -41,6 +41,20 @@
   gap: 2px;
 }
 
+.settings-workspace__nav-separator {
+  height: 1px;
+  margin: 8px 9px;
+  background: var(--border);
+}
+
+.settings-workspace__nav button.settings-workspace__tutorial {
+  color: var(--fg-soft);
+}
+
+.settings-workspace__nav button.settings-workspace__tutorial:hover {
+  color: var(--accent);
+}
+
 .settings-workspace__nav button {
   appearance: none;
   display: grid;

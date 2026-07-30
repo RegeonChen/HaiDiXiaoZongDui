@@ -42,6 +42,7 @@
     "smoke:feed-actions": "npm run build && node scripts/smoke-4.1.1-feed-actions.cjs",
     "smoke:opml-export-selection": "npm run build && node scripts/smoke-4.1.4-opml-export-selection.cjs",
     "smoke:phase4.2": "npm run build && node scripts/smoke-4.2.cjs",
+    "smoke:onboarding": "npm run build && node scripts/smoke-onboarding.cjs",
     "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "dist": "npm run build && electron-builder --mac dmg --win nsis --publish never"

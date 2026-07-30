@@ -33,6 +33,7 @@ import { AddGroupDialog } from './components/AddGroupDialog/AddGroupDialog';
 import { Toast, type ToastItem } from './components/Toast/Toast';
 import { ConfirmDialog, type ConfirmDialogHandle } from './components/ConfirmDialog/ConfirmDialog';
 import { ContextMenuHost } from './components/ContextMenu/ContextMenu';
+import { OnboardingOverlay } from './components/OnboardingOverlay/OnboardingOverlay';
 import { SearchBar } from './components/SearchBar/SearchBar';
 import { LoadingView } from './components/StatusView/LoadingView';
 import { ErrorView } from './components/StatusView/ErrorView';
@@ -80,6 +81,12 @@ export function App() {
   const appearance = useAppearance(effectiveTheme);
 
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>('both');
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const onboardingAutoHandledRef = useRef(false);
+  const onboardingRestoreRef = useRef<{
+    activeTabId: string;
+    directoryMode: DirectoryMode;
+  } | null>(null);
   const directoryModeHydratedRef = useRef(false);
   useEffect(() => {
     if (!appearance.loaded || directoryModeHydratedRef.current) return;
@@ -147,6 +154,62 @@ export function App() {
   const dismissToast = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const showOnboarding = useCallback(() => {
+    onboardingRestoreRef.current = { activeTabId, directoryMode };
+    directoryModeHydratedRef.current = true;
+    setDirectoryMode('both');
+    setActiveTabId('reader');
+    setAiDockOpen(false);
+    setOnboardingOpen(true);
+  }, [activeTabId, directoryMode]);
+
+  useEffect(() => {
+    if (!appearance.settingsReady || onboardingAutoHandledRef.current) return;
+    onboardingAutoHandledRef.current = true;
+    if (!appearance.onboardingCompleted) showOnboarding();
+  }, [
+    appearance.onboardingCompleted,
+    appearance.settingsReady,
+    showOnboarding
+  ]);
+
+  const handleStartOnboarding = useCallback(() => {
+    void (async () => {
+      const saved = await appearance.setOnboardingCompleted(false);
+      if (!saved) {
+        pushToast(
+          appearance.language === 'zh'
+            ? '无法启动新手教程：设置状态保存失败'
+            : 'Could not start Getting Started because its state could not be saved.',
+          'error'
+        );
+        return;
+      }
+      showOnboarding();
+    })();
+  }, [appearance, pushToast, showOnboarding]);
+
+  const handleDismissOnboarding = useCallback(async (
+    reason: 'completed' | 'skipped'
+  ): Promise<boolean> => {
+    const saved = await appearance.setOnboardingCompleted(true);
+    if (!saved) return false;
+    setOnboardingOpen(false);
+    const restore = onboardingRestoreRef.current;
+    onboardingRestoreRef.current = null;
+    if (restore) {
+      setDirectoryMode(restore.directoryMode);
+      setActiveTabId(restore.activeTabId);
+    }
+    pushToast(
+      appearance.language === 'zh'
+        ? (reason === 'completed' ? '新手教程已完成' : '已跳过新手教程')
+        : (reason === 'completed' ? 'Getting Started completed' : 'Getting Started skipped'),
+      'success'
+    );
+    return true;
+  }, [appearance, pushToast]);
 
   // 拉 feeds
   const refreshFeeds = useCallback(async () => {
@@ -1577,7 +1640,13 @@ export function App() {
   let pageSlot: JSX.Element;
   switch (currentPage) {
     case 'settings':
-      pageSlot = <UnifiedSettingsPage onToast={pushToast} />;
+      pageSlot = (
+        <UnifiedSettingsPage
+          onToast={pushToast}
+          onStartOnboarding={handleStartOnboarding}
+          language={appearance.language}
+        />
+      );
       break;
     case 'tags':
       pageSlot = <TagsPage onToast={pushToast} onOpenArticle={handleTopicOpenArticle} />;
@@ -1640,6 +1709,11 @@ export function App() {
       <ConfirmDialog ref={confirmRef} />
       <ContextMenuHost />
       <Toast items={toasts} onDismiss={dismissToast} />
+      <OnboardingOverlay
+        open={onboardingOpen}
+        language={appearance.language}
+        onDismiss={handleDismissOnboarding}
+      />
       {/* Phase 3.6.2：同步进度条（进行中/完成两态；完成后 3 秒自动消失） */}
       {syncingProgress && (
         <div

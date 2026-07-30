@@ -102,7 +102,13 @@
 - **代码审查修复（`8ca0998`，已发布）**：移除受 50 条分页限制却被误当作全集的 `allArticles` 缓存；删除确认和单源未读数改用数据库精确计数。切换订阅源会退出旧文章标签态，关闭文章或删除来源会同步清理文章快照；已读/星标写入改为成功后更新界面并显式报告失败。本地日志已接入设置工作区，Main 进程以 2 MB 轮转 JSONL 持久化脱敏后的启动、同步和 OPML 事件，并支持原生保存对话框导出。
 - **AI Provider 凭证安全存储（Phase 5）**：新建和更新的 API Key 通过 Electron `safeStorage` 加密后，以 `safe-storage:v1:` 版本化密文写入 SQLite；应用启动时幂等迁移历史明文。macOS 使用 Keychain、Windows 使用 DPAPI；Linux 只接受 libsecret/KWallet 等安全后端，检测到 `basic_text` 时拒绝保存新 Key。列表与 Renderer 仍只获得 `apiKeySet`，解密后的 Key 仅在 Main 进程调用 Provider 时短暂使用。
 - **开发工具链升级（Phase 5）**：Electron 31 → 43、electron-vite 2 → 5、Vite 5 → 7、Vitest 3 → 4、electron-builder 26.15.3 → 26.15.7；完成 TypeScript 双端检查、136 项单测、生产构建以及凭证、UI/IPC、阅读模式三组 Electron smoke。生产依赖审计保持 0 项；Electron/Vite 直接公告已消除。
-- **Phase 1–4.2、3.7、4.1、4.2 已完成并通过验收；Phase 4.3 仅完成数据库设置字段，UI 新手引导与端到端验收仍在进行。**
+- **Phase 1–4.3、3.7、4.1、4.2 已完成并通过验收。**
+- **Phase 4.3 VS Code 风格新手教程完成**：
+  - 首次读取到 `onboardingCompleted=false` 时自动进入 8 步聚光引导；完成或跳过后持久化为 `true`，重启不再自动弹出。
+  - 设置工作区新增“新手教程”入口，点击时先重置完成状态，再从第 1 步重新开始；结束后恢复进入教程前的灵活窗口标签与目录展开状态，不创建或固定额外标签。
+  - 引导依次覆盖订阅源、添加入口、文章目录、同步、阅读区、阅读键目录切换、AI 和搜索；全屏遮罩封锁底层交互，卡片提供进度、上一步、下一步、跳过和开始使用。
+  - `useTargetRect` 通过 `getBoundingClientRect()`、`ResizeObserver`、DOM 变化、窗口缩放、滚动和全屏事件持续刷新聚光位置；目标暂时缺失时限时等待后自动前进。
+  - 中英文文案、深浅主题与减少动态效果均已适配。`OnboardingOverlay.test.ts` 覆盖步骤、完成/跳过和定位边界；`smoke:onboarding` 使用真实临时数据库覆盖首次启动、8 个目标、窗口缩放、完成/跳过持久化、设置重开与二次启动不再弹出。
 - **Phase 4.2.1 Navbar 图标 + 系统字号 + 侧栏折叠**（张晨阳，4.2.3 陈冠中在 `ec45c68` 落地 AppSettings 字段 + 持久化）：
   - **Task 4.2.1.1 AI 入口图标 → 粗体 "AI" 字母**（`Layout.tsx`）：navItems 用 `iconType='ai-bold'` 渲染 `<strong class="app-header__nav-icon--ai">AI</strong>`，font-weight 800 + letter-spacing -0.04em 让两字母紧凑如一个 logo；三主题下 active 态 `var(--accent)`、hover 态继承 fg-soft。
   - **Task 4.2.1.2 专题入口图标 → 多源聚合 SVG**（`Layout.tsx`）：navItems 用 `iconType='topics-svg'` 渲染一个 14×14 SVG（两个左侧源点 + 一个右侧中心点 + 两条汇聚线），stroke 颜色继承 currentColor，`var(--fg-soft)` 默认色 / `var(--accent)` active 态。
@@ -160,7 +166,7 @@
 - **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ done 态 3 秒延迟 + 失败红点。
 - **三种阅读模式**（`e25343a` 张宇凡 + `9aef239` 张宇凡）：精简阅读 / 网页 / 分栏（左右各半），通过 `useReaderMode` hook + `shared/article-webview.ts` + 主进程 `installArticleWebviewSecurity`。
 - **GitHub Release 自动化**：`.github/workflows/release.yml` 推 `v*` tag → build-mac (DMG) + build-win (NSIS) + release job。
-- **21 个 smoke + 130 个单元测试**（另 6 个需外网的真实 Feed 测试按设计跳过）：smoke-1.1 / 2.1 / 2.3 / 2.4-ui-ipc / 2.5 / 3.3 / 3.4-integration / 3.5.1 / 3.5.2-ui / 3.5.2-split-error / 3.5.3-coexist / 3.5.4-tagmanage / 4.1 / phase2 / reader-modes / taglist / feeds-group / search-pagination / feed-actions / opml-export-selection / **phase4.2**。2026-07-28 的 Phase 4.2.1 落地新增 `smoke:phase4.2` 30 项 check。
+- **25 个 smoke 命令 + 143 个单元测试**（另 6 个需外网的真实 Feed 测试按设计跳过）。Phase 4.3 新增 `smoke:onboarding`，使用真实数据库分别启动两次，验证首次自动显示、完整 8 步、设置重开、完成/跳过持久化和重启不再自动显示。
 - `shared/types.ts` + `shared/ipc.ts` 作为权威协议源；跨模块接口变更需同步更新并通知。
 
 ## 设计决策
@@ -178,14 +184,14 @@
 
 ## 路线图
 
-1. Phase 1–4.2、3.7、4.1、4.2：✅ 已完成
-2. Phase 4.3：数据库设置字段已完成 / 新手引导 UI 与端到端验收进行中
-3. Phase 5：v0.3.1 release 已发布（`v0.3.1` tag + 2 个 artifact）/ Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
+1. Phase 1–4.3、3.7、4.1、4.2：✅ 已完成
+2. Phase 5：v0.3.1 release 已发布（`v0.3.1` tag + 2 个 artifact）/ Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
 ## 近期记录（按 commit 倒序）
 
+- **Phase 4.3（本次提交）**：完成 VS Code 风格 8 步新手教程、首次启动自动触发、设置页重新查看、完成/跳过持久化、动态聚光定位、中英文文案、组件测试与真实数据库双启动 Electron smoke。
 - **`639de80`（张宇凡）**：v0.3.1 release — 版本升至 0.3.1，修复 `fast-xml-parser` 生产依赖漏洞并补充完整发布说明；本地与 GitHub Actions 双平台打包成功，Release 资产下载复核通过。
 - **`1b74960`（合并提交）**：合并团队并行提交的圆角图标实现 `f437fad`，保留其提交历史与跨平台圆角方向；最终统一使用分尺寸资源、可重复生成/校验脚本和包外运行时路径。
 - **`f437fad`（xingguang0626）**：将奏章图标升级为带透明圆角的 RGBA 版本，并提供首版 Python 生成原型。

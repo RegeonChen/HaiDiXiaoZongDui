@@ -6,12 +6,21 @@ import './UnifiedSettingsPage.css';
 
 export interface UnifiedSettingsPageProps {
   onToast: (message: string, kind?: 'info' | 'success' | 'error') => void;
+  onStartOnboarding: () => void;
+  language: 'zh' | 'en';
 }
 
 type SettingsSection = 'general' | 'ai' | 'logs';
 
-export function UnifiedSettingsPage({ onToast }: UnifiedSettingsPageProps) {
+export function UnifiedSettingsPage({
+  onToast,
+  onStartOnboarding,
+  language
+}: UnifiedSettingsPageProps) {
   const [section, setSection] = useState<SettingsSection>('general');
+  const tutorialCopy = language === 'zh'
+    ? { title: '新手教程', description: '重新查看功能引导' }
+    : { title: 'Getting Started', description: 'Replay the feature walkthrough' };
   return (
     <div className="settings-workspace">
       <aside className="settings-workspace__sidebar" aria-label="设置分类">
@@ -54,6 +63,19 @@ export function UnifiedSettingsPage({ onToast }: UnifiedSettingsPageProps) {
             <span>
               <strong>本地日志</strong>
               <small>查看与导出诊断记录</small>
+            </span>
+          </button>
+          <div className="settings-workspace__nav-separator" />
+          <button
+            type="button"
+            className="settings-workspace__tutorial"
+            onClick={onStartOnboarding}
+            data-testid="settings-start-onboarding"
+          >
+            <span aria-hidden="true">▷</span>
+            <span>
+              <strong>{tutorialCopy.title}</strong>
+              <small>{tutorialCopy.description}</small>
             </span>
           </button>
         </nav>

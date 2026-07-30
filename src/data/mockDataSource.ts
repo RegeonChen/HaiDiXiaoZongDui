@@ -81,6 +81,12 @@ export class MockDataSource implements DataSource {
   };
   private id = 0;
 
+  constructor(options: { onboardingCompleted?: boolean } = {}) {
+    // 常规 mock/smoke 默认跳过首次引导，避免遮罩影响既有探针；
+    // onboarding 专项探针显式传 false，覆盖真实首次启动流程。
+    this.settingsState.onboardingCompleted = options.onboardingCompleted ?? true;
+  }
+
   private nextId(prefix: string): string {
     this.id += 1;
     return `${prefix}-mock-${this.id}`;
@@ -889,7 +895,7 @@ export class MockDataSource implements DataSource {
     systemFontSize: 14,
     sidebarVisible: true,
     // Phase 4.3:首次启动引导(陈冠中 AppSettings 扩展)
-    onboardingCompleted: false
+    onboardingCompleted: true
   };
 
   async settingsGet(): Promise<DataSourceState<AppSettings>> {

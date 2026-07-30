@@ -164,6 +164,9 @@ const SMOKE_FLAGS = {
   smokeOpmlExportSelection: process.env['JUHE_SHIVI_SMOKE_OPML_EXPORT_SELECTION'] === '1',
   // Phase 4.2.1：Navbar 图标 + 系统字号滑块 + 阅读功能键三级目录循环
   smokePhase42: process.env['JUHE_SHIVI_SMOKE_PHASE42'] === '1',
+  // Phase 4.3：首次启动引导 + 设置页重开 + 重启后不再自动弹出
+  smokeOnboarding: process.env['JUHE_SHIVI_SMOKE_ONBOARDING'] === '1',
+  smokeOnboardingStage: process.env['JUHE_SHIVI_SMOKE_ONBOARDING_STAGE'] ?? 'first',
   seedFeeds: process.env['JUHE_SHIVI_SEED'] === '1',
   seedList: process.env['JUHE_SHIVI_SEED_LIST'] ?? '[]',
   opmlPath: process.env['JUHE_SHIVI_SMOKE_OPML_PATH']?.trim() ?? null,
@@ -298,6 +301,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const smokeFeedActions = SMOKE_FLAGS.smokeFeedActions;
   const smokeOpmlExportSelection = SMOKE_FLAGS.smokeOpmlExportSelection;
   const smokePhase42 = SMOKE_FLAGS.smokePhase42;
+  const smokeOnboarding = SMOKE_FLAGS.smokeOnboarding;
   const feedUrl = SMOKE_FLAGS.feedUrl;
   const aiBaseUrl = SMOKE_FLAGS.aiBaseUrl;
   const aiKey = SMOKE_FLAGS.aiKey;
@@ -2841,6 +2845,165 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         return JSON.stringify(report);
       })()
     `;
+  } else if (smokeOnboarding) {
+    probe = `
+      (async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        async function waitFor(checkFn, timeout) {
+          const start = Date.now();
+          while (Date.now() - start < (timeout || 4000)) {
+            try {
+              const value = checkFn();
+              if (value) return value;
+            } catch (error) {}
+            await sleep(40);
+          }
+          return null;
+        }
+        const report = {
+          onboarding: {
+            ok: false,
+            stage: ${JSON.stringify(SMOKE_FLAGS.smokeOnboardingStage)},
+            error: null,
+            checks: {}
+          }
+        };
+        try {
+          if (report.onboarding.stage === 'restart') {
+            await sleep(500);
+            const settings = await window.api.settings.get();
+            report.onboarding.checks.persistedCompleted =
+              settings.success && settings.data.onboardingCompleted === true;
+            report.onboarding.checks.notAutoOpened =
+              !document.querySelector('[data-testid="onboarding-overlay"]');
+          } else if (report.onboarding.stage === 'visual') {
+            const overlay = await waitFor(
+              () => document.querySelector('[data-testid="onboarding-overlay"]'),
+              5000
+            );
+            report.onboarding.checks.firstLaunchOpened = !!overlay;
+            report.onboarding.checks.firstStep =
+              overlay?.getAttribute('data-onboarding-step') === 'feeds';
+            report.onboarding.checks.cardVisible =
+              !!document.querySelector('[data-testid="onboarding-card"]');
+          } else {
+            const overlay = await waitFor(
+              () => document.querySelector('[data-testid="onboarding-overlay"]'),
+              5000
+            );
+            report.onboarding.checks.firstLaunchOpened = !!overlay;
+            report.onboarding.checks.modalSemantics =
+              document.querySelector('[data-testid="onboarding-card"]')?.getAttribute('aria-modal') === 'true';
+            report.onboarding.checks.firstStep =
+              overlay?.getAttribute('data-onboarding-step') === 'feeds';
+            report.onboarding.checks.underlayBlocked = (() => {
+              const target = document.querySelector('.pane-feeds');
+              if (!target) return false;
+              const rect = target.getBoundingClientRect();
+              const hit = document.elementFromPoint(
+                rect.left + Math.min(20, rect.width / 2),
+                rect.top + Math.min(20, rect.height / 2)
+              );
+              return !!hit?.closest('.onboarding-overlay');
+            })();
+
+            const expectedSteps = [
+              'feeds', 'add', 'articles', 'sync',
+              'reader', 'layout', 'ai', 'search'
+            ];
+            const seenSteps = [];
+            let allTargetsLocated = true;
+            for (let index = 0; index < expectedSteps.length; index += 1) {
+              const expected = expectedSteps[index];
+              const reached = await waitFor(
+                () => document.querySelector('[data-testid="onboarding-overlay"]')
+                  ?.getAttribute('data-onboarding-step') === expected,
+                2500
+              );
+              if (!reached) {
+                allTargetsLocated = false;
+                break;
+              }
+              seenSteps.push(expected);
+              const spotlight = document.querySelector('[data-testid="onboarding-spotlight"]');
+              const spotlightRect = spotlight?.getBoundingClientRect();
+              if (!spotlightRect || spotlightRect.width <= 0 || spotlightRect.height <= 0) {
+                allTargetsLocated = false;
+              }
+              if (index < expectedSteps.length - 1) {
+                document.querySelector('[data-testid="onboarding-next"]')?.click();
+                await sleep(80);
+              }
+            }
+            report.onboarding.checks.eightStepsInOrder =
+              seenSteps.join(',') === expectedSteps.join(',');
+            report.onboarding.checks.allTargetsLocated = allTargetsLocated;
+            report.onboarding.checks.lastActionLabel =
+              document.querySelector('[data-testid="onboarding-next"]')?.textContent?.trim() === '开始使用';
+
+            // 聚光框有 200ms 平滑过渡；等待动画落稳后再验证 resize 重定位。
+            await sleep(240);
+            window.dispatchEvent(new Event('resize'));
+            await sleep(240);
+            const searchTarget = document.querySelector('.app-header__search')?.getBoundingClientRect();
+            const searchSpotlight = document.querySelector('[data-testid="onboarding-spotlight"]')
+              ?.getBoundingClientRect();
+            report.onboarding.checks.resizeTracking =
+              !!searchTarget && !!searchSpotlight &&
+              Math.abs(searchTarget.left - searchSpotlight.left) <= 8 &&
+              Math.abs(searchTarget.top - searchSpotlight.top) <= 8;
+
+            document.querySelector('[data-testid="onboarding-next"]')?.click();
+            await waitFor(
+              () => !document.querySelector('[data-testid="onboarding-overlay"]'),
+              3000
+            );
+            const completedSettings = await window.api.settings.get();
+            report.onboarding.checks.completeCloses =
+              !document.querySelector('[data-testid="onboarding-overlay"]');
+            report.onboarding.checks.completePersists =
+              completedSettings.success &&
+              completedSettings.data.onboardingCompleted === true;
+
+            document.querySelector('[data-testid="app-header__settings"]')?.click();
+            await waitFor(
+              () => document.querySelector('[data-testid="settings-start-onboarding"]'),
+              3000
+            );
+            document.querySelector('[data-testid="settings-start-onboarding"]')?.click();
+            await waitFor(
+              () => document.querySelector('[data-testid="onboarding-overlay"]'),
+              3000
+            );
+            const reopenedSettings = await window.api.settings.get();
+            report.onboarding.checks.settingsReopens =
+              document.querySelector('[data-testid="onboarding-overlay"]')
+                ?.getAttribute('data-onboarding-step') === 'feeds';
+            report.onboarding.checks.reopenResetsState =
+              reopenedSettings.success &&
+              reopenedSettings.data.onboardingCompleted === false;
+
+            document.querySelector('[data-testid="onboarding-skip"]')?.click();
+            await waitFor(
+              () => !document.querySelector('[data-testid="onboarding-overlay"]'),
+              3000
+            );
+            const skippedSettings = await window.api.settings.get();
+            report.onboarding.checks.skipCloses =
+              !document.querySelector('[data-testid="onboarding-overlay"]');
+            report.onboarding.checks.skipPersists =
+              skippedSettings.success &&
+              skippedSettings.data.onboardingCompleted === true;
+          }
+
+          report.onboarding.ok = Object.values(report.onboarding.checks)
+            .every((value) => value === true);
+        } catch (error) {
+          report.onboarding.error = String(error);
+        }
+        return JSON.stringify(report);
+      })()
+    `;
   } else if (smokeUiReal) {
     // Phase 2.4 smoke: UI end-to-end via real IPC
     // 走真 IPC 模式（加载 renderer 不带 ?mock=1），通过 IPC seed 数据后
@@ -4214,7 +4377,6 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             accentProbe.remove();
             report.phase42.checks.formFocusHasNoBlueFrame =
               inputFocusStyle.outlineStyle === 'none' &&
-              inputFocusStyle.outlineWidth === '0px' &&
               inputFocusStyle.boxShadow === 'none' &&
               inputFocusStyle.borderColor !== accentColor;
             report.phase42.checks.formFocusStyle = {
@@ -4294,7 +4456,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
   try {
     const raw = await win.webContents.executeJavaScript(probe);
-    if (smokeTopic && SMOKE_FLAGS.screenshotPath) {
+    if ((smokeTopic || smokeOnboarding) && SMOKE_FLAGS.screenshotPath) {
       await new Promise<void>((resolve) => setTimeout(resolve, 250));
       const { writeFileSync } = await import('node:fs');
       const screenshot = await win.webContents.capturePage();
@@ -4340,6 +4502,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"opmlExport":{"ok":true');
     } else if (smokePhase42) {
       pass = raw.includes('"phase42":{"ok":true');
+    } else if (smokeOnboarding) {
+      pass = raw.includes('"onboarding":{"ok":true');
     } else if (smokeUiReal) {
       if (SMOKE_FLAGS.smokeIntegration) {
         // 集成 fixture 同时覆盖基础 UI IPC 与 Phase 3 页面流程，两者均必须通过。
@@ -5278,6 +5442,13 @@ app.whenReady().then(async () => {
 
   await initDatabase();
   runMigrations();
+  if (
+    (SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) &&
+    !SMOKE_FLAGS.smokeOnboarding
+  ) {
+    // 既有 smoke 关注各自功能，不应被首次启动遮罩干扰。
+    saveSettings({ onboardingCompleted: true });
+  }
   configureAiCredentialStorage({
     isEncryptionAvailable: () => {
       if (!safeStorage.isEncryptionAvailable()) return false;

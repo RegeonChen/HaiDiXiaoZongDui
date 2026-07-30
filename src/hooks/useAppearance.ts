@@ -23,6 +23,8 @@ export interface AppearanceSettings {
   systemFontSize: number;
   /** 左栏（订阅源侧栏）是否可见 */
   sidebarVisible: boolean;
+  /** 是否已完成或跳过首次使用引导 */
+  onboardingCompleted: boolean;
 }
 
 const DEFAULTS: AppearanceSettings = {
@@ -30,7 +32,8 @@ const DEFAULTS: AppearanceSettings = {
   visualTheme: 'classic',
   language: 'zh',
   systemFontSize: 14,
-  sidebarVisible: true
+  sidebarVisible: true,
+  onboardingCompleted: false
 };
 
 /**
@@ -112,7 +115,10 @@ export interface UseAppearanceResult {
   readingWidth: number;
   systemFontSize: number;
   sidebarVisible: boolean;
+  onboardingCompleted: boolean;
   loaded: boolean;
+  /** settingsGet 成功返回，允许依赖持久化值触发一次性流程。 */
+  settingsReady: boolean;
   setFontTheme: (next: string) => Promise<boolean>;
   setVisualTheme: (next: 'classic' | 'paper') => Promise<boolean>;
   setLanguage: (next: 'zh' | 'en') => Promise<boolean>;
@@ -120,6 +126,7 @@ export interface UseAppearanceResult {
   setReadingWidth: (next: number) => Promise<boolean>;
   setSystemFontSize: (next: number) => Promise<boolean>;
   setSidebarVisible: (next: boolean) => Promise<boolean>;
+  setOnboardingCompleted: (next: boolean) => Promise<boolean>;
 }
 
 export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAppearanceResult {
@@ -130,6 +137,7 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
     readingWidth: 800
   });
   const [loaded, setLoaded] = useState(false);
+  const [settingsReady, setSettingsReady] = useState(false);
 
   // 初次加载 + effectiveTheme 变化时重应用
   useEffect(() => {
@@ -145,7 +153,8 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
           fontSize: r.data.fontSize,
           readingWidth: r.data.readingWidth,
           systemFontSize: r.data.systemFontSize,
-          sidebarVisible: r.data.sidebarVisible
+          sidebarVisible: r.data.sidebarVisible,
+          onboardingCompleted: r.data.onboardingCompleted
         };
         setState(next);
         applyToHtml(
@@ -153,6 +162,7 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
           next.fontSize, next.readingWidth,
           next.systemFontSize, next.sidebarVisible
         );
+        setSettingsReady(true);
       }
       setLoaded(true);
     })();
@@ -189,9 +199,11 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
           fontSize: r.data.fontSize,
           readingWidth: r.data.readingWidth,
           systemFontSize: r.data.systemFontSize,
-          sidebarVisible: r.data.sidebarVisible
+          sidebarVisible: r.data.sidebarVisible,
+          onboardingCompleted: r.data.onboardingCompleted
         };
         setState(next);
+        setSettingsReady(true);
         applyToHtml(
           next.fontTheme, next.visualTheme, effectiveTheme,
           next.fontSize, next.readingWidth,
@@ -212,13 +224,16 @@ export function useAppearance(effectiveTheme: 'light' | 'dark' = 'light'): UseAp
     readingWidth: state.readingWidth,
     systemFontSize: state.systemFontSize,
     sidebarVisible: state.sidebarVisible,
+    onboardingCompleted: state.onboardingCompleted,
     loaded,
+    settingsReady,
     setFontTheme: (next) => update({ fontTheme: next }),
     setVisualTheme: (next) => update({ visualTheme: next }),
     setLanguage: (next) => update({ language: next }),
     setFontSize: (next) => update({ fontSize: next }),
     setReadingWidth: (next) => update({ readingWidth: next }),
     setSystemFontSize: (next) => update({ systemFontSize: next }),
-    setSidebarVisible: (next) => update({ sidebarVisible: next })
+    setSidebarVisible: (next) => update({ sidebarVisible: next }),
+    setOnboardingCompleted: (next) => update({ onboardingCompleted: next })
   };
 }
