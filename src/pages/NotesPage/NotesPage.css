@@ -1,5 +1,7 @@
 .notes-page {
   display: flex;
+  width: 100%;
+  min-width: 0;
   flex-direction: column;
   height: 100%;
   box-sizing: border-box;
@@ -16,6 +18,8 @@
 
 .notes-page__picker {
   display: flex;
+  width: 100%;
+  min-width: 0;
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
@@ -28,7 +32,11 @@
 }
 
 .notes-page__select {
-  flex: 1;
+  width: 0;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 0;
+  overflow: hidden;
   padding: 6px 10px;
   font-size: 13px;
   border: 1px solid var(--border);
@@ -36,9 +44,13 @@
   background: var(--bg);
   color: var(--fg);
   font-family: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .notes-page__form {
+  width: 100%;
+  min-width: 0;
   margin-bottom: 18px;
   display: flex;
   flex-direction: column;
@@ -94,6 +106,8 @@
 }
 
 .notes-page__list {
+  width: 100%;
+  min-width: 0;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -103,6 +117,7 @@
 }
 
 .notes-page__item {
+  min-width: 0;
   padding: 12px 16px;
   background: var(--bg-elev);
   border: 1px solid var(--border);

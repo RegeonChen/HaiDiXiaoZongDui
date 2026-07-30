@@ -9,6 +9,7 @@
  *  - 切换字体主题 + 视觉主题后 <html data-font-theme> / data-visual-theme 改变
  *  - TagsPage：列出 tag + 新建 + 删除
  *  - NotesPage：选文章 + 添加笔记
+ *  - NotesPage：长文章标题下拉框不得越过灵活窗口
  *  - DigestsPage：列出 + 导出按钮存在
  *  - TopicsPage：显示 Phase 4 占位
  *  - 回到 reader：ArticleReader 工具栏有 5 个 AI 按钮（摘要/翻译/标签/笔记/专题）
@@ -37,7 +38,7 @@ const server = http.createServer((req, res) => {
   if (req.url === '/feed.xml') {
     res.writeHead(200, { 'content-type': 'application/rss+xml' });
     res.end(`<rss version="2.0"><channel><title>Integration Feed</title><link>${baseUrl}/</link>
-      <item><title>Integration Article Alpha</title><link>${baseUrl}/a</link><guid>integration-1</guid><pubDate>Mon, 14 Jul 2026 06:00:00 GMT</pubDate></item>
+      <item><title>Integration Article Alpha with an intentionally very long title that must remain inside the flexible editor viewport without horizontal overflow</title><link>${baseUrl}/a</link><guid>integration-1</guid><pubDate>Mon, 14 Jul 2026 06:00:00 GMT</pubDate></item>
       <item><title>Integration Article Beta</title><link>${baseUrl}/b</link><guid>integration-2</guid><pubDate>Sun, 13 Jul 2026 06:00:00 GMT</pubDate></item>
     </channel></rss>`);
     return;

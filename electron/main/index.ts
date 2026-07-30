@@ -3486,6 +3486,18 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             const noteSelect = document.querySelector('.notes-page__select');
             const noteTextarea = document.querySelector('.notes-page__textarea');
             const noteAddBtn = document.querySelector('.notes-page__btn--primary');
+            const notesViewport = document.querySelector('.app-page__content');
+            const notesPage = document.querySelector('.notes-page');
+            const noteSelectRect = noteSelect?.getBoundingClientRect();
+            const notesViewportRect = notesViewport?.getBoundingClientRect();
+            const notesPageRect = notesPage?.getBoundingClientRect();
+            integrationReport.checks.notesLayoutWithinBounds =
+              !!noteSelectRect && !!notesViewportRect && !!notesPageRect &&
+              noteSelectRect.left >= notesViewportRect.left - 1 &&
+              noteSelectRect.right <= notesViewportRect.right + 1 &&
+              notesPageRect.left >= notesViewportRect.left - 1 &&
+              notesPageRect.right <= notesViewportRect.right + 1 &&
+              notesViewport.scrollWidth <= notesViewport.clientWidth + 1;
             if (noteSelect && noteTextarea && noteAddBtn) {
               // 通过 IPC 创建笔记（绕开 React 表单同步问题，验证 IPC 链路）
               const articleId = noteSelect.value;
@@ -3559,7 +3571,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               'previewTabReused', 'previewTabPinned', 'pinnedTabRetained',
               'settingsWorkspaceRendered', 'localLogsEntryRemoved', 'aiSettingsRendered',
               'fontThemesOk', 'visualThemesOk', 'fontToggled', 'visualToggled',
-              'tagCreated', 'tagDeleted', 'noteCreated', 'digestPageRendered',
+              'tagCreated', 'tagDeleted', 'noteCreated', 'notesLayoutWithinBounds',
+              'digestPageRendered',
               'topicsPageRendered', 'topicsEmptyState',
               'backToReader', 'aiBtnsOk', 'aiHeaderEntryExists', 'topicDialogOpens'
             ];
