@@ -24,6 +24,22 @@
   box-shadow: inset 0 -1px 0 rgb(255 255 255 / 28%);
 }
 
+/* macOS hiddenInset：原生交通灯与应用工具栏共用一行。标题栏空白区域
+   可拖动窗口，搜索框和按钮仍保持可点击。 */
+html[data-platform='darwin'] .app-header {
+  padding-left: 84px;
+  -webkit-app-region: drag;
+}
+
+html[data-platform='darwin'] .app-header button,
+html[data-platform='darwin'] .app-header input,
+html[data-platform='darwin'] .app-header select,
+html[data-platform='darwin'] .app-header textarea,
+html[data-platform='darwin'] .app-header a,
+html[data-platform='darwin'] .app-header [role='button'] {
+  -webkit-app-region: no-drag;
+}
+
 .app-header__left,
 .app-header__right,
 .app-header__identity {

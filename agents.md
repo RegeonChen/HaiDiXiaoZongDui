@@ -96,6 +96,7 @@
 截至 2026-07-31：
 
 - **v0.3.2 release 已发布**（`8f4303c` + tag `v0.3.2`）：完成首次启动教程、灵活窗口常驻语义、摘要底部栏与 Markdown 块级渲染、文章标签换行排版、阅读回顶、纸质主题完善、AI Provider `safeStorage` 凭证加密和 Electron 43/Vite 7 工具链升级。发布前通过 typecheck、149 项单测、生产构建、17 组关键 Electron/IPC smoke 与本地 Apple Silicon DMG 打包，生产依赖审计为 0 项已知漏洞。GitHub Actions run `30635226675` 成功生成并发布 `Juhe-Shiyi-0.3.2-arm64.dmg`（132,441,023 bytes，SHA-256 `dd8fc91bd77ed162b4c03be1699f42cf88bff997a0729145fc36e205e1ba783b`）和 `Juhe-Shiyi-Setup-0.3.2-x64.exe`（114,468,043 bytes，SHA-256 `6edef9fa3e7c8f79d640acdc8bd27d1a0f21b545cc84b0a5e936041dea37f3f0`）。远端下载后复核了 DMG 内版本/ICNS/运行时 PNG、Windows 安装器和主程序 16–256 七档图标，以及 Windows `app.asar` 中的 0.3.2 版本和默认菜单栏移除配置。Actions v4 当前会显示 Node 20 弃用但强制使用 Node 24 的非阻塞提示，后续应升级对应 Action 主版本。
+- **v0.3.3 release 准备中**：主窗口在 macOS 使用 `titleBarStyle: 'hiddenInset'`，让红黄绿窗口按钮、应用名、搜索和右侧工具共用现有 46px 顶栏，并用 `trafficLightPosition: { x: 14, y: 16 }` 将原生交通灯与标题/搜索框视觉中心对齐；preload 仅向 `<html>` 写入受控的 `data-platform` 属性，Renderer 不获得 `process`，CSS 只在 macOS 为交通灯预留 84px 并划分 drag/no-drag 区域。Windows/Linux 继续使用原生标题栏与已移除默认菜单栏的现有行为。已在本机真实开发窗口确认单层外观、设置按钮和搜索框可交互；typecheck、150 项单测、生产构建、本地 DMG 和 19 组关键 Electron/IPC smoke 通过。
 - **v0.3.1 release 已发布**（`639de80` + tag `v0.3.1`）：完成 IDE 四段式工作台、文章上下文 AI 对话、搜索分页与订阅源操作闭环、新应用图标和内容清洗增强；同步将 `fast-xml-parser` 升级至 5.10.1，生产依赖审计为 0 项已知漏洞。发布前通过 typecheck、130 项单测、生产构建与 12 组关键 Electron/IPC smoke；GitHub Actions 成功生成并发布 `Juhe-Shiyi-0.3.1-arm64.dmg` 与 `Juhe-Shiyi-Setup-0.3.1-x64.exe`，远端下载后的版本、图标资源与 SHA-256 均已复核。
 - **应用图标已完成跨平台工程化（`0497eb6` 原始设计 + `f437fad` 圆角方向 + `6e2c596` 资源处理，合并于 `1b74960`）**：保留团队提交的象牙米黄奏章造型与透明圆角意图，将误用 `.png` 扩展名的 JPEG 美术源改为 `art/icon-source.jpg`，裁去过量外边距并增加透明圆角安全区；输出 1024×1024 打包 PNG、512×512 运行时 PNG 和 128×128 favicon。生产环境通过 `extraResources` 从 `process.resourcesPath/icon.png` 读取窗口图标，避免引用不会进入应用包的 `build/` 路径。`verify:icons` 检查真实格式、尺寸、RGBA 与透明/不透明像素；macOS DMG 的 ICNS 与源 PNG 逐像素一致，Windows EXE 内含 16–256 七档图标。
 - **IDE 工作台四段式布局（`8ca0998`，已发布）**：页面固定为“竖向功能栏 / 一级订阅源目录 / 二级文章目录 / 灵活窗口”。打开文章、标签、笔记、文摘、专题或设置时，前两级目录保持挂载且不被页面替换；仅最右灵活窗口切换内容。灵活窗口顶部保留可切换、可关闭的 IDE 标签条，但不创建永久“阅读器”标签。一级/二级目录分别设 218px/260px 最小宽度，工具按钮统一禁止文字换行。添加订阅源、导入 OPML、导出 OPML和添加订阅源组统一收进一级目录右上角“+”菜单。顶栏小三角、左上角重复阅读入口和右上角全局同步按钮均已移除；在阅读界面重复点击竖向首个“阅读”功能键，目录按“全开 → 收起一级 → 再收起二级 → 全开”循环，从其他页面点击则只返回阅读。“所有订阅源”与具体订阅源统一在二级目录标题下显示“同步 / 全部已读”，前者作用于全部源、后者只作用于当前源；未读、星标和标签筛选不显示范围含糊的批量操作。`Layout.test.ts` 验证固定结构、最小宽度、重复入口移除和三态目录，`FeedList.test.ts` 锁定“+”菜单操作。
@@ -192,12 +193,13 @@
 ## 路线图
 
 1. Phase 1–4.3、3.7、4.1、4.2：✅ 已完成
-2. Phase 5：v0.3.2 release 已发布（`v0.3.2` tag + 2 个 artifact）/ Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
+2. Phase 5：v0.3.3 release 准备中 / Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
 ## 近期记录（按 commit 倒序）
 
+- **macOS 单层标题栏（本次修改）**：修复默认原生标题栏与 React 工具栏叠成两行的问题；macOS 改用 `hiddenInset`，以自定义交通灯坐标对齐标题和搜索框，并在不暴露 Node 能力的前提下由 preload 标记平台，顶栏补齐交通灯安全区、窗口拖动区和交互控件 no-drag 区。新增窗口契约测试并完成真实窗口视觉与交互复核。
 - **`8f4303c`（张宇凡）**：v0.3.2 release — 版本升至 0.3.2，补充完整发布说明，移除 Windows/Linux 默认 Electron 菜单栏，并新增打包窗口顶部与 Logo 契约测试；GitHub Actions 双平台构建、Release 发布和远端资产复核均通过。
 - **摘要 Markdown 与标签布局（本次修改）**：扩展安全 Markdown 子集和摘要底栏块级样式；中栏标签改为标题下方、来源/时间上方独立换行，阅读区标签改为标题下方独立换行。新增 Markdown 单测、ArticleList DOM 顺序测试，并扩展摘要与标签 Electron smoke 断言。
 - **灵活窗口常驻与阅读回顶（本次修改）**：同一入口第二次打开即固定预览标签，窗口内按钮、链接、输入、设置修改、提交和面板拖动统一触发固定；移除翻译正文悬浮返回按钮，在阅读顶栏增加滚动后出现的回到文章开头图标，并更新单测、翻译 smoke 与集成 smoke。

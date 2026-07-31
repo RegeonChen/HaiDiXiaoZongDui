@@ -18,6 +18,16 @@ import {
 } from '../../shared/ipc.js';
 import type { AITranslationProgressEvent } from '../../shared/types.js';
 
+// 只把当前平台写入受控 DOM 属性，供窗口外壳选择 macOS 标题栏布局；
+// preload 可能早于 <html> 建立，因此同时覆盖立即可用和 DOMContentLoaded 两种时序。
+// 不向 Renderer 暴露 process 或其他 Node.js 能力。
+const rendererPlatform = process.platform;
+const markRendererPlatform = (): void => {
+  document.documentElement?.setAttribute('data-platform', rendererPlatform);
+};
+markRendererPlatform();
+window.addEventListener('DOMContentLoaded', markRendererPlatform, { once: true });
+
 // ============================================================
 // 辅助：类型安全的 invoke 封装
 // ============================================================

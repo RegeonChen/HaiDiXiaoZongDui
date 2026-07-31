@@ -209,6 +209,12 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
     minWidth: 960,
     minHeight: 600,
     show: false,
+    // macOS 将网页内容延伸进原生标题栏，让 46px 应用工具栏与红黄绿
+    // 窗口按钮共用一行。Windows / Linux 继续使用各自的原生标题栏。
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    // hiddenInset 默认位置相对 46px 工具栏略偏上；下移后与标题、搜索框
+    // 的视觉中心对齐。该选项仅在 macOS 生效。
+    trafficLightPosition: process.platform === 'darwin' ? { x: 14, y: 16 } : undefined,
     autoHideMenuBar: true,
     backgroundColor: '#1f1f23',
     title: '聚合拾遗',
@@ -4265,7 +4271,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               }
             }
             document.querySelector('.feed-list__tab[role="tab"]:first-of-type')?.click();
-            await sleep(100);
+            await waitFor(
+              () =>
+                !!document.querySelector('.feed-list__count') &&
+                !!document.querySelector('.feed-list__group-count') &&
+                !!document.querySelector('.article-list__count'),
+              { timeout: 2000 }
+            );
           }
 
           // 2) AI 入口粗体 "AI" 字母
@@ -4559,6 +4571,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const generalSectionStyle = generalSection ? getComputedStyle(generalSection) : null;
           const generalSectionTitleStyle =
             generalSectionTitle ? getComputedStyle(generalSectionTitle) : null;
+          const settingsContent = document.querySelector('.settings-workspace__content');
+          const generalScrollbarWidth = settingsContent
+            ? settingsContent.offsetWidth - settingsContent.clientWidth
+            : 0;
           const generalMetrics = {
             titleFontSize: generalTitleStyle?.fontSize ?? null,
             titleFontWeight: generalTitleStyle?.fontWeight ?? null,
@@ -4583,6 +4599,15 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const aiTitleStyle = aiTitle ? getComputedStyle(aiTitle) : null;
           const aiSectionStyle = aiSection ? getComputedStyle(aiSection) : null;
           const aiSectionTitleStyle = aiSectionTitle ? getComputedStyle(aiSectionTitle) : null;
+          const aiScrollbarWidth = settingsContent
+            ? settingsContent.offsetWidth - settingsContent.clientWidth
+            : 0;
+          const generalContentWidth = generalSurfaceRect
+            ? generalSurfaceRect.width + generalScrollbarWidth
+            : null;
+          const aiContentWidth = aiSurfaceRect
+            ? aiSurfaceRect.width + aiScrollbarWidth
+            : null;
           report.phase42.checks.settingsPagesUseSharedStructure =
             !!generalSurface?.querySelector('.settings-surface__header') &&
             !!generalSurface?.querySelector('.settings-surface__section-body') &&
@@ -4590,7 +4615,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             !!aiSurface?.querySelector('.settings-surface__section-body');
           report.phase42.checks.settingsPagesVisualMetricsUnified =
             !!generalSurfaceRect && !!aiSurfaceRect &&
-            Math.abs(generalSurfaceRect.width - aiSurfaceRect.width) <= 1 &&
+            generalContentWidth !== null && aiContentWidth !== null &&
+            Math.abs(generalContentWidth - aiContentWidth) <= 1 &&
             generalMetrics.titleFontSize === aiTitleStyle?.fontSize &&
             generalMetrics.titleFontWeight === aiTitleStyle?.fontWeight &&
             generalMetrics.titleLineHeight === aiTitleStyle?.lineHeight &&
@@ -4603,6 +4629,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.phase42.checks.settingsPageMetrics = {
             generalWidth: generalSurfaceRect?.width ?? null,
             aiWidth: aiSurfaceRect?.width ?? null,
+            generalScrollbarWidth,
+            aiScrollbarWidth,
+            generalContentWidth,
+            aiContentWidth,
             generalTitleFont: generalMetrics.titleFontSize,
             aiTitleFont: aiTitleStyle?.fontSize ?? null,
             generalSectionRadius: generalMetrics.sectionBorderRadius,
