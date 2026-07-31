@@ -102,7 +102,7 @@ describe('FeedList', () => {
     expect(empty?.classList.contains('status-view')).toBe(true);
     expect(empty?.querySelector('.status-title')?.textContent).toBe('还没有标签');
     expect(empty?.querySelector('.status-hint')?.textContent).toBe(
-      '在文章阅读区点击“标签”或“标签建议”添加。'
+      '在文章阅读区点击“标签”创建或应用。'
     );
     expect(empty?.querySelector('br')).toBeNull();
   });
