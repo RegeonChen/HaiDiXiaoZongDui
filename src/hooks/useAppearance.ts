@@ -71,23 +71,55 @@ function applyToHtml(
 
   // 只有"浅色 + paper"才写暖黄变量。
   // 深色 + paper 时不写 → CSS 走 useTheme 的 dark 调色板（与 classic 深色一致）。
+  //
+  // Phase 4.3.2 真根因修复:之前只覆写 7 个变量(--bg / --bg-elev / --bg-elev-hover /
+  //   --fg / --fg-soft / --border / --border-soft),剩下的 13 个布局/UI 变量
+  //   (--workspace-bg / --toolbar-bg / --sidebar-bg / --activity-bg / --tabbar-bg
+  //   / --muted / --border-strong / --accent / --accent-hover / --accent-soft
+  //   / --focus-ring / --shadow-sm / --shadow-md)仍是浅色默认,导致工作区 /
+  //   顶栏工具栏 / 侧栏 / 功能栏 / tab 栏 / accent 系全部仍是浅灰,只有部分
+  //   区域变暖。下面把所有 UI 变量都补齐,确保"整个界面"都是护眼暖色调。
+  // --ok / --err / --warn 状态色在暖黄底上仍清晰可辨,保持原值。
   if (visualTheme === 'paper' && effectiveTheme === 'light') {
+    // 主背景三件套
     html.style.setProperty('--bg', '#f4ecd8');
     html.style.setProperty('--bg-elev', '#ede1c2');
     html.style.setProperty('--bg-elev-hover', '#e3d6b0');
+    // 布局层级背景(之前是浅灰,补齐暖色)
+    html.style.setProperty('--workspace-bg', '#f0e7cf');
+    html.style.setProperty('--toolbar-bg', '#ebe0c5');
+    html.style.setProperty('--sidebar-bg', '#ebe0c5');
+    html.style.setProperty('--activity-bg', '#e3d6b0');
+    html.style.setProperty('--tabbar-bg', '#ede1c2');
+    // 文字
     html.style.setProperty('--fg', '#3a2e1a');
     html.style.setProperty('--fg-soft', '#6b5a3e');
+    html.style.setProperty('--muted', '#8a7855');
+    // 边框
     html.style.setProperty('--border', '#d6c8a4');
     html.style.setProperty('--border-soft', '#e0d5b6');
+    html.style.setProperty('--border-strong', '#b9a87f');
+    // 主题强调色:原 #4776e6 蓝色与暖黄底冲突,改为暖橙
+    html.style.setProperty('--accent', '#b5681a');
+    html.style.setProperty('--accent-hover', '#9a5816');
+    html.style.setProperty('--accent-soft', '#f0d9b0');
+    html.style.setProperty('--focus-ring', 'rgb(181 104 26 / 22%)');
+    // 阴影:用暖棕色而不是冷黑
+    html.style.setProperty('--shadow-sm', '0 1px 2px rgb(108 76 26 / 8%)');
+    html.style.setProperty('--shadow-md', '0 10px 28px rgb(108 76 26 / 18%)');
   } else {
     // 切换回 classic 或切到深色：清掉 paper 变量，让 useTheme / :root 默认值生效
-    html.style.removeProperty('--bg');
-    html.style.removeProperty('--bg-elev');
-    html.style.removeProperty('--bg-elev-hover');
-    html.style.removeProperty('--fg');
-    html.style.removeProperty('--fg-soft');
-    html.style.removeProperty('--border');
-    html.style.removeProperty('--border-soft');
+    const paperProps = [
+      '--bg', '--bg-elev', '--bg-elev-hover',
+      '--workspace-bg', '--toolbar-bg', '--sidebar-bg', '--activity-bg', '--tabbar-bg',
+      '--fg', '--fg-soft', '--muted',
+      '--border', '--border-soft', '--border-strong',
+      '--accent', '--accent-hover', '--accent-soft', '--focus-ring',
+      '--shadow-sm', '--shadow-md'
+    ];
+    for (const prop of paperProps) {
+      html.style.removeProperty(prop);
+    }
   }
 
   if (typeof fontSize === 'number' && fontSize >= 10 && fontSize <= 32) {
