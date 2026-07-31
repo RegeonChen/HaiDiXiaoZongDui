@@ -2,7 +2,7 @@
 
 跨平台、本地优先的桌面 RSS 阅读器。Electron 43 + React 18 + TypeScript strict + SQLite。
 
-**当前版本：0.3.1 | 开发阶段：Phase 5（交付准备）**
+**当前版本：0.3.2 | 开发阶段：Phase 5（交付准备）**
 
 ## 功能特性
 

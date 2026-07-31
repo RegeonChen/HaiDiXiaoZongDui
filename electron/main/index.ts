@@ -209,6 +209,7 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
     minWidth: 960,
     minHeight: 600,
     show: false,
+    autoHideMenuBar: true,
     backgroundColor: '#1f1f23',
     title: '聚合拾遗',
     icon: getAppIconPath(),
@@ -222,6 +223,9 @@ async function createMainWindow(trustedRendererUrl: string): Promise<void> {
       webviewTag: true
     }
   });
+  // Windows / Linux 不显示 Electron 默认的 File/Edit/View 菜单栏，
+  // 避免它与应用自己的 46px 顶部工具栏叠成两层。
+  win.removeMenu();
   // 临时 debug:转发 renderer console.log 到主进程 stdout
   //   Electron 28+ 新签名:event 对象含 message / level / lineNumber / sourceId
   //   老签名:(event, level, message, line, sourceId) 也兼容
@@ -4235,7 +4239,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.phase42.checks.feedTagEmptyHasUnifiedCopy =
               tagEmptyPrompt?.querySelector('.status-title')?.textContent === '还没有标签' &&
               tagEmptyPrompt?.querySelector('.status-hint')?.textContent ===
-                '在文章阅读区点击“标签”或“标签建议”添加。';
+                '在文章阅读区点击“标签”创建或应用。';
             if (tagEmptyPrompt) {
               const tagEmptyStyle = getComputedStyle(tagEmptyPrompt);
               report.phase42.checks.feedTagEmptyBorderless =
