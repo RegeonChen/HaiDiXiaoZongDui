@@ -108,13 +108,18 @@
 .article-list__article-title {
   font-size: 0.93em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   line-height: 1.4;
+  display: block;         /* Bug fix:作为块级元素,让浮动的标签只影响首行 */
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.article-list__title-block {
   flex: 1;
   min-width: 0;
+  overflow: hidden;       /* 包含浮动子元素,同时让 line-clamp 生效 */
 }
 
 /* Phase 3.6.4：已读文章仅灰色，无删除线 */
@@ -226,10 +231,11 @@
   min-width: 0;
 }
 .article-list__title-tags {
-  display: inline-flex;
+  float: left;
+  margin-right: 4px;
+  display: flex;
   flex-wrap: wrap;
   gap: 3px;
-  flex-shrink: 0;
   vertical-align: baseline;
 }
 .article-list__title-tag {

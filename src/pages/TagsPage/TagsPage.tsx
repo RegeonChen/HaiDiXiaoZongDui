@@ -156,6 +156,7 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
   }, [selectedTagId, ds, tags, tagArticlesReloadKey]); // tags 依赖：tag 改名/改色/删除时重新拉
 
   const handleSelectTag = useCallback((tagId: string) => {
+    if (tagId === selectedTagIdRef.current) return; // 同一标签:不做任何操作,避免清除已加载列表
     setTagArticles(null);
     setTagArticleTotal(0);
     setTagArticlesError(null);

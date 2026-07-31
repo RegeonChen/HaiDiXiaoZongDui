@@ -161,24 +161,26 @@ export function ArticleList({ feeds, articles, selectedArticleId, onSelect, onOp
                   title={`${cleanTitle}\n${a.author ?? ''}`}
                 >
                   <div className="article-list__row1">
-                    <span className={`article-list__dot ${a.isRead ? 'is-read' : 'is-unread'}`} aria-hidden="true" />
-                    {titleTags.length > 0 && (
-                      <span className="article-list__title-tags" data-testid="article-list__title-tags">
-                        {titleTags.map((t, i) => (
-                          <span
-                            key={`${t.name}-${i}`}
-                            className="article-list__title-tag"
-                            style={{ background: t.color ?? 'var(--accent)' }}
-                            title={`标签：${t.name}`}
-                          >
-                            {t.name}
-                          </span>
-                        ))}
-                      </span>
-                    )}
-                    <span className="article-list__article-title">{cleanTitle}</span>
-                    {a.isStarred && <span className="article-list__star" aria-label="已加星标">★</span>}
-                  </div>
+                <span className={`article-list__dot ${a.isRead ? 'is-read' : 'is-unread'}`} aria-hidden="true" />
+                <div className="article-list__title-block">
+                  {titleTags.length > 0 && (
+                    <span className="article-list__title-tags" data-testid="article-list__title-tags">
+                      {titleTags.map((t, i) => (
+                        <span
+                          key={`${t.name}-${i}`}
+                          className="article-list__title-tag"
+                          style={{ background: t.color ?? 'var(--accent)' }}
+                          title={`标签：${t.name}`}
+                        >
+                          {t.name}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  <span className="article-list__article-title">{cleanTitle}</span>
+                </div>
+                {a.isStarred && <span className="article-list__star" aria-label="已加星标">★</span>}
+              </div>
                   <div className="article-list__row2">
                     <span className="article-list__feed">{feedTitleById.get(a.feedId) ?? '未知'}</span>
                     <span className="article-list__time" title={formatAbsolute(a.publishedAt)}>
