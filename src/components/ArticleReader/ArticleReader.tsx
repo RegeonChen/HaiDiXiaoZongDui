@@ -850,46 +850,42 @@ export function ArticleReader({
             >
         <header className="article-reader__header">
           <h1 className="article-reader__title">
-            {/* Phase 4.1.1:标题前彩色标签 chips
-                - 优先用 articleTags state(ds.tagGetByArticle 拉取,增删实时同步)
-                - 兜底用 parseArticleTitleTags(article.title) 解析 tag prefix(后端存储),
-                  处理 articleTags 异步未到位的 150ms 空窗期
-                - 按 name 去重,确保不重复渲染 */}
-            {(() => {
-              const titleTags = parseArticleTitleTags(article.title).tags;
-              const seen = new Set<string>();
-              // Tag.color 是 string | null，parsed tags 的 color 是 string | undefined；统一为 string | null | undefined
-              const merged: Array<{ name: string; color: string | null | undefined; key: string }> = [];
-              for (const t of articleTags) {
-                if (!seen.has(t.name)) {
-                  seen.add(t.name);
-                  merged.push({ name: t.name, color: t.color, key: t.id });
-                }
-              }
-              for (const t of titleTags) {
-                if (!seen.has(t.name)) {
-                  seen.add(t.name);
-                  merged.push({ name: t.name, color: t.color, key: `title-${t.name}` });
-                }
-              }
-              if (merged.length === 0) return null;
-              return (
-                <span className="article-reader__title-tags" data-testid="article-reader__title-tags">
-                  {merged.map((t) => (
-                    <span
-                      key={t.key}
-                      className="article-reader__title-tag"
-                      style={{ background: t.color ?? 'var(--accent)' }}
-                      title={`标签：${t.name}`}
-                    >
-                      {t.name}
-                    </span>
-                  ))}
-                </span>
-              );
-            })()}
             <span className="article-reader__title-text">{parseArticleTitleTags(article.title).cleanTitle}</span>
           </h1>
+          {/* 标签放在标题下方并独立换行，不再挤占标题的行宽。
+              优先使用实时 articleTags，标题前缀用于异步加载期间兜底，并按名称去重。 */}
+          {(() => {
+            const titleTags = parseArticleTitleTags(article.title).tags;
+            const seen = new Set<string>();
+            const merged: Array<{ name: string; color: string | null | undefined; key: string }> = [];
+            for (const t of articleTags) {
+              if (!seen.has(t.name)) {
+                seen.add(t.name);
+                merged.push({ name: t.name, color: t.color, key: t.id });
+              }
+            }
+            for (const t of titleTags) {
+              if (!seen.has(t.name)) {
+                seen.add(t.name);
+                merged.push({ name: t.name, color: t.color, key: `title-${t.name}` });
+              }
+            }
+            if (merged.length === 0) return null;
+            return (
+              <div className="article-reader__title-tags" data-testid="article-reader__title-tags">
+                {merged.map((t) => (
+                  <span
+                    key={t.key}
+                    className="article-reader__title-tag"
+                    style={{ background: t.color ?? 'var(--accent)' }}
+                    title={`标签：${t.name}`}
+                  >
+                    {t.name}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
           <div className="article-reader__meta">
             {feed && <span className="article-reader__feed">{feed.siteTitle || feed.title}</span>}
             {article.author && <span className="article-reader__sep">·</span>}

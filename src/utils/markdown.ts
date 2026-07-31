@@ -7,19 +7,17 @@
  *   - 安全：先 escape HTML，再做有限的语法转换
  *
  * 支持语法：
+ *   - ATX 标题（# ～ ######）
+ *   - 有序 / 无序列表及缩进嵌套
+ *   - 引用、分隔线和 fenced code block
  *   - **bold** 或 __bold__
  *   - *italic* 或 _italic_
  *   - `code`
  *   - [text](url) （链接：仅允许 http/https/mailto 协议）
- *   - 段落（双换行）
+ *   - 段落
  *   - 行内换行：单个 \n 转为 <br>
  *
- * 不支持（Phase 4 再扩）：
- *   - 列表（- item / 1. item）—— 保留原文
- *   - 标题（# / ##）—— 保留原文
- *   - 引用（>）—— 保留原文
- *   - 代码块（```）—— 保留原文
- *   - 图片（![alt](url)）—— 保留原文
+ * 图片仍按普通文本保留，避免 AI 结果静默加载外部资源。
  */
 const ESCAPE_MAP: Record<string, string> = {
   '&': '&amp;',
@@ -95,23 +93,151 @@ function renderInline(text: string): string {
   return out;
 }
 
+interface ParsedListLine {
+  indent: number;
+  ordered: boolean;
+  content: string;
+}
+
+function parseListLine(line: string): ParsedListLine | null {
+  const match = line.match(/^([ \t]*)([-+*]|\d+[.)])\s+(.+)$/);
+  if (!match) return null;
+  return {
+    indent: match[1].replace(/\t/g, '    ').length,
+    ordered: /^\d/.test(match[2]),
+    content: match[3]
+  };
+}
+
+function renderList(
+  lines: string[],
+  start: number,
+  baseIndent: number,
+  ordered: boolean
+): { html: string; next: number } {
+  const tag = ordered ? 'ol' : 'ul';
+  let html = `<${tag}>`;
+  let index = start;
+  let itemOpen = false;
+
+  while (index < lines.length) {
+    const parsed = parseListLine(lines[index]);
+    if (!parsed || parsed.indent < baseIndent) break;
+
+    if (parsed.indent > baseIndent) {
+      if (!itemOpen) break;
+      const nested = renderList(lines, index, parsed.indent, parsed.ordered);
+      html += nested.html;
+      index = nested.next;
+      continue;
+    }
+
+    if (parsed.ordered !== ordered) break;
+    if (itemOpen) html += '</li>';
+    html += `<li>${renderInline(parsed.content)}`;
+    itemOpen = true;
+    index += 1;
+  }
+
+  if (itemOpen) html += '</li>';
+  html += `</${tag}>`;
+  return { html, next: index };
+}
+
+function isHorizontalRule(line: string): boolean {
+  return /^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.test(line);
+}
+
+function startsBlock(line: string): boolean {
+  return /^\s{0,3}(#{1,6})\s+/.test(line) ||
+    /^\s{0,3}(`{3,}|~{3,})/.test(line) ||
+    /^\s{0,3}>/.test(line) ||
+    parseListLine(line) !== null ||
+    isHorizontalRule(line);
+}
+
 /**
  * 渲染完整 Markdown → HTML。
- *  - 双换行分段
- *  - 单换行变 <br>
- *  - 行内做有限语法（bold/italic/code/link）
+ * 使用安全的 GFM 子集，先识别块级结构，再对文本执行 escape + 行内语法转换。
  */
 export function renderMarkdown(input: string): string {
   if (!input) return '';
-  // 段落分割：双换行
-  const paragraphs = input.split(/\n{2,}/);
-  return paragraphs
-    .map((para) => {
-      // 段落内单换行 → <br>
-      const html = renderInline(para).replace(/\n/g, '<br>');
-      return `<p>${html}</p>`;
-    })
-    .join('');
+  const lines = input.replace(/\r\n?/g, '\n').split('\n');
+  const blocks: string[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.trim() === '') {
+      index += 1;
+      continue;
+    }
+
+    const fence = line.match(/^\s{0,3}(`{3,}|~{3,})\s*([^\s]*)\s*$/);
+    if (fence) {
+      const marker = fence[1];
+      const markerChar = marker[0];
+      const closing = new RegExp(`^\\s{0,3}${markerChar}{${marker.length},}\\s*$`);
+      const codeLines: string[] = [];
+      index += 1;
+      while (index < lines.length && !closing.test(lines[index])) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      const language = /^[a-z0-9_-]+$/i.test(fence[2]) ? fence[2] : '';
+      const className = language ? ` class="language-${language}"` : '';
+      blocks.push(`<pre><code${className}>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+      continue;
+    }
+
+    const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*$/);
+    if (heading) {
+      const level = heading[1].length;
+      const content = heading[2].replace(/\s+#+\s*$/, '');
+      blocks.push(`<h${level}>${renderInline(content)}</h${level}>`);
+      index += 1;
+      continue;
+    }
+
+    if (isHorizontalRule(line)) {
+      blocks.push('<hr>');
+      index += 1;
+      continue;
+    }
+
+    const listLine = parseListLine(line);
+    if (listLine) {
+      const rendered = renderList(lines, index, listLine.indent, listLine.ordered);
+      blocks.push(rendered.html);
+      index = rendered.next;
+      continue;
+    }
+
+    if (/^\s{0,3}>/.test(line)) {
+      const quoteLines: string[] = [];
+      while (index < lines.length && /^\s{0,3}>/.test(lines[index])) {
+        quoteLines.push(lines[index].replace(/^\s{0,3}>\s?/, ''));
+        index += 1;
+      }
+      blocks.push(`<blockquote>${renderMarkdown(quoteLines.join('\n'))}</blockquote>`);
+      continue;
+    }
+
+    const paragraphLines = [line];
+    index += 1;
+    while (
+      index < lines.length &&
+      lines[index].trim() !== '' &&
+      !startsBlock(lines[index])
+    ) {
+      paragraphLines.push(lines[index]);
+      index += 1;
+    }
+    blocks.push(`<p>${paragraphLines.map(renderInline).join('<br>')}</p>`);
+  }
+
+  return blocks.join('');
 }
 
 /**

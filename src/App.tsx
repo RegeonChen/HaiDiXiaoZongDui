@@ -317,8 +317,15 @@ export function App() {
   }, [ds]);
 
   const refreshTagsAndCounts = useCallback(async () => {
-    await Promise.all([refreshTags(), refreshTagCounts()]);
-  }, [refreshTagCounts, refreshTags]);
+    const filter: Parameters<typeof refreshArticles>[0] = {};
+    const feedId = selection.feedId;
+    if (feedId === 'unread') filter.isRead = false;
+    else if (feedId === 'starred') filter.isStarred = true;
+    else if (feedId.startsWith('tag:')) filter.tagIds = [feedId.slice(4)];
+    else if (feedId !== 'all') filter.feedId = feedId;
+    // 标签写入会同步回写文章标题前缀；同时刷新当前分页，确保中栏标签立即更新。
+    await Promise.all([refreshTags(), refreshTagCounts(), refreshArticles(filter)]);
+  }, [refreshArticles, refreshTagCounts, refreshTags, selection.feedId]);
 
   // Phase 3.5.x：拉所有订阅源组名（侧栏"添加组"按钮 + 移动到组子菜单共用）
   // 合并服务端实际组名 + 本地"用户主动添加的空组"缓存,

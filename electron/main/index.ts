@@ -158,7 +158,7 @@ const SMOKE_FLAGS = {
   smokeInlineTransSplitError: process.env['JUHE_SHIVI_SMOKE_INLINE_TRANS_SPLIT_ERROR'] === '1',
   // Phase 3.7.1：搜索解耦（onSelect 传 Article 完整对象）+ 文章列表分页（hasMore 按钮）
   smokeSearchPagination: process.env['JUHE_SHIVI_SMOKE_SEARCH_PAGINATION'] === '1',
-  // Phase 4.1.1：订阅源操作按钮（同步 + 全部已读）+ 标签渲染（ArticleList/ArticleReader 标题前 chips）+ TagsPage 双栏
+  // Phase 4.1.1：订阅源操作按钮（同步 + 全部已读）+ 标签渲染（列表底部 / 阅读标题下方）+ TagsPage 双栏
   smokeFeedActions: process.env['JUHE_SHIVI_SMOKE_FEED_ACTIONS'] === '1',
   // Phase 4.1.4：OPML 选择性导出子界面（OpmlExportPage 勾选 + 全选 + 确认传 feedIds）
   smokeOpmlExportSelection: process.env['JUHE_SHIVI_SMOKE_OPML_EXPORT_SELECTION'] === '1',
@@ -1515,6 +1515,11 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             !!summaryContent && (summaryContent.textContent || '').includes('mock 摘要');
           report.summary.checks.markdownRendered =
             !!summaryContent?.querySelector('strong');
+          report.summary.checks.markdownBlockStructureRendered =
+            !!summaryContent?.querySelector('h2') &&
+            !!summaryContent?.querySelector('h3') &&
+            summaryContent?.querySelectorAll('ul').length === 2 &&
+            summaryContent?.querySelectorAll('li').length === 3;
           report.summary.checks.toolbarButtonActive =
             document.querySelector('[data-tool="summary"]')?.classList.contains('is-active') === true;
 
@@ -1576,7 +1581,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.summary.ok = [
             'panelInitiallyCollapsed', 'summaryTabInBottomBar', 'noFloatingPanel',
             'summaryPanelOpened', 'summaryTabActive', 'loadingVisible',
-            'summaryContentVisible', 'markdownRendered', 'toolbarButtonActive',
+            'summaryContentVisible', 'markdownRendered', 'markdownBlockStructureRendered',
+            'toolbarButtonActive',
             'panelResizable', 'toolbarButtonCollapsesPanel', 'cachedSummaryReopened',
             'sharesPanelWithTags', 'closeButtonCollapsesPanel', 'floatingPanelStillAbsent'
           ].every((key) => report.summary.checks[key] === true);
@@ -2735,7 +2741,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           // Phase 4.1.1:articleTagMap 渲染区(空时无 chip)
           const debug = (window).__JUHE_ARTICLE_DEBUG__;
           report.feedActions.checks.articleDebugExposed = !!debug;
-          // 标题前 chips 容器初始为空
+          // 标题下方 chips 容器初始为空
           const beforeChips = document.querySelectorAll('.article-reader__title-tag').length;
           report.feedActions.checks.articleTitleChipsEmptyBefore = beforeChips === 0;
 
@@ -2764,6 +2770,34 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.feedActions.checks.articleTitleChipRenderedAfter =
             Array.from(document.querySelectorAll('.article-reader__title-tag'))
               .some((chip) => (chip.textContent || '').includes('Phase411|Tag]'));
+          const readerTitle = document.querySelector('.article-reader__title');
+          const readerTags = document.querySelector('.article-reader__title-tags');
+          const readerHeader = document.querySelector('.article-reader__header');
+          report.feedActions.checks.articleReaderTagsBelowTitle =
+            !!readerTitle && !!readerTags && !!readerHeader &&
+            Array.from(readerHeader.children).indexOf(readerTags) >
+              Array.from(readerHeader.children).indexOf(readerTitle);
+          report.feedActions.checks.articleReaderTagsWrap =
+            !!readerTags && getComputedStyle(readerTags).flexWrap === 'wrap';
+          await waitFor(
+            () => Array.from(document.querySelectorAll('.article-list__title-tag'))
+              .some((chip) => (chip.textContent || '').includes('Phase411|Tag]')),
+            { timeout: 3000 }
+          );
+          const activeListItem = document.querySelector('.article-list__item.is-active');
+          const listTitleBlock = activeListItem?.querySelector('.article-list__title-block');
+          const listTagsRow = activeListItem?.querySelector('.article-list__tags-row');
+          const listTags = activeListItem?.querySelector('.article-list__title-tags');
+          const listTitleRow = activeListItem?.querySelector('.article-list__row1');
+          const listMetaRow = activeListItem?.querySelector('.article-list__row2');
+          const listChildren = activeListItem ? Array.from(activeListItem.children) : [];
+          report.feedActions.checks.articleListTagsBelowTitle =
+            !!listTitleRow && !!listTagsRow && !!listMetaRow &&
+            listChildren.indexOf(listTitleRow) < listChildren.indexOf(listTagsRow) &&
+            listChildren.indexOf(listTagsRow) < listChildren.indexOf(listMetaRow) &&
+            !listTitleBlock?.contains(listTags);
+          report.feedActions.checks.articleListTagsWrap =
+            !!listTags && getComputedStyle(listTags).flexWrap === 'wrap';
 
           // 11) 切到 tags 页面 → 双栏布局
           const tagsNav = Array.from(document.querySelectorAll('.app-header__nav-btn'))
@@ -2842,6 +2876,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           'actionBarHiddenOnUnread',
           'articleReaderOpened', 'articleDebugExposed',
           'articleTitleChipsEmptyBefore', 'articleTitleChipRenderedAfter',
+          'articleReaderTagsBelowTitle', 'articleReaderTagsWrap',
+          'articleListTagsBelowTitle', 'articleListTagsWrap',
           'tagsPageOpened', 'tagsPageTwoColumnLayout',
           'tagsPageFormRendered', 'tagsPageRightHintWhenNoSelection',
           'tagCreatedAndRendered', 'tagNameCorrect',
@@ -3390,8 +3426,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             articleItems[0].click();
 
             // 等阅读区标题元素出现
-            // Phase 4.1.1:article-reader__title 现在包含 chip + title-text,
-            //   textContent 包含 chip name + title,严格 === 比较会失败 — 改用 includes
+            // 标签已经移到标题下方，标题元素只包含文章标题。
             const readerTitle = await waitFor(() => {
               const el = document.querySelector('.article-reader__title');
               if (!el) return null;

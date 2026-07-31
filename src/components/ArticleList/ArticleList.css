@@ -108,7 +108,7 @@
 .article-list__article-title {
   font-size: 0.93em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   line-height: 1.4;
-  display: block;         /* Bug fix:作为块级元素,让浮动的标签只影响首行 */
+  width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -119,7 +119,7 @@
 .article-list__title-block {
   flex: 1;
   min-width: 0;
-  overflow: hidden;       /* 包含浮动子元素,同时让 line-clamp 生效 */
+  overflow: hidden;
 }
 
 /* Phase 3.6.4：已读文章仅灰色，无删除线 */
@@ -223,23 +223,25 @@
   pointer-events: none;
 }
 
-/* Phase 4.1.1:标题前彩色标签 chips（与 ArticleReader 标题前 chips 风格一致） */
-.article-list__row1 {
+/* 标签独占标题下方一行，数量多时在中栏宽度内自然换行。 */
+.article-list__tags-row {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  width: 100%;
   min-width: 0;
 }
+
 .article-list__title-tags {
-  float: left;
-  margin-right: 4px;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 3px;
-  vertical-align: baseline;
+  min-width: 0;
+  max-width: 100%;
 }
+
 .article-list__title-tag {
-  display: inline-block;
+  display: inline-flex;
+  max-width: 100%;
   padding: 1px 7px;
   font-size: 0.71em;  /* Phase 4.2.1:em 相对 var(--ui-font-size) */
   font-weight: 600;
@@ -248,8 +250,7 @@
   line-height: 1.5;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
   letter-spacing: 0.02em;
-  white-space: nowrap;
-  vertical-align: baseline;
+  overflow-wrap: anywhere;
 }
 
 /* Phase 4.1.1:中栏顶部操作按钮 slot(同步 / 全部已读) */

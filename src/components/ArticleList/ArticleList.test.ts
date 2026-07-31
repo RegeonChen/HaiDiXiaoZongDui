@@ -170,4 +170,34 @@ describe('ArticleList automatic pagination', () => {
     expect(onSelect).toHaveBeenCalledWith('article-1');
     expect(onOpenPermanent).toHaveBeenCalledWith('article-1');
   });
+
+  it('places wrapped tags below the title and above metadata without reducing title width', async () => {
+    const taggedArticle: Article = {
+      ...articles[0],
+      title: '[tag:标签一|#2563eb] [tag:标签二|#059669] 完整文章标题'
+    };
+    await act(async () => {
+      root.render(
+        createElement(ArticleList, {
+          feeds: [],
+          articles: [taggedArticle],
+          selectedArticleId: null,
+          onSelect: () => undefined,
+          filterLabel: '所有订阅源'
+        })
+      );
+    });
+
+    const item = container.querySelector('.article-list__item');
+    const row1 = item?.querySelector('.article-list__row1');
+    const row2 = item?.querySelector('.article-list__row2');
+    const tagsRow = item?.querySelector('[data-testid="article-list__tags-row"]');
+    const titleBlock = item?.querySelector('.article-list__title-block');
+    const tags = item?.querySelector('[data-testid="article-list__title-tags"]');
+
+    expect(item && Array.from(item.children)).toEqual([row1, tagsRow, row2]);
+    expect(titleBlock?.contains(tags ?? null)).toBe(false);
+    expect(titleBlock?.textContent).toBe('完整文章标题');
+    expect(tags?.querySelectorAll('.article-list__title-tag')).toHaveLength(2);
+  });
 });

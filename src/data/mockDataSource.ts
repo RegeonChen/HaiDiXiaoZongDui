@@ -738,7 +738,7 @@ export class MockDataSource implements DataSource {
     await delay(50);
     return {
       kind: 'ready',
-      data: '**这是一段 mock 摘要。**\n\n实际使用时会调用配置的 AI Provider 生成摘要。当前为 mock 模式演示。'
+      data: '## mock 摘要\n\n**概览**：实际使用时会调用配置的 AI Provider 生成摘要。\n\n### 关键点\n\n- 支持多级标题\n- 支持无序列表\n  - 支持嵌套条目'
     };
   }
 
