@@ -93,8 +93,9 @@
 
 ## 当前状态
 
-截至 2026-07-30：
+截至 2026-07-31：
 
+- **v0.3.2 release 已发布**（`8f4303c` + tag `v0.3.2`）：完成首次启动教程、灵活窗口常驻语义、摘要底部栏与 Markdown 块级渲染、文章标签换行排版、阅读回顶、纸质主题完善、AI Provider `safeStorage` 凭证加密和 Electron 43/Vite 7 工具链升级。发布前通过 typecheck、149 项单测、生产构建、17 组关键 Electron/IPC smoke 与本地 Apple Silicon DMG 打包，生产依赖审计为 0 项已知漏洞。GitHub Actions run `30635226675` 成功生成并发布 `Juhe-Shiyi-0.3.2-arm64.dmg`（132,441,023 bytes，SHA-256 `dd8fc91bd77ed162b4c03be1699f42cf88bff997a0729145fc36e205e1ba783b`）和 `Juhe-Shiyi-Setup-0.3.2-x64.exe`（114,468,043 bytes，SHA-256 `6edef9fa3e7c8f79d640acdc8bd27d1a0f21b545cc84b0a5e936041dea37f3f0`）。远端下载后复核了 DMG 内版本/ICNS/运行时 PNG、Windows 安装器和主程序 16–256 七档图标，以及 Windows `app.asar` 中的 0.3.2 版本和默认菜单栏移除配置。Actions v4 当前会显示 Node 20 弃用但强制使用 Node 24 的非阻塞提示，后续应升级对应 Action 主版本。
 - **v0.3.1 release 已发布**（`639de80` + tag `v0.3.1`）：完成 IDE 四段式工作台、文章上下文 AI 对话、搜索分页与订阅源操作闭环、新应用图标和内容清洗增强；同步将 `fast-xml-parser` 升级至 5.10.1，生产依赖审计为 0 项已知漏洞。发布前通过 typecheck、130 项单测、生产构建与 12 组关键 Electron/IPC smoke；GitHub Actions 成功生成并发布 `Juhe-Shiyi-0.3.1-arm64.dmg` 与 `Juhe-Shiyi-Setup-0.3.1-x64.exe`，远端下载后的版本、图标资源与 SHA-256 均已复核。
 - **应用图标已完成跨平台工程化（`0497eb6` 原始设计 + `f437fad` 圆角方向 + `6e2c596` 资源处理，合并于 `1b74960`）**：保留团队提交的象牙米黄奏章造型与透明圆角意图，将误用 `.png` 扩展名的 JPEG 美术源改为 `art/icon-source.jpg`，裁去过量外边距并增加透明圆角安全区；输出 1024×1024 打包 PNG、512×512 运行时 PNG 和 128×128 favicon。生产环境通过 `extraResources` 从 `process.resourcesPath/icon.png` 读取窗口图标，避免引用不会进入应用包的 `build/` 路径。`verify:icons` 检查真实格式、尺寸、RGBA 与透明/不透明像素；macOS DMG 的 ICNS 与源 PNG 逐像素一致，Windows EXE 内含 16–256 七档图标。
 - **IDE 工作台四段式布局（`8ca0998`，已发布）**：页面固定为“竖向功能栏 / 一级订阅源目录 / 二级文章目录 / 灵活窗口”。打开文章、标签、笔记、文摘、专题或设置时，前两级目录保持挂载且不被页面替换；仅最右灵活窗口切换内容。灵活窗口顶部保留可切换、可关闭的 IDE 标签条，但不创建永久“阅读器”标签。一级/二级目录分别设 218px/260px 最小宽度，工具按钮统一禁止文字换行。添加订阅源、导入 OPML、导出 OPML和添加订阅源组统一收进一级目录右上角“+”菜单。顶栏小三角、左上角重复阅读入口和右上角全局同步按钮均已移除；在阅读界面重复点击竖向首个“阅读”功能键，目录按“全开 → 收起一级 → 再收起二级 → 全开”循环，从其他页面点击则只返回阅读。“所有订阅源”与具体订阅源统一在二级目录标题下显示“同步 / 全部已读”，前者作用于全部源、后者只作用于当前源；未读、星标和标签筛选不显示范围含糊的批量操作。`Layout.test.ts` 验证固定结构、最小宽度、重复入口移除和三态目录，`FeedList.test.ts` 锁定“+”菜单操作。
@@ -172,7 +173,7 @@
 - **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ done 态 3 秒延迟 + 失败红点。
 - **三种阅读模式**（`e25343a` 张宇凡 + `9aef239` 张宇凡）：精简阅读 / 网页 / 分栏（左右各半），通过 `useReaderMode` hook + `shared/article-webview.ts` + 主进程 `installArticleWebviewSecurity`。
 - **GitHub Release 自动化**：`.github/workflows/release.yml` 推 `v*` tag → build-mac (DMG) + build-win (NSIS) + release job。
-- **25 个 smoke 命令 + 143 个单元测试**（另 6 个需外网的真实 Feed 测试按设计跳过）。Phase 4.3 新增 `smoke:onboarding`，使用真实数据库分别启动两次，验证首次自动显示、完整 8 步、设置重开、完成/跳过持久化和重启不再自动显示。
+- **25 个 smoke 命令 + 149 个单元测试**（另 6 个需外网的真实 Feed 测试按设计跳过）。Phase 4.3 新增 `smoke:onboarding`，使用真实数据库分别启动两次，验证首次自动显示、完整 8 步、设置重开、完成/跳过持久化和重启不再自动显示。
 - `shared/types.ts` + `shared/ipc.ts` 作为权威协议源；跨模块接口变更需同步更新并通知。
 
 ## 设计决策
@@ -191,12 +192,13 @@
 ## 路线图
 
 1. Phase 1–4.3、3.7、4.1、4.2：✅ 已完成
-2. Phase 5：v0.3.1 release 已发布（`v0.3.1` tag + 2 个 artifact）/ Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
+2. Phase 5：v0.3.2 release 已发布（`v0.3.2` tag + 2 个 artifact）/ Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
 ## 近期记录（按 commit 倒序）
 
+- **`8f4303c`（张宇凡）**：v0.3.2 release — 版本升至 0.3.2，补充完整发布说明，移除 Windows/Linux 默认 Electron 菜单栏，并新增打包窗口顶部与 Logo 契约测试；GitHub Actions 双平台构建、Release 发布和远端资产复核均通过。
 - **摘要 Markdown 与标签布局（本次修改）**：扩展安全 Markdown 子集和摘要底栏块级样式；中栏标签改为标题下方、来源/时间上方独立换行，阅读区标签改为标题下方独立换行。新增 Markdown 单测、ArticleList DOM 顺序测试，并扩展摘要与标签 Electron smoke 断言。
 - **灵活窗口常驻与阅读回顶（本次修改）**：同一入口第二次打开即固定预览标签，窗口内按钮、链接、输入、设置修改、提交和面板拖动统一触发固定；移除翻译正文悬浮返回按钮，在阅读顶栏增加滚动后出现的回到文章开头图标，并更新单测、翻译 smoke 与集成 smoke。
 - **摘要底部栏（本次修改）**：摘要不再弹出独立浮窗，改为阅读区底部栏中的同级 tab；删除 `SummaryFloatingPanel`，更新摘要和摘要/翻译共存 smoke，覆盖生成等待、Markdown 内容、缓存重开、与标签共栏、拉伸和收起。工具栏 toggle 统一使用固定文字和强调色选中态，删除与右上角重复的“询问 AI”；底栏控件补充随经典/纸质/深色主题变化的中性底色，并在 smoke 中断言单一 AI 入口、固定标签、选中颜色及纸质暖色状态。
