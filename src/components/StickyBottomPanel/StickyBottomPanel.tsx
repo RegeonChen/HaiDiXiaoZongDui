@@ -1,10 +1,10 @@
 /**
  * StickyBottomPanel — 文章阅读区粘性底部面板（Phase 3.5.x 整合）
  *
- *  - 多个 panel（标签管理 / 标签建议 / 笔记）整合到一个粘性底部
+ *  - 摘要 / 标签管理（含 AI 建议）/ 笔记整合到一个粘性底部
  *  - 高度可拖拽拉伸（顶栏 mousedown + document mousemove/up）
  *  - 收起按钮（折叠到底部一个标签条）
- *  - tab 切换：标签管理 / 标签建议 / 笔记
+ *  - tab 切换：摘要 / 标签 / 笔记
  *  - 持久化高度到 localStorage
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -13,7 +13,6 @@ import './StickyBottomPanel.css';
 export interface StickyTab {
   id: string;
   label: string;
-  icon: string;
   /** badge 数字（可选）：例如已应用的 tag 数 */
   badge?: number;
 }
@@ -118,7 +117,6 @@ export function StickyBottomPanel({
               title={`展开 ${t.label}`}
               data-sticky-tab={t.id}
             >
-              <span className="sticky-bottom-panel__tab-icon" aria-hidden="true">{t.icon}</span>
               <span className="sticky-bottom-panel__tab-label">{t.label}</span>
               {t.badge !== undefined && t.badge > 0 && (
                 <span className="sticky-bottom-panel__tab-badge">{t.badge}</span>
@@ -129,8 +127,6 @@ export function StickyBottomPanel({
       </div>
     );
   }
-
-  const activeTabMeta = tabs.find((t) => t.id === activeTab);
 
   return (
     <div
@@ -163,7 +159,6 @@ export function StickyBottomPanel({
               onClick={() => onTabChange(t.id)}
               data-sticky-tab={t.id}
             >
-              <span className="sticky-bottom-panel__tab-icon" aria-hidden="true">{t.icon}</span>
               <span className="sticky-bottom-panel__tab-label">{t.label}</span>
               {t.badge !== undefined && t.badge > 0 && (
                 <span className="sticky-bottom-panel__tab-badge">{t.badge}</span>
@@ -172,18 +167,20 @@ export function StickyBottomPanel({
           ))}
         </div>
         <div className="sticky-bottom-panel__header-actions">
-          <span className="sticky-bottom-panel__height-hint">
-            {activeTabMeta?.icon} {activeTabMeta?.label} · {height}px
-          </span>
           <button
             type="button"
             className="sticky-bottom-panel__btn sticky-bottom-panel__btn--close"
             onClick={onClose}
-            title="收起（关闭当前 tab，可重新展开）"
+            title="收起面板"
             aria-label="收起面板"
             data-testid="sticky-bottom-panel__close"
           >
-            ▾ 收起
+            <span className="sticky-bottom-panel__collapse-icon" aria-hidden="true">
+              <svg viewBox="0 0 14 14" focusable="false">
+                <path d="M2 2.5h10L7 11.16z" />
+              </svg>
+            </span>
+            <span>收起</span>
           </button>
         </div>
       </div>

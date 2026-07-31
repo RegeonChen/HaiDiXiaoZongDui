@@ -148,7 +148,7 @@ const SMOKE_FLAGS = {
   smokeAiChat: process.env['JUHE_SHIVI_SMOKE_AI_CHAT'] === '1',
   // 通用正文图片协议：Renderer custom scheme → Main fetch → image response
   smokeArticleImages: process.env['JUHE_SHIVI_SMOKE_ARTICLE_IMAGES'] === '1',
-  // Phase 3.5.x 修复:侧栏 tab=tags 真按 tag 分类 + AI 标签建议 toggle 修复
+  // Phase 3.5.x 修复:侧栏 tab=tags 真按 tag 分类 + 标签栏自动 AI 建议
   smokeTagList: process.env['JUHE_SHIVI_SMOKE_TAGLIST'] === '1',
   // Phase 3.5.x:订阅源分组(添加组 / 移动到组 / 删除组)
   smokeFeedsGroup: process.env['JUHE_SHIVI_SMOKE_FEEDS_GROUP'] === '1',
@@ -396,13 +396,17 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           firstArticle?.click();
           await waitFor(() => document.querySelector('.article-reader__content p'), 3000);
 
-          const chatButton = document.querySelector('[data-tool="ai-chat"]');
-          report.aiChat.checks.toolbarEntry = !!chatButton;
+          const chatButton = document.querySelector('[data-testid="app-header__ai"]');
+          report.aiChat.checks.topRightEntry =
+            !!chatButton && !document.querySelector('.article-reader [data-tool="ai-chat"]');
           chatButton?.click();
           report.aiChat.checks.panelOpened = !!await waitFor(
             () => document.querySelector('[data-ai-chat-panel]'),
             1500
           );
+          report.aiChat.checks.topRightEntryActiveWhenOpen =
+            chatButton?.classList.contains('is-active') &&
+            chatButton?.getAttribute('aria-pressed') === 'true';
 
           let input = document.querySelector('[data-ai-chat-input]');
           const send = document.querySelector('[data-ai-chat-send]');
@@ -465,11 +469,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             !document.querySelector('[data-ai-chat-clear]') &&
             !document.querySelector('[aria-label="关闭文章 AI 助手"]');
 
-          // 再次点击同一个“询问 AI”按钮收起，随后重开；对话内容应保留。
+          // 再次点击右上角 AI 按钮收起，随后重开；对话内容应保留。
           chatButton?.click();
           await sleep(80);
           report.aiChat.checks.panelClosedByAiToggle =
             !document.querySelector('[data-ai-chat-panel]');
+          report.aiChat.checks.topRightEntryInactiveWhenClosed =
+            !chatButton?.classList.contains('is-active') &&
+            chatButton?.getAttribute('aria-pressed') === 'false';
           chatButton?.click();
           await sleep(80);
           report.aiChat.checks.panelReopenedByAiToggle =
@@ -478,11 +485,12 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             document.querySelectorAll('[data-ai-chat-message-role]').length === 8;
 
           const required = [
-            'toolbarEntry', 'panelOpened', 'directQuestionAnswered',
+            'topRightEntry', 'panelOpened', 'directQuestionAnswered',
             'directReplyUsesMock', 'multiTurnConversation', 'selectionMenuOpened',
             'selectionAsked', 'selectionIncludedInQuestion',
             'translationMenuReopened', 'selectionTranslated',
             'translationReplyVisible', 'panelHeaderRemoved',
+            'topRightEntryActiveWhenOpen', 'topRightEntryInactiveWhenClosed',
             'panelClosedByAiToggle', 'panelReopenedByAiToggle',
             'conversationPreservedAfterToggle'
           ];
@@ -823,8 +831,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           await sleep(200);
           // 3) 等 reader toolbar + 翻译按钮
           await waitFor(
-            () => Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'))
-              .some((b) => (b.textContent || '').includes('翻译')),
+            () => !!document.querySelector('.article-reader__toolbar [data-tool="translation"]'),
             { timeout: 5000 }
           );
           // 4) 抓取 cleanedHtml（通过 IPC）
@@ -833,8 +840,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           // 改用直接查询 article reader 当前的 data 属性
           // mock 模式文章有 cleanedHtml，触发 getCleanedHtml 才能看到内容
           // 简化：通过点 🌐 翻译按钮触发整条链路
-          const transBtn = Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'))
-            .find((b) => (b.textContent || '').includes('翻译'));
+          const transBtn = document.querySelector('.article-reader__toolbar [data-tool="translation"]');
           if (!transBtn) {
             report.inlineTrans.error = '找不到 🌐 翻译 按钮';
             return JSON.stringify(report);
@@ -938,9 +944,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               !document.querySelector('.translated-article-view'),
             { timeout: 2000 }
           );
-          const showCachedButton = Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'))
-            .find((b) => (b.textContent || '').includes('显示翻译'));
-          report.inlineTrans.checks.cachedButtonVisible = !!showCachedButton;
+          const showCachedButton = document.querySelector('.article-reader__toolbar [data-tool="translation"]');
+          report.inlineTrans.checks.cachedButtonVisible =
+            (showCachedButton?.textContent || '').trim() === '翻译' &&
+            !showCachedButton?.classList.contains('is-active');
           showCachedButton?.click();
           report.inlineTrans.checks.cachedTranslationReopened = await waitFor(
             () => document.querySelector('.translated-article-view')?.getAttribute('data-split-state') === 'ready',
@@ -994,18 +1001,29 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.tagManage.checks.feedListNoInlineAddForm =
             !document.querySelector('.feed-list__add-form');
 
-          // 2) 工具栏出现 3 个新按钮（标签 / 标签建议 / 笔记）
+          // 2) 工具栏保留标签 / 笔记，AI 建议已自动并入标签栏
           await waitFor(() => {
             const btn = document.querySelector('.article-reader__toolbar [data-tool="tag-manage"]');
-            const btn2 = document.querySelector('.article-reader__toolbar [data-tool="tag-suggest"]');
-            const btn3 = document.querySelector('.article-reader__toolbar [data-tool="note"]');
-            return !!(btn && btn2 && btn3);
+            const btn2 = document.querySelector('.article-reader__toolbar [data-tool="note"]');
+            return !!(btn && btn2);
           }, { timeout: 5000 });
           report.tagManage.checks.toolbarHasTagButtons = !!(
             document.querySelector('.article-reader__toolbar [data-tool="tag-manage"]') &&
-            document.querySelector('.article-reader__toolbar [data-tool="tag-suggest"]') &&
-            document.querySelector('.article-reader__toolbar [data-tool="note"]')
+            document.querySelector('.article-reader__toolbar [data-tool="note"]') &&
+            !document.querySelector('.article-reader__toolbar [data-tool="tag-suggest"]')
           );
+          report.tagManage.checks.toolbarLabelsStable = [
+            ['summary', '摘要'],
+            ['translation', '翻译'],
+            ['tag-manage', '标签'],
+            ['note', '笔记'],
+            ['topic', '专题']
+          ].every(([tool, label]) => (
+            (document.querySelector(\`[data-tool="\${tool}"]\`)?.textContent || '').trim() === label
+          ));
+          report.tagManage.checks.singleAiEntry =
+            !!document.querySelector('[data-testid="app-header__ai"]') &&
+            !document.querySelector('.article-reader [data-tool="ai-chat"]');
 
           // 3) StickyBottomPanel 初始不显示（stickyTab=null → 折叠态也可能不显示 handle）
           const panelInitially = document.querySelector('.sticky-bottom-panel');
@@ -1019,12 +1037,53 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const panel = document.querySelector('.sticky-bottom-panel');
           report.tagManage.checks.stickyPanelOpened = panel?.getAttribute('data-sticky-state') === 'open';
           report.tagManage.checks.stickyPanelOnTagManageTab = panel?.getAttribute('data-sticky-tab') === 'tag-manage';
+          report.tagManage.checks.tagButtonLabelStableWhenOpen =
+            (tagManageBtn.textContent || '').trim() === '标签' &&
+            tagManageBtn.classList.contains('is-active');
           // 显示"已应用"空态或 list
           const tagManageSection = document.querySelector('.sticky-tag-manage');
           report.tagManage.checks.tagManageSectionVisible = !!tagManageSection;
+          const newTagInput = document.querySelector('.sticky-tag-manage__create-input');
+          const newTagButton = document.querySelector(
+            '.sticky-tag-manage__create .article-reader__btn--primary'
+          );
+          if (newTagButton && newTagInput) {
+            const newTagStyle = getComputedStyle(newTagButton);
+            report.tagManage.checks.newTagButtonReadable =
+              (newTagButton.textContent || '').trim() === '+ 新建' &&
+              newTagStyle.backgroundColor !== 'rgb(255, 255, 255)' &&
+              newTagStyle.color === 'rgb(255, 255, 255)';
+            report.tagManage.checks.newTagButtonDisabledOnlyWhenEmpty =
+              newTagButton.disabled === !(newTagInput.value || '').trim();
+            report.tagManage.checks.newTagButtonBackground = newTagStyle.backgroundColor;
+            report.tagManage.checks.newTagButtonColor = newTagStyle.color;
+          }
 
           // 5) 点 ▾ 收起 → 折叠（data-sticky-state=collapsed 或 tab bar）
           const closeBtn = document.querySelector('[data-testid="sticky-bottom-panel__close"]');
+          if (closeBtn && panel) {
+            const closeBg = getComputedStyle(closeBtn).backgroundColor;
+            const panelBg = getComputedStyle(panel).backgroundColor;
+            const collapseIcon = closeBtn.querySelector('.sticky-bottom-panel__collapse-icon svg');
+            const collapseIconRect = collapseIcon?.getBoundingClientRect();
+            const headerActionsText = (
+              document.querySelector('.sticky-bottom-panel__header-actions')?.textContent || ''
+            ).trim();
+            report.tagManage.checks.noTechnicalHeightHint =
+              !document.querySelector('.sticky-bottom-panel__height-hint') &&
+              !/\\d+px/.test(headerActionsText) &&
+              headerActionsText === '收起';
+            report.tagManage.checks.collapseIconUsesReadableSvg =
+              collapseIcon?.tagName.toLowerCase() === 'svg' &&
+              (collapseIconRect?.width || 0) >= 12 &&
+              (collapseIconRect?.height || 0) >= 12;
+            report.tagManage.checks.collapseIconWidth = collapseIconRect?.width || 0;
+            report.tagManage.checks.collapseIconHeight = collapseIconRect?.height || 0;
+            report.tagManage.checks.closeButtonUsesTonedBackground =
+              closeBg !== panelBg && closeBg !== 'rgb(255, 255, 255)';
+            report.tagManage.checks.closeButtonBackground = closeBg;
+            report.tagManage.checks.panelBackground = panelBg;
+          }
           if (closeBtn) closeBtn.click();
           await sleep(150);
           const collapsed = document.querySelector('.sticky-bottom-panel');
@@ -1066,20 +1125,39 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.tagManage.checks.heightBefore = heightBefore;
           report.tagManage.checks.heightAfter = heightAfter;
 
-          // 8) 切到 🪄 标签建议 → 调 mock AI → 出现建议
-          const tagSuggestBtn = document.querySelector('[data-tool="tag-suggest"]');
-          tagSuggestBtn.click();
-          await waitFor(() => document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'tag-suggest', { timeout: 2000 });
-          // mock 模式 aiSuggestTags 50ms 延迟 + aiGetTagSuggestions 50ms 延迟
+          // 8) 标签栏自动读取/生成 AI 建议，不再需要独立入口
+          report.tagManage.checks.suggestionsInsideTagTab =
+            !!document.querySelector('[data-sticky-section="ai-suggestions"]') &&
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'tag-manage';
           await waitFor(() => document.querySelectorAll('[data-sticky-suggestion]').length > 0, { timeout: 3000 });
           await sleep(100);
           const suggestions = document.querySelectorAll('[data-sticky-suggestion]');
           report.tagManage.checks.tagSuggestionsRendered = suggestions.length > 0;
           report.tagManage.checks.tagSuggestionsCount = suggestions.length;
+          const bulkApplyButton = document.querySelector(
+            '.sticky-tag-suggest__header .article-reader__btn--primary'
+          );
+          if (bulkApplyButton) {
+            const bulkApplyStyle = getComputedStyle(bulkApplyButton);
+            report.tagManage.checks.bulkApplyButtonReadable =
+              (bulkApplyButton.textContent || '').trim() === '一键全部应用' &&
+              bulkApplyStyle.backgroundColor !== 'rgb(255, 255, 255)' &&
+              bulkApplyStyle.color === 'rgb(255, 255, 255)';
+            report.tagManage.checks.bulkApplyButtonEnabled =
+              !bulkApplyButton.disabled &&
+              bulkApplyStyle.pointerEvents !== 'none';
+            report.tagManage.checks.bulkApplyButtonBackground = bulkApplyStyle.backgroundColor;
+            report.tagManage.checks.bulkApplyButtonColor = bulkApplyStyle.color;
+          }
+          if (suggestions.length > 0) {
+            const suggestionBg = getComputedStyle(suggestions[0]).backgroundColor;
+            const suggestionPanelBg = getComputedStyle(document.querySelector('.sticky-bottom-panel')).backgroundColor;
+            report.tagManage.checks.suggestionButtonUsesTonedBackground =
+              suggestionBg !== suggestionPanelBg && suggestionBg !== 'rgb(255, 255, 255)';
+            report.tagManage.checks.suggestionButtonBackground = suggestionBg;
+          }
 
-          // 9) 点第一个建议的"应用"按钮 → setArticleTags 异步更新
-          // 注意：chip 元素在 tag-manage tab 内，所以本步只触发 click，不读 DOM，
-          // DOM 读取放在切到 tag-manage tab 之后（step 10 合并为 appliedTagInTagManageTab）。
+          // 9) 点第一个建议的“应用”按钮 → 标签栏内同步更新已应用标签
           let suggestedName = '';
           if (suggestions.length > 0) {
             // suggestions 是 [data-sticky-suggestion] 元素列表，suggestions[0] 本身就是 button
@@ -1094,14 +1172,29 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               (suggestionBtnAfter.textContent || '').includes('已应用');
           }
 
-          // 10) 切回 🏷 标签 → 看到刚刚应用的 tag
-          const tagManageBtn3 = document.querySelector('[data-tool="tag-manage"]');
-          tagManageBtn3.click();
-          await waitFor(() => document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'tag-manage', { timeout: 2000 });
-          await sleep(300);
+          // 10) AI 建议和标签管理在同一 tab，直接看到刚刚应用的 tag
           const appliedSection = document.querySelector('[data-sticky-section="applied"]');
           const appliedChips = appliedSection?.querySelectorAll('[data-sticky-chip-id]') ?? [];
           report.tagManage.checks.appliedTagInTagManageTab = appliedChips.length >= 1;
+
+          // 侧栏标签页必须同步显示刚创建/应用的标签及文章数，不能停在初次加载快照。
+          const sidebarTagsTab = Array.from(document.querySelectorAll('.feed-list__tab'))
+            .find((button) => (button.textContent || '').trim() === '标签');
+          sidebarTagsTab?.click();
+          await waitFor(
+            () => Array.from(document.querySelectorAll('.feed-list__tag-row'))
+              .some((row) => (
+                (row.querySelector('.feed-list__label')?.textContent || '').trim() === suggestedName
+              )),
+            { timeout: 2000 }
+          );
+          const syncedSidebarTag = Array.from(document.querySelectorAll('.feed-list__tag-row'))
+            .find((row) => (
+              (row.querySelector('.feed-list__label')?.textContent || '').trim() === suggestedName
+            ));
+          report.tagManage.checks.sidebarTagsIncludeAppliedSuggestion = !!syncedSidebarTag;
+          report.tagManage.checks.sidebarAppliedTagCountUpdated =
+            Number(syncedSidebarTag?.getAttribute('data-tag-count') || '0') >= 1;
 
           // 11) 切到 ✎ 笔记 → textarea 出现
           const noteBtn = document.querySelector('[data-tool="note"]');
@@ -1110,27 +1203,81 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           await sleep(100);
           const textarea = document.querySelector('.sticky-note__input');
           report.tagManage.checks.noteTextareaVisible = !!textarea;
+          report.tagManage.checks.noteButtonLabelStableWhenOpen =
+            (noteBtn.textContent || '').trim() === '笔记' &&
+            noteBtn.classList.contains('is-active');
+          const addNoteButton = Array.from(document.querySelectorAll('.sticky-note__actions button'))
+            .find((button) => (button.textContent || '').includes('添加笔记'));
+          if (addNoteButton && textarea) {
+            const addNoteStyle = getComputedStyle(addNoteButton);
+            report.tagManage.checks.addNoteButtonReadable =
+              (addNoteButton.textContent || '').trim() === '添加笔记' &&
+              addNoteStyle.backgroundColor !== 'rgb(255, 255, 255)' &&
+              addNoteStyle.color === 'rgb(255, 255, 255)';
+            report.tagManage.checks.addNoteButtonDisabledOnlyWhenEmpty =
+              addNoteButton.disabled === !(textarea.value || '').trim();
+            report.tagManage.checks.addNoteButtonBackground = addNoteStyle.backgroundColor;
+            report.tagManage.checks.addNoteButtonColor = addNoteStyle.color;
+          }
           if (textarea) {
             textarea.value = 'smoke 笔记测试';
             textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          const clearButton = Array.from(document.querySelectorAll('.sticky-note__actions button'))
+            .find((button) => (button.textContent || '').includes('清空'));
+          const openPanel = document.querySelector('.sticky-bottom-panel');
+          if (clearButton && openPanel) {
+            const clearBg = getComputedStyle(clearButton).backgroundColor;
+            const openPanelBg = getComputedStyle(openPanel).backgroundColor;
+            report.tagManage.checks.clearButtonUsesTonedBackground =
+              clearBg !== openPanelBg && clearBg !== 'rgb(255, 255, 255)';
+            report.tagManage.checks.clearButtonBackground = clearBg;
+
+            const html = document.documentElement;
+            const previousTheme = html.getAttribute('data-theme');
+            const previousVisualTheme = html.getAttribute('data-visual-theme');
+            html.setAttribute('data-theme', 'light');
+            html.setAttribute('data-visual-theme', 'paper');
+            await sleep(50);
+            const paperButtonBg = getComputedStyle(clearButton).backgroundColor;
+            const paperPanelBg = getComputedStyle(openPanel).backgroundColor;
+            report.tagManage.checks.paperButtonUsesWarmTone =
+              paperButtonBg !== paperPanelBg &&
+              paperButtonBg !== 'rgb(255, 255, 255)' &&
+              paperPanelBg === 'rgb(253, 246, 227)';
+            report.tagManage.checks.paperButtonBackground = paperButtonBg;
+            report.tagManage.checks.paperPanelBackground = paperPanelBg;
+            if (previousTheme === null) html.removeAttribute('data-theme');
+            else html.setAttribute('data-theme', previousTheme);
+            if (previousVisualTheme === null) html.removeAttribute('data-visual-theme');
+            else html.setAttribute('data-visual-theme', previousVisualTheme);
           }
         } catch (e) {
           report.tagManage.error = String(e);
         }
 
         const tmChecks = [
-          'feedListNoInlineAddForm', 'toolbarHasTagButtons',
+          'feedListNoInlineAddForm', 'toolbarHasTagButtons', 'toolbarLabelsStable', 'singleAiEntry',
           'stickyPanelInitiallyRendered', 'stickyPanelOpened', 'stickyPanelOnTagManageTab',
-          'tagManageSectionVisible', 'stickyPanelCollapsed', 'stickyPanelReopened',
-          'dragChangedHeight', 'tagSuggestionsRendered', 'appliedButtonShowsApplied',
-          'appliedTagInTagManageTab', 'noteTextareaVisible'
+          'tagManageSectionVisible', 'tagButtonLabelStableWhenOpen',
+          'newTagButtonReadable', 'newTagButtonDisabledOnlyWhenEmpty',
+          'noTechnicalHeightHint', 'collapseIconUsesReadableSvg', 'closeButtonUsesTonedBackground',
+          'stickyPanelCollapsed', 'stickyPanelReopened',
+          'dragChangedHeight', 'suggestionsInsideTagTab', 'tagSuggestionsRendered',
+          'bulkApplyButtonReadable', 'bulkApplyButtonEnabled',
+          'suggestionButtonUsesTonedBackground',
+          'appliedButtonShowsApplied', 'appliedTagInTagManageTab',
+          'sidebarTagsIncludeAppliedSuggestion', 'sidebarAppliedTagCountUpdated',
+          'noteTextareaVisible',
+          'noteButtonLabelStableWhenOpen', 'addNoteButtonReadable', 'addNoteButtonDisabledOnlyWhenEmpty',
+          'clearButtonUsesTonedBackground', 'paperButtonUsesWarmTone'
         ];
         report.tagManage.ok = tmChecks.every((k) => report.tagManage.checks[k] === true);
         return JSON.stringify(report);
       })()
     `;
   } else if (smokeCoexist) {
-    // Phase 3.5.x 修复 smoke: 摘要 toggle + 摘要/翻译并存
+    // 摘要底部栏 toggle + 摘要/翻译并存
     probe = `
       (async () => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1175,11 +1322,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           await waitFor(() => !!document.querySelector('.article-reader'), { timeout: 3000 });
           // 等 toolbar 出现
           await waitFor(() => document.querySelectorAll('.article-reader__toolbar .article-reader__btn').length >= 5, { timeout: 5000 });
-          const toolbarBtns = () => Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'));
-          const findBtn = (text) => toolbarBtns().find((b) => (b.textContent || '').includes(text));
-
-          const summaryBtn = findBtn('摘要');
-          const translationBtn = findBtn('翻译');
+          const summaryBtn = document.querySelector('.article-reader__toolbar [data-tool="summary"]');
+          const translationBtn = document.querySelector('.article-reader__toolbar [data-tool="translation"]');
           if (!summaryBtn || !translationBtn) {
             report.coexist.error = '找不到工具栏按钮（summary=' + !!summaryBtn + ', translation=' + !!translationBtn + '）';
             return JSON.stringify(report);
@@ -1187,48 +1331,64 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
           // === 第 1 步：初始状态 ===
           report.coexist.checks.summaryPanelInitiallyHidden =
-            !document.querySelector('.summary-floating-panel');
-          report.coexist.checks.summaryButtonInitially = summaryBtn.textContent?.includes('摘要') && !summaryBtn.textContent.includes('隐藏');
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-state') === 'collapsed' &&
+            !document.querySelector('[data-testid="sticky-summary"]');
+          report.coexist.checks.summaryButtonLabelStableInitially =
+            (summaryBtn.textContent || '').trim() === '摘要';
           report.coexist.checks.summaryButtonNotActiveYet = !summaryBtn.classList.contains('is-active');
+          const summaryInactiveBackground = getComputedStyle(summaryBtn).backgroundColor;
 
-          // === 第 2 步：点 ✨ 摘要 → 打开悬浮窗 ===
+          // === 第 2 步：点摘要 → 打开底部摘要栏 ===
           summaryBtn.click();
-          await waitFor(() => !!document.querySelector('.summary-floating-panel'), { timeout: 2000 });
-          report.coexist.checks.summaryPanelRenderedAfterFirstClick = !!document.querySelector('.summary-floating-panel');
+          await waitFor(() => (
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'summary'
+          ), { timeout: 2000 });
+          report.coexist.checks.summaryPanelRenderedAfterFirstClick =
+            !!document.querySelector('[data-testid="sticky-summary"]');
           // 等 mock AI 完成（~50ms 延迟）
           await sleep(150);
-          // 按钮文本应变为 🙈 隐藏摘要
-          const summaryBtnAfter1 = findBtn('隐藏摘要');
-          report.coexist.checks.summaryButtonChangedToHide = !!summaryBtnAfter1;
+          report.coexist.checks.summaryButtonLabelStableAfterOpen =
+            (summaryBtn.textContent || '').trim() === '摘要';
           report.coexist.checks.summaryButtonActive = summaryBtn.classList.contains('is-active');
+          report.coexist.checks.summaryButtonActiveColorChanged =
+            getComputedStyle(summaryBtn).backgroundColor !== summaryInactiveBackground;
 
-          // === 第 3 步：再点 🙈 隐藏摘要 → 关闭 ===
-          if (summaryBtnAfter1) summaryBtnAfter1.click();
-          await waitFor(() => !document.querySelector('.summary-floating-panel'), { timeout: 2000 });
-          report.coexist.checks.summaryPanelClosedAfterSecondClick = !document.querySelector('.summary-floating-panel');
-          // 按钮回到 ✨ 摘要
-          const summaryBtnAfter2 = findBtn('显示摘要') || findBtn('摘要');
-          report.coexist.checks.summaryButtonReverted = !!summaryBtnAfter2;
+          // === 第 3 步：再次点击同一个“摘要”按钮 → 收起 ===
+          summaryBtn.click();
+          await waitFor(() => (
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-state') === 'collapsed'
+          ), { timeout: 2000 });
+          report.coexist.checks.summaryPanelClosedAfterSecondClick =
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-state') === 'collapsed';
+          report.coexist.checks.summaryButtonLabelStableAfterClose =
+            (summaryBtn.textContent || '').trim() === '摘要';
+          report.coexist.checks.summaryButtonInactiveAfterClose =
+            !summaryBtn.classList.contains('is-active');
 
-          // === 第 4 步：第三次点 ✨ 摘要 → 重新显示，复用缓存 ===
+          // === 第 4 步：第三次点摘要 → 重新显示，复用缓存 ===
           // 关键：之前修复前总是 setSummary('') + 调 AI，新代码应当检测 summary 已存在只切显示
-          if (summaryBtnAfter2) summaryBtnAfter2.click();
-          await waitFor(() => !!document.querySelector('.summary-floating-panel'), { timeout: 2000 });
+          summaryBtn.click();
+          await waitFor(() => (
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'summary'
+          ), { timeout: 2000 });
           await sleep(50);
-          report.coexist.checks.summaryPanelReopenedOnThirdClick = !!document.querySelector('.summary-floating-panel');
+          report.coexist.checks.summaryPanelReopenedOnThirdClick =
+            !!document.querySelector('[data-testid="sticky-summary"]');
           // 验证摘要内容已经渲染（不是空 loading）
-          const content = document.querySelector('.summary-floating-panel__content');
+          const content = document.querySelector('[data-testid="sticky-summary__content"]');
           report.coexist.checks.summaryContentVisible = !!content && (content.textContent || '').length > 0;
+          report.coexist.checks.summaryButtonLabelStableAfterReopen =
+            (summaryBtn.textContent || '').trim() === '摘要';
 
           // === 第 5 步：开翻译 + 摘要同时存在（关键修复）===
-          // 找当前 translation 按钮（带"显示翻译"或"翻译"）
-          const translationBtnNow = findBtn('显示翻译') || findBtn('翻译');
-          if (translationBtnNow) translationBtnNow.click();
+          translationBtn.click();
           // 翻译走 mock 流式：started 30ms + segmentCompleted 80ms/段
           await waitFor(() => !!document.querySelector('.translated-article-view'), { timeout: 3000 });
           await sleep(300);
-          // 关键断言：摘要 panel 仍然存在，翻译视图也同时存在
-          const panelStillOpen = !!document.querySelector('.summary-floating-panel');
+          // 关键断言：底部摘要栏仍然存在，翻译视图也同时存在
+          const panelStillOpen =
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'summary' &&
+            !!document.querySelector('[data-testid="sticky-summary"]');
           const transViewRendered = !!document.querySelector('.translated-article-view');
           report.coexist.checks.summaryAndTranslationCoexist = panelStillOpen && transViewRendered;
           report.coexist.checks.summaryPanelStillOpenAfterTranslation = panelStillOpen;
@@ -1236,27 +1396,33 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           // body 区域是翻译视图（不是原文 content）
           const articleContent = document.querySelector('.article-reader__content');
           report.coexist.checks.bodyIsTranslationNotRawHtml = !articleContent;
+          report.coexist.checks.translationButtonLabelStable =
+            (translationBtn.textContent || '').trim() === '翻译' &&
+            translationBtn.classList.contains('is-active');
 
           // === 第 6 步：关翻译 → 摘要 panel 应保留 ===
-          const translationBtnToHide = findBtn('隐藏翻译');
-          if (translationBtnToHide) translationBtnToHide.click();
+          translationBtn.click();
           await waitFor(() => !document.querySelector('.translated-article-view'), { timeout: 2000 });
           report.coexist.checks.summaryPanelPersistsAfterTranslationClosed =
-            !!document.querySelector('.summary-floating-panel');
-          // 摘要按钮仍 is-active
-          const summaryBtnFinal = findBtn('隐藏摘要');
-          report.coexist.checks.summaryButtonStillActive = !!summaryBtnFinal && summaryBtnFinal.classList.contains('is-active');
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'summary' &&
+            !!document.querySelector('[data-testid="sticky-summary"]');
+          // 摘要按钮文字不变且仍为 active
+          report.coexist.checks.summaryButtonStillActive =
+            (summaryBtn.textContent || '').trim() === '摘要' &&
+            summaryBtn.classList.contains('is-active');
         } catch (e) {
           report.coexist.error = String(e);
         }
 
         const coexistChecks = [
-          'summaryPanelInitiallyHidden', 'summaryButtonInitially', 'summaryButtonNotActiveYet',
-          'summaryPanelRenderedAfterFirstClick', 'summaryButtonChangedToHide', 'summaryButtonActive',
-          'summaryPanelClosedAfterSecondClick', 'summaryButtonReverted',
-          'summaryPanelReopenedOnThirdClick', 'summaryContentVisible',
+          'summaryPanelInitiallyHidden', 'summaryButtonLabelStableInitially', 'summaryButtonNotActiveYet',
+          'summaryPanelRenderedAfterFirstClick', 'summaryButtonLabelStableAfterOpen',
+          'summaryButtonActive', 'summaryButtonActiveColorChanged',
+          'summaryPanelClosedAfterSecondClick', 'summaryButtonLabelStableAfterClose',
+          'summaryButtonInactiveAfterClose', 'summaryPanelReopenedOnThirdClick',
+          'summaryContentVisible', 'summaryButtonLabelStableAfterReopen',
           'summaryAndTranslationCoexist', 'summaryPanelStillOpenAfterTranslation',
-          'translationViewRendered', 'bodyIsTranslationNotRawHtml',
+          'translationViewRendered', 'bodyIsTranslationNotRawHtml', 'translationButtonLabelStable',
           'summaryPanelPersistsAfterTranslationClosed', 'summaryButtonStillActive'
         ];
         report.coexist.ok = coexistChecks.every((k) => report.coexist.checks[k] === true);
@@ -1264,13 +1430,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       })()
     `;
   } else if (smokeSummary) {
-    // Phase 3.5.1 smoke: 摘要悬浮窗（拖拽 / resize / 边界 / 持久化 / 关闭）
+    // 摘要底部栏 smoke：生成 / 缓存重开 / tab 切换 / 拉伸 / 收起
     probe = `
       (async () => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         async function waitFor(checkFn, opts) {
           const timeout = (opts && opts.timeout) || 3000;
-          const interval = (opts && opts.interval) || 50;
+          const interval = (opts && opts.interval) || 25;
           const start = Date.now();
           while (Date.now() - start < timeout) {
             try { if (checkFn()) return true; } catch (e) {}
@@ -1280,146 +1446,110 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         }
         const report = { summary: { ok: false, error: null, checks: {} } };
         try {
-          // 1) 等待 reader 视图 + 至少一篇文章
-          await waitFor(() => !!document.querySelector('.app-main'), { timeout: 5000 });
-          const articles = document.querySelectorAll('.article-list__item');
-          if (articles.length === 0) {
-            // 需要先 seed 数据，但 smokeUiReal 模式不自动 seed
-            // 改为直接通过 IPC 注入一个 article + feed（参考 smokeUiReal seed 模式）
-            const seedFeed = await window.api.feed.create({
-              url: 'http://127.0.0.1:' + (window.location.port || '0') + '/seed.xml',
-              title: 'Summary Smoke Feed'
-            });
-            // seed 数据需要 HTTP server 才能 sync —— 简化为通过 uiIpc 路径已 seed 的情况
-            // 若 articles 仍为空，验证 AI 按钮的 disabled 态即可
-          }
-          // 尝试点击第一篇文章（如果存在）
-          if (articles.length > 0) {
-            articles[0].click();
-            await waitFor(() => !!document.querySelector('.article-reader'), { timeout: 3000 });
-          }
-          // 等待 reader toolbar 出现
-          await waitFor(() => document.querySelectorAll('.article-reader__toolbar .article-reader__btn').length >= 5, { timeout: 5000 });
-          const toolbarBtns = Array.from(document.querySelectorAll('.article-reader__toolbar .article-reader__btn'));
-          const summaryBtn = toolbarBtns.find((b) => b.textContent && b.textContent.includes('摘要'));
-          if (!summaryBtn) {
-            report.summary.error = '找不到 ✨ 摘要 按钮';
+          await waitFor(() => document.querySelectorAll('.article-list__item').length > 0, { timeout: 5000 });
+          const article = document.querySelector('.article-list__item');
+          if (!article) {
+            report.summary.error = 'mock 模式没有文章';
             return JSON.stringify(report);
           }
-          // 2) 验证悬浮窗初始不存在
-          report.summary.checks.panelInitiallyHidden = !document.querySelector('.summary-floating-panel');
+          article.click();
+          await waitFor(() => !!document.querySelector('.article-reader [data-tool="summary"]'), { timeout: 3000 });
 
-          // 3) 点摘要 → 悬浮窗渲染
-          summaryBtn.click();
-          await waitFor(() => !!document.querySelector('.summary-floating-panel'), { timeout: 2000 });
-          const panel = document.querySelector('.summary-floating-panel');
-          report.summary.checks.panelRendered = !!panel;
-          // 验证 loading 状态
-          await waitFor(() => !!document.querySelector('.summary-floating-panel__loading'), { timeout: 2000 });
-          report.summary.checks.loadingVisible = !!document.querySelector('.summary-floating-panel__loading');
+          const summaryButton = document.querySelector('.article-reader [data-tool="summary"]');
+          const collapsedPanel = document.querySelector('.sticky-bottom-panel');
+          report.summary.checks.panelInitiallyCollapsed =
+            collapsedPanel?.getAttribute('data-sticky-state') === 'collapsed';
+          report.summary.checks.summaryTabInBottomBar =
+            !!document.querySelector('.sticky-bottom-panel [data-sticky-tab="summary"]');
+          report.summary.checks.noFloatingPanel =
+            !document.querySelector('.summary-floating-panel');
 
-          // 4) 8 个 resize handle 存在
-          const handles = document.querySelectorAll('.summary-floating-panel__resize');
-          report.summary.checks.resizeHandles = handles.length === 8;
+          summaryButton.click();
+          await waitFor(() => (
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'summary'
+          ), { timeout: 2000 });
+          report.summary.checks.summaryPanelOpened =
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-state') === 'open';
+          report.summary.checks.summaryTabActive =
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'summary';
+          report.summary.checks.loadingVisible = await waitFor(
+            () => !!document.querySelector('[data-testid="sticky-summary__loading"]'),
+            { timeout: 1000, interval: 10 }
+          );
 
-          // 5) 拖拽：mousedown 标题栏 + mousemove + mouseup
-          const titlebar = document.querySelector('.summary-floating-panel__titlebar');
-          const rectBeforeDrag = {
-            x: parseInt(panel.style.left || '0', 10),
-            y: parseInt(panel.style.top || '0', 10)
-          };
-          // 用原生事件分发
-          const fireMouseEvent = (target, type, x, y) => {
-            const ev = new MouseEvent(type, {
-              bubbles: true,
-              cancelable: true,
-              view: window,
-              button: 0,
-              buttons: type === 'mouseup' ? 0 : 1,
-              clientX: x,
-              clientY: y
-            });
-            target.dispatchEvent(ev);
-          };
-          // 模拟在 titlebar 中心 mousedown
-          const tbRect = titlebar.getBoundingClientRect();
-          const startX = tbRect.left + tbRect.width / 2;
-          const startY = tbRect.top + tbRect.height / 2;
-          fireMouseEvent(titlebar, 'mousedown', startX, startY);
-          await sleep(20);
-          fireMouseEvent(document, 'mousemove', startX + 100, startY + 80);
-          await sleep(20);
-          fireMouseEvent(document, 'mouseup', startX + 100, startY + 80);
-          await sleep(50);
-          const rectAfterDrag = {
-            x: parseInt(panel.style.left || '0', 10),
-            y: parseInt(panel.style.top || '0', 10)
-          };
-          report.summary.checks.dragMoved = (rectBeforeDrag.x !== rectAfterDrag.x) || (rectBeforeDrag.y !== rectAfterDrag.y);
-          report.summary.checks.dragFromX = rectBeforeDrag.x;
-          report.summary.checks.dragToX = rectAfterDrag.x;
-          report.summary.checks.dragFromY = rectBeforeDrag.y;
-          report.summary.checks.dragToY = rectAfterDrag.y;
+          await waitFor(() => (
+            (document.querySelector('[data-testid="sticky-summary__content"]')?.textContent || '').length > 0
+          ), { timeout: 3000 });
+          const summaryContent = document.querySelector('[data-testid="sticky-summary__content"]');
+          report.summary.checks.summaryContentVisible =
+            !!summaryContent && (summaryContent.textContent || '').includes('mock 摘要');
+          report.summary.checks.markdownRendered =
+            !!summaryContent?.querySelector('strong');
+          report.summary.checks.toolbarButtonActive =
+            document.querySelector('[data-tool="summary"]')?.classList.contains('is-active') === true;
 
-          // 6) resize: 拖拽 se 角
-          const seHandle = Array.from(handles).find((h) => h.getAttribute('data-resize') === 'se');
-          const sizeBefore = {
-            w: parseInt(panel.style.width || '0', 10),
-            h: parseInt(panel.style.height || '0', 10)
-          };
-          const seRect = seHandle.getBoundingClientRect();
-          const seStartX = seRect.left + seRect.width / 2;
-          const seStartY = seRect.top + seRect.height / 2;
-          fireMouseEvent(seHandle, 'mousedown', seStartX, seStartY);
-          await sleep(20);
-          fireMouseEvent(document, 'mousemove', seStartX + 60, seStartY + 40);
-          await sleep(20);
-          fireMouseEvent(document, 'mouseup', seStartX + 60, seStartY + 40);
-          await sleep(50);
-          const sizeAfter = {
-            w: parseInt(panel.style.width || '0', 10),
-            h: parseInt(panel.style.height || '0', 10)
-          };
-          report.summary.checks.resizeChanged = (sizeBefore.w !== sizeAfter.w) || (sizeBefore.h !== sizeAfter.h);
-          report.summary.checks.sizeFromW = sizeBefore.w;
-          report.summary.checks.sizeToW = sizeAfter.w;
-          report.summary.checks.sizeFromH = sizeBefore.h;
-          report.summary.checks.sizeToH = sizeAfter.h;
+          const panelBeforeDrag = document.querySelector('.sticky-bottom-panel');
+          const heightBefore = parseInt(panelBeforeDrag?.style?.height || '0', 10);
+          const handle = document.querySelector('.sticky-bottom-panel__handle');
+          const handleRect = handle?.getBoundingClientRect();
+          if (handle && handleRect) {
+            const x = handleRect.left + handleRect.width / 2;
+            const y = handleRect.top + handleRect.height / 2;
+            handle.dispatchEvent(new MouseEvent('mousedown', {
+              bubbles: true, cancelable: true, view: window, button: 0, buttons: 1, clientX: x, clientY: y
+            }));
+            document.dispatchEvent(new MouseEvent('mousemove', {
+              bubbles: true, cancelable: true, view: window, buttons: 1, clientX: x, clientY: y - 60
+            }));
+            document.dispatchEvent(new MouseEvent('mouseup', {
+              bubbles: true, cancelable: true, view: window, button: 0, clientX: x, clientY: y - 60
+            }));
+            await sleep(50);
+          }
+          const heightAfter = parseInt(
+            document.querySelector('.sticky-bottom-panel')?.style?.height || '0',
+            10
+          );
+          report.summary.checks.panelResizable =
+            heightAfter !== heightBefore && heightAfter >= 120;
 
-          // 7) 边界检测：拖拽到超大位置（远离 viewport），验证 clamp
-          fireMouseEvent(titlebar, 'mousedown', startX, startY);
-          await sleep(20);
-          fireMouseEvent(document, 'mousemove', 9999, 9999);
-          await sleep(20);
-          fireMouseEvent(document, 'mouseup', 9999, 9999);
-          await sleep(50);
-          const rectAfterClamp = {
-            x: parseInt(panel.style.left || '0', 10),
-            y: parseInt(panel.style.top || '0', 10),
-            w: parseInt(panel.style.width || '0', 10),
-            h: parseInt(panel.style.height || '0', 10)
-          };
-          const vw = window.innerWidth;
-          const vh = window.innerHeight;
-          report.summary.checks.boundsClampedX = rectAfterClamp.x >= 0 && rectAfterClamp.x + 300 <= vw;
-          report.summary.checks.boundsClampedY = rectAfterClamp.y >= 0 && rectAfterClamp.y + 200 <= vh;
+          document.querySelector('[data-tool="summary"]')?.click();
+          await waitFor(() => (
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-state') === 'collapsed'
+          ), { timeout: 2000 });
+          report.summary.checks.toolbarButtonCollapsesPanel =
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-state') === 'collapsed';
 
-          // 8) localStorage 持久化
-          const stored = localStorage.getItem('juhe-shivi.summary-panel.position');
-          report.summary.checks.localStoragePersisted = !!stored && stored.includes('"x"');
+          document.querySelector('.sticky-bottom-panel [data-sticky-tab="summary"]')?.click();
+          await waitFor(() => !!document.querySelector('[data-testid="sticky-summary__content"]'), { timeout: 2000 });
+          report.summary.checks.cachedSummaryReopened =
+            !!document.querySelector('[data-testid="sticky-summary__content"]') &&
+            !document.querySelector('[data-testid="sticky-summary__loading"]');
 
-          // 9) Esc 关闭
-          const escEvent = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
-          document.dispatchEvent(escEvent);
-          await sleep(50);
-          report.summary.checks.escClosed = !document.querySelector('.summary-floating-panel');
+          document.querySelector('.sticky-bottom-panel [data-sticky-tab="tag-manage"]')?.click();
+          await waitFor(() => (
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-tab') === 'tag-manage'
+          ), { timeout: 2000 });
+          report.summary.checks.sharesPanelWithTags =
+            !!document.querySelector('.sticky-tag-manage') &&
+            !document.querySelector('[data-testid="sticky-summary"]');
+
+          document.querySelector('[data-testid="sticky-bottom-panel__close"]')?.click();
+          await waitFor(() => (
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-state') === 'collapsed'
+          ), { timeout: 2000 });
+          report.summary.checks.closeButtonCollapsesPanel =
+            document.querySelector('.sticky-bottom-panel')?.getAttribute('data-sticky-state') === 'collapsed';
+          report.summary.checks.floatingPanelStillAbsent =
+            !document.querySelector('.summary-floating-panel');
 
           report.summary.ok = [
-            'panelInitiallyHidden', 'panelRendered', 'loadingVisible', 'resizeHandles',
-            'dragMoved', 'resizeChanged',
-            'boundsClampedX', 'boundsClampedY',
-            'localStoragePersisted', 'escClosed'
-          ].every((k) => report.summary.checks[k] === true);
+            'panelInitiallyCollapsed', 'summaryTabInBottomBar', 'noFloatingPanel',
+            'summaryPanelOpened', 'summaryTabActive', 'loadingVisible',
+            'summaryContentVisible', 'markdownRendered', 'toolbarButtonActive',
+            'panelResizable', 'toolbarButtonCollapsesPanel', 'cachedSummaryReopened',
+            'sharesPanelWithTags', 'closeButtonCollapsesPanel', 'floatingPanelStillAbsent'
+          ].every((key) => report.summary.checks[key] === true);
         } catch (e) {
           report.summary.error = String(e);
           report.summary.stack = (e instanceof Error) ? e.stack : null;
@@ -1766,6 +1896,32 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.feedsGroup.checks.renderedGroupNames = renderedGroupNames;
           report.feedsGroup.checks.ungroupedInitiallyRendered =
             renderedGroupNames.includes('未分组');
+          const firstGroupToggle = document.querySelector('.feed-list__group-toggle');
+          const firstFeedItem = document.querySelector('.feed-list__group .feed-list__item');
+          if (firstGroupToggle && firstFeedItem) {
+            const groupTitleFontSize = parseFloat(getComputedStyle(firstGroupToggle).fontSize);
+            const feedItemFontSize = parseFloat(getComputedStyle(firstFeedItem).fontSize);
+            report.feedsGroup.checks.groupTitleSlightlySmallerThanFeed =
+              groupTitleFontSize < feedItemFontSize &&
+              feedItemFontSize - groupTitleFontSize <= 2 &&
+              Math.abs(groupTitleFontSize - 12.5) <= 0.1;
+            report.feedsGroup.checks.groupTitleFontSize = groupTitleFontSize;
+            report.feedsGroup.checks.feedItemFontSize = feedItemFontSize;
+          }
+          const virtualSection = document.querySelector('.feed-list__virtuals');
+          const firstGroup = groupEls[0];
+          if (virtualSection && firstGroup) {
+            const virtualStyle = getComputedStyle(virtualSection);
+            const groupStyle = getComputedStyle(firstGroup);
+            report.feedsGroup.checks.virtualDividerMatchesGroupDivider =
+              virtualStyle.borderBottomWidth === '1px' &&
+              virtualStyle.borderBottomStyle === 'solid' &&
+              virtualStyle.borderBottomColor === groupStyle.borderBottomColor;
+            report.feedsGroup.checks.virtualDivider =
+              virtualStyle.borderBottomWidth + ' ' +
+              virtualStyle.borderBottomStyle + ' ' +
+              virtualStyle.borderBottomColor;
+          }
 
           // C) 打开"添加组"对话框 → input "测试组" → submit → 侧栏出现新组
           const createBtn = document.querySelector('[data-testid="feed-list__create"]');
@@ -1873,6 +2029,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             techGroupDiv?.getAttribute('data-collapsed') === 'true';
           report.feedsGroup.checks.groupItemsHiddenWhenCollapsed =
             (techGroupDiv?.querySelectorAll('.feed-list__item').length ?? 0) === 0;
+          const collapsedGroupHeight = techGroupDiv?.getBoundingClientRect().height ?? 0;
+          report.feedsGroup.checks.collapsedGroupUsesCompactSpacing =
+            Math.abs(collapsedGroupHeight - 30) <= 0.5;
+          report.feedsGroup.checks.collapsedGroupHeight = collapsedGroupHeight;
           // 再点 → 验证展开
           techToggleBtn?.click();
           await sleep(200);
@@ -1931,6 +2091,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const batchDeleteBtn = document.querySelector('[data-testid="feed-list__batch-delete"]');
           report.feedsGroup.checks.batchDeleteBtnDisabledWhenEmpty =
             batchDeleteBtn instanceof HTMLButtonElement && batchDeleteBtn.disabled;
+          report.feedsGroup.checks.batchDeleteBtnUsesShortLabel =
+            (batchDeleteBtn?.textContent || '').trim() === '删除';
           // 全选 → 验证 selectedForBatch size
           //   Phase 4.x UI 打磨:全选 + 清空合并为 toggle 按钮
           //   第一次点击(0 选中):全选 → size > 0
@@ -2024,7 +2186,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           // 关键探针必须全部通过
           const mustPass = [
             'seedFeedsCreated', 'initialListGroupsOk', 'groupTitlesRendered',
-            'ungroupedInitiallyRendered',
+            'ungroupedInitiallyRendered', 'groupTitleSlightlySmallerThanFeed',
+            'virtualDividerMatchesGroupDivider',
             'addGroupBtnVisible', 'addGroupDialogOpened',
             'addGroupRenders', 'dialogClosedAfterSubmit',
             'moveToGroupIpcOk', 'feedRenderedInNewGroup',
@@ -2032,13 +2195,15 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             'deleteGroupBtnVisible', 'clearGroupIpcOk', 'clearGroupIpcReturned',
             'finalListGroupsOk', 'invalidUpdateRejected',
             'groupToggleBtnVisible', 'groupCollapsedAfterClick',
-            'groupItemsHiddenWhenCollapsed', 'groupExpandedAfterSecondClick',
+            'groupItemsHiddenWhenCollapsed', 'collapsedGroupUsesCompactSpacing',
+            'groupExpandedAfterSecondClick',
             'groupItemsRestoredWhenExpanded',
             'moreBtnVisible', 'moreMenuOpened', 'moreMenuHasSize',
             'moreMenuInViewport', 'moreMenuInsideFeedList', 'moreMenuHitTest',
             'moreMenuHasEnterBatch',
             'batchToolbarVisible', 'batchCheckboxesRendered',
-            'batchDeleteBtnDisabledWhenEmpty', 'batchToggleBtnExists',
+            'batchDeleteBtnDisabledWhenEmpty', 'batchDeleteBtnUsesShortLabel',
+            'batchToggleBtnExists',
             'batchSelectAllWorks', 'batchDeleteBtnEnabledAfterSelect',
             'batchToggleBtnShowsCancelWhenSelected', 'batchToggleOffWorks',
             'batchToggleBtnShowsSelectWhenEmpty', 'batchExitWorks',
@@ -3720,14 +3885,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       })()
     `;
   } else if (smokeTagList) {
-    // Phase 3.5.x 修复 smoke:侧栏 tab=tags 真按 tag 分类 + AI 标签建议 toggle 修复
+    // Phase 3.5.x 修复 smoke:侧栏 tab=tags 真按 tag 分类 + 标签栏自动 AI 建议
     // 验证:
     //  A) 切到 tab=tags → 渲染占位("还没有任何标签")或已有 tag 列表
-    //  B) handleSuggestTags toggle 修复:
-    //     1) 初始 stickyTab=null + tagSuggestions=[]
-    //     2) 点 🪄 标签建议 → stickyTab='tag-suggest' + tagSuggestions.length>0
-    //     3) 第二次点(显示"🙈 关闭标签建议")→ stickyTab=null, tagSuggestions 长度不变(不重调 AI)
-    //     4) 第三次点(显示"🪄 显示标签建议")→ stickyTab='tag-suggest', tagSuggestions 长度仍不变(不重调 AI)
+    //  B) 独立“标签建议”入口不存在；打开标签栏自动加载建议，关闭再打开时复用结果
     probe = `
       (async () => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -3767,102 +3928,71 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.tagList.checks.tabTagsRendered = !!tagsPanel || hasTagItems;
           report.tagList.checks.tabTagsHasContent = hasTagItems;
 
-          // B) AI 标签建议 toggle 修复
+          // B) 标签栏自动 AI 建议
           // 1) 初始:stickyTab=null + tagSuggestions=[]
           const dbg0 = getDbg();
           report.tagList.checks.initialStickyTab = dbg0?.stickyTab ?? null;
           report.tagList.checks.initialTagSuggestionsLength = (dbg0?.tagSuggestions ?? []).length;
+          report.tagList.checks.noStandaloneSuggestButton =
+            !document.querySelector('[data-tool="tag-suggest"]') &&
+            !document.querySelector('[data-sticky-tab="tag-suggest"]');
 
-          // 2) 点 🪄 标签建议 → 调 mock AI
-          const suggestBtn = document.querySelector('[data-tool="tag-suggest"]');
-          if (!suggestBtn) {
-            report.tagList.error = '未找到 🪄 标签建议 按钮';
+          // 2) 点“标签”后自动读取或生成建议
+          const tagManageBtn = document.querySelector('[data-tool="tag-manage"]');
+          if (!tagManageBtn) {
+            report.tagList.error = '未找到标签按钮';
             return JSON.stringify(report);
           }
-          suggestBtn.click();
-          // 等 mock 模式 aiSuggestTags + aiGetTagSuggestions 完成(各 50ms)
+          tagManageBtn.click();
           const dbg1 = await waitFor(() => {
             const d = getDbg();
-            return d && d.stickyTab === 'tag-suggest' && d.tagSuggestions && d.tagSuggestions.length > 0;
+            return d &&
+              d.stickyTab === 'tag-manage' &&
+              d.tagSuggestionsStatus === 'ready' &&
+              d.tagSuggestions &&
+              d.tagSuggestions.length > 0;
           }, { timeout: 3000 }) ? getDbg() : null;
-          report.tagList.checks.afterFirstClickStickyTab = dbg1?.stickyTab ?? null;
-          report.tagList.checks.afterFirstClickTagSuggestionsLength = (dbg1?.tagSuggestions ?? []).length;
+          report.tagList.checks.afterOpenStickyTab = dbg1?.stickyTab ?? null;
+          report.tagList.checks.afterOpenTagSuggestionsStatus = dbg1?.tagSuggestionsStatus ?? null;
+          report.tagList.checks.afterOpenTagSuggestionsLength = (dbg1?.tagSuggestions ?? []).length;
+          report.tagList.checks.suggestionsIntegratedInTagPanel =
+            !!document.querySelector('.sticky-tag-manage [data-sticky-section="ai-suggestions"]') &&
+            document.querySelectorAll('.sticky-tag-manage [data-sticky-suggestion]').length > 0;
           const initialLength = (dbg1?.tagSuggestions ?? []).length;
-          await sleep(120);
 
-          // 3) 第二次点(此时按钮文本应为"🙈 关闭标签建议")→ 关闭,stickyTab=null
-          //    tagSuggestions 长度应保持不变(不重调 AI)
-          const suggestBtnAgain1 = document.querySelector('[data-tool="tag-suggest"]');
-          suggestBtnAgain1.click();
+          // 3) 再点“标签”收起，建议留在内存中
+          const tagManageBtnAgain1 = document.querySelector('[data-tool="tag-manage"]');
+          tagManageBtnAgain1.click();
           await sleep(200);
           const dbg2 = getDbg();
-          report.tagList.checks.afterSecondClickStickyTab = dbg2?.stickyTab ?? null;
-          report.tagList.checks.afterSecondClickTagSuggestionsLength = (dbg2?.tagSuggestions ?? []).length;
+          report.tagList.checks.afterCloseStickyTab = dbg2?.stickyTab ?? null;
+          report.tagList.checks.afterCloseTagSuggestionsLength = (dbg2?.tagSuggestions ?? []).length;
           report.tagList.checks.suggestionsNotRegeneratedOnClose =
             (dbg2?.tagSuggestions ?? []).length === initialLength;
 
-          // 4) 第三次点(此时按钮文本应为"🪄 显示标签建议")→ 切显示,stickyTab='tag-suggest'
-          //    tagSuggestions 长度应仍保持不变(不重调 AI)
-          const suggestBtnAgain2 = document.querySelector('[data-tool="tag-suggest"]');
-          suggestBtnAgain2.click();
+          // 4) 再打开标签栏，直接复用已有建议
+          const tagManageBtnAgain2 = document.querySelector('[data-tool="tag-manage"]');
+          tagManageBtnAgain2.click();
           await sleep(200);
           const dbg3 = getDbg();
-          report.tagList.checks.afterThirdClickStickyTab = dbg3?.stickyTab ?? null;
-          report.tagList.checks.afterThirdClickTagSuggestionsLength = (dbg3?.tagSuggestions ?? []).length;
+          report.tagList.checks.afterReopenStickyTab = dbg3?.stickyTab ?? null;
+          report.tagList.checks.afterReopenTagSuggestionsLength = (dbg3?.tagSuggestions ?? []).length;
           report.tagList.checks.suggestionsNotRegeneratedOnReopen =
             (dbg3?.tagSuggestions ?? []).length === initialLength;
 
-          // 关键 toggle 修复检查必须为 true
-          const mustPass = [
-            'tabTagsRendered',
-            'initialStickyTab',     // null
-            'initialTagSuggestionsLength', // 0
-            'afterFirstClickStickyTab',    // 'tag-suggest'
-            'afterFirstClickTagSuggestionsLength', // > 0
-            'afterSecondClickStickyTab',   // null
-            'suggestionsNotRegeneratedOnClose', // true
-            'afterThirdClickStickyTab',    // 'tag-suggest'
-            'suggestionsNotRegeneratedOnReopen'  // true
-          ];
-          for (const k of mustPass) {
-            if (k === 'initialStickyTab' && report.tagList.checks[k] !== null) {
-              report.tagList.ok = false;
-              return JSON.stringify(report);
-            }
-            if (k === 'initialTagSuggestionsLength' && report.tagList.checks[k] !== 0) {
-              report.tagList.ok = false;
-              return JSON.stringify(report);
-            }
-            if (k === 'afterFirstClickStickyTab' && report.tagList.checks[k] !== 'tag-suggest') {
-              report.tagList.ok = false;
-              return JSON.stringify(report);
-            }
-            if (k === 'afterFirstClickTagSuggestionsLength' && report.tagList.checks[k] === 0) {
-              report.tagList.ok = false;
-              return JSON.stringify(report);
-            }
-            if (k === 'afterSecondClickStickyTab' && report.tagList.checks[k] !== null) {
-              report.tagList.ok = false;
-              return JSON.stringify(report);
-            }
-            if (k === 'suggestionsNotRegeneratedOnClose' && report.tagList.checks[k] !== true) {
-              report.tagList.ok = false;
-              return JSON.stringify(report);
-            }
-            if (k === 'afterThirdClickStickyTab' && report.tagList.checks[k] !== 'tag-suggest') {
-              report.tagList.ok = false;
-              return JSON.stringify(report);
-            }
-            if (k === 'suggestionsNotRegeneratedOnReopen' && report.tagList.checks[k] !== true) {
-              report.tagList.ok = false;
-              return JSON.stringify(report);
-            }
-            if (k === 'tabTagsRendered' && report.tagList.checks[k] !== true) {
-              report.tagList.ok = false;
-              return JSON.stringify(report);
-            }
-          }
-          report.tagList.ok = true;
+          report.tagList.ok =
+            report.tagList.checks.tabTagsRendered === true &&
+            report.tagList.checks.initialStickyTab === null &&
+            report.tagList.checks.initialTagSuggestionsLength === 0 &&
+            report.tagList.checks.noStandaloneSuggestButton === true &&
+            report.tagList.checks.afterOpenStickyTab === 'tag-manage' &&
+            report.tagList.checks.afterOpenTagSuggestionsStatus === 'ready' &&
+            report.tagList.checks.afterOpenTagSuggestionsLength > 0 &&
+            report.tagList.checks.suggestionsIntegratedInTagPanel === true &&
+            report.tagList.checks.afterCloseStickyTab === null &&
+            report.tagList.checks.suggestionsNotRegeneratedOnClose === true &&
+            report.tagList.checks.afterReopenStickyTab === 'tag-manage' &&
+            report.tagList.checks.suggestionsNotRegeneratedOnReopen === true;
         } catch (e) {
           report.tagList.error = String(e);
           report.tagList.stack = (e instanceof Error) ? e.stack : null;
@@ -4137,7 +4267,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             const arrowPathBox =
               arrowPath && typeof arrowPath.getBBox === 'function' ? arrowPath.getBBox() : null;
             report.phase42.checks.groupArrowUsesLargeSvg =
-              arrowRect.width === 13 && arrowRect.height === 13 &&
+              arrowRect.width === 12 && arrowRect.height === 12 &&
               !!arrowPathBox && arrowPathBox.width === 10 && arrowPathBox.height >= 8.5;
             report.phase42.checks.groupArrowSize =
               arrowRect.width + 'x' + arrowRect.height +

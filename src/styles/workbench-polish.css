@@ -124,17 +124,22 @@
   background: var(--bg-elev-hover);
 }
 
-.feed-list__virtuals,
-.feed-list__group {
+.feed-list__virtuals {
   padding-block: 5px;
 }
 
+.feed-list__group {
+  padding-block: 0;
+}
+
 .feed-list__group-title {
-  padding: 7px 9px 4px 10px;
+  min-height: 29px;
+  box-sizing: border-box;
+  padding: 2px 9px 2px 10px;
 }
 
 .feed-list__group-toggle {
-  min-height: 25px;
+  min-height: 21px;
   border-radius: 5px;
   letter-spacing: 0.04em;
 }
@@ -267,6 +272,12 @@
   background: var(--bg-elev);
   box-shadow: none;
   white-space: nowrap;
+}
+
+.article-reader__btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .article-reader__body {

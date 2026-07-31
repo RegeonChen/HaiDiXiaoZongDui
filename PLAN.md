@@ -205,21 +205,22 @@
 
 **Overall Goal:** 优化 AI 摘要和翻译的 UI 交互体验，增加 AI 结果的持久化与自动加载。
 
-### Task 3.5.1 - Summary Floating Window (张晨阳)
+### Task 3.5.1 - Summary Bottom Panel (张晨阳，2026-07-31 交互修订)
 
 - **Task Detail:**
-  1. 实现可拖拽 + 可调整大小的摘要悬浮窗组件（`SummaryFloatingPanel`），用户鼠标拖拽边框自由改变大小和位置。
-  2. 点击"✨ 摘要"按钮 → 悬浮窗立即渲染（含标题栏 + 关闭按钮），内部显示 Loading 状态（"Waiting for AI response…"），不等待 AI Provider 返回。
-  3. AI 返回结果后更新悬浮窗内容（Markdown 渲染后的摘要正文），保留拖拽位置和大小。
-  4. 悬浮窗始终在阅读区视口内（边界检测，防止拖出可视区域）。
-  5. 替换现有文末 `article-reader__ai-panel` 摘要折叠区。
-- **Affected Areas:** `ArticleReader.tsx`（移除旧摘要面板，接入悬浮窗）、新增 `SummaryFloatingPanel` 组件。
+  1. 摘要不再使用独立悬浮窗，改为 `StickyBottomPanel` 中与标签、笔记并列的“摘要”tab；AI 标签建议自动并入“标签”tab。
+  2. 点击工具栏“摘要”或底部“摘要”tab → 底部栏立即展开并显示生成状态，不等待 AI Provider 返回。
+  3. AI 返回后在同一底部栏渲染 Markdown 摘要；收起后再次打开直接复用缓存。
+  4. 底部栏沿用统一的高度拉伸、三 tab 切换和收起交互，摘要与翻译视图可以同时保留。
+  5. 删除不再使用的 `SummaryFloatingPanel` 组件和独立位置/尺寸状态。
+- **Affected Areas:** `ArticleReader.tsx`、`ArticleReader.css`、`StickyBottomPanel`、摘要与共存 smoke。
 - **Verification:**
-  - 点击摘要按钮 → 屏幕中央出现悬浮窗，显示"Waiting for AI response…"。
-  - 鼠标拖拽标题栏 → 悬浮窗跟随移动，松手后停留在目标位置。
-  - 鼠标拖拽边框 → 悬浮窗大小实时变化，最小 300×200px。
-  - AI 摘要返回后悬浮窗内容替换为 Markdown 渲染后的正文。
-  - 关闭悬浮窗后再点摘要 → 重新打开，若已有缓存内容则直接展示。
+  - 点击摘要按钮 → 阅读区底部栏切到“摘要”并显示生成状态，页面中不存在摘要悬浮窗。
+  - AI 摘要返回后 → 底部栏显示 Markdown 摘要。
+  - 收起后从工具栏或底部 tab 重开 → 直接展示缓存，不重新生成。
+  - 工具栏始终显示“摘要 / 翻译 / 标签 / 笔记 / 专题”，打开状态只改变强调色底色、边框和 `aria-pressed`，不切换“显示/隐藏/关闭”文字；文章 AI 对话只保留右上角 AI 入口。
+  - 摘要栏可拉伸，并可在同一栏切换到标签和笔记；标签页内自动显示 AI 建议。
+  - 打开翻译 → 译文视图与底部摘要栏同时保留。
 
 ### Task 3.5.2 - Inline Translation Between Paragraphs (张晨阳 + 张宇凡)
 
@@ -264,7 +265,7 @@
 - **Verification:**
   - 打开一篇英文文章 → 段落正确分块渲染 → 点击翻译 → 每段下方立即出现等待框 → AI 返回后译文逐段填充 → Markdown 正确渲染。
   - 切换到其他文章 → 再切回 → 译文和摘要仍在原位显示。
-  - 拖拽摘要悬浮窗 → 位置和大小正确 → 关闭后再次打开位置保持或复位。
+  - 拉伸摘要底部栏 → 高度正确 → 收起后再次打开复用缓存。
   - 重启应用 → 摘要和翻译自动加载展示。
 
 ## Phase 3.6: Translation UX & Sync Feedback & Count Fix

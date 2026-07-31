@@ -1,13 +1,11 @@
 /**
- * Task 3.5.1 端到端 smoke — 摘要悬浮窗
+ * 摘要端到端 smoke — 阅读区粘性底部栏
  *
  * 验证项：
- *  - 点 ✨ 摘要按钮 → SummaryFloatingPanel 立即渲染
- *  - 悬浮窗可拖拽（标题栏 mousedown + mousemove + mouseup）
- *  - 悬浮窗可调大小（8 个 resize handle）
- *  - 边界检测：拖出 viewport 自动 clamp 到视口内
- *  - 关闭按钮 + Esc 都能关闭
- *  - 位置/大小持久化到 localStorage
+ *  - 摘要与标签共用 StickyBottomPanel，不再创建悬浮窗
+ *  - 首次打开立即显示 Loading，完成后渲染 Markdown 摘要
+ *  - 上方工具按钮和底部 tab 都能打开缓存摘要
+ *  - 面板可拉伸、切换到标签并收起
  *
  * 运行：npm run smoke:summary
  */
@@ -52,8 +50,8 @@ child.on('exit', (code) => {
   console.log(`[smoke-3.5.1] electron 退出 code=${code}`);
   console[passed ? 'log' : 'error'](
     passed
-      ? '[smoke-3.5.1] ✓ Phase 3.5.1 摘要悬浮窗（拖拽/边界/持久化）全部通过'
-      : '[smoke-3.5.1] ✗ Phase 3.5.1 摘要悬浮窗验证失败'
+      ? '[smoke-3.5.1] ✓ 摘要底部栏（生成/缓存/tab/拉伸/收起）全部通过'
+      : '[smoke-3.5.1] ✗ 摘要底部栏验证失败'
   );
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   process.exit(passed ? 0 : 1);

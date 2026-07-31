@@ -49,10 +49,6 @@
   color: var(--accent);
 }
 
-.article-reader__link-icon {
-  font-size: 12px;
-}
-
 .article-reader__sourcelink-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -260,8 +256,10 @@
 }
 
 .article-reader__btn.is-active {
-  color: var(--warn);
-  border-color: var(--warn);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 500;
 }
 
 .article-reader__btn:disabled {
@@ -443,79 +441,6 @@
   text-align: left;
 }
 
-/* 底部摘要折叠 */
-.article-reader__summary {
-  border-top: 1px solid var(--border-soft);
-  background: var(--bg-elev);
-  flex-shrink: 0;
-}
-
-.article-reader__summary-toggle {
-  width: 100%;
-  appearance: none;
-  border: none;
-  background: transparent;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
-  padding: 10px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  transition: background 100ms ease;
-}
-
-.article-reader__summary-toggle:hover {
-  background: var(--bg);
-  color: var(--fg);
-}
-
-.article-reader__summary-chevron {
-  font-size: 12px;
-}
-
-.article-reader__summary-content {
-  padding: 0 24px 12px;
-}
-
-.article-reader__summary-placeholder {
-  margin: 0;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-/* AI �������������Phase 3 Integration�� */
-.article-reader__ai-panel {
-  border-top: 1px solid var(--border-soft);
-  background: var(--bg-elev);
-  padding: 14px 24px 18px;
-  flex-shrink: 0;
-}
-
-.article-reader__ai-panel h3 {
-  font-size: 12px;
-  font-weight: 600;
-  margin: 0 0 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--fg-soft);
-}
-
-.article-reader__ai-text {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--fg);
-}
-
-.article-reader__ai-empty {
-  font-size: 12px;
-  color: var(--muted);
-  margin: 0;
-}
-
 .article-reader__bilingual-content {
   display: flex;
   flex-direction: column;
@@ -634,7 +559,69 @@
 
 
 /* ============================================================
- * 粘性底部面板（StickyBottomPanel）内容样�? * ============================================================ */
+ * 粘性底部面板（StickyBottomPanel）内容样式
+ * ============================================================ */
+
+/* 摘要 */
+.sticky-summary {
+  min-height: 100%;
+  padding: 4px 2px;
+  box-sizing: border-box;
+}
+
+.sticky-summary__loading,
+.sticky-summary__empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.sticky-summary__spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 2px solid var(--border, #d1d5db);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: sticky-summary__spin 0.8s linear infinite;
+}
+
+@keyframes sticky-summary__spin {
+  to { transform: rotate(360deg); }
+}
+
+.sticky-summary__content {
+  max-width: 76ch;
+  padding: 4px 8px 12px;
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.sticky-summary__content p {
+  margin: 0 0 0.75em;
+}
+
+.sticky-summary__content p:last-child {
+  margin-bottom: 0;
+}
+
+.sticky-summary__content code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--sticky-control-bg, var(--bg-elev));
+  font-family: var(--font-mono, monospace);
+  font-size: 0.92em;
+}
+
+.sticky-summary__content a {
+  color: var(--accent);
+}
 
 /* 标签管理 */
 .sticky-tag-manage {
@@ -648,6 +635,12 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.sticky-tag-manage__section--suggestions {
+  padding: 10px 0;
+  border-top: 1px dashed var(--border, #e5e7eb);
+  border-bottom: 1px dashed var(--border, #e5e7eb);
 }
 
 .sticky-tag-manage__heading {
@@ -684,7 +677,7 @@
   font-size: 12px;
   border: 1px solid;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--sticky-surface-bg, var(--bg));
   color: var(--fg);
   transition: opacity 0.12s;
 }
@@ -750,11 +743,11 @@
   font-size: 12px;
   border: 1px solid var(--border, #d1d5db);
   border-radius: 4px;
-  background: var(--bg);
+  background: var(--sticky-surface-bg, var(--bg));
   color: var(--fg);
 }
 
-/* 标签建议 */
+/* 标签栏内的 AI 建议 */
 .sticky-tag-suggest {
   display: flex;
   flex-direction: column;
@@ -763,7 +756,8 @@
 }
 
 .sticky-tag-suggest__loading,
-.sticky-tag-suggest__empty {
+.sticky-tag-suggest__empty,
+.sticky-tag-suggest__error {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -771,6 +765,11 @@
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.sticky-tag-suggest__error {
+  justify-content: space-between;
+  color: var(--err);
 }
 
 .sticky-tag-suggest__spinner {
@@ -815,7 +814,7 @@
   padding: 6px 10px;
   border: 1px solid var(--border, #e5e7eb);
   border-radius: 4px;
-  background: var(--bg);
+  background: var(--sticky-surface-bg, var(--bg));
 }
 
 .sticky-tag-suggest__main {
@@ -865,7 +864,7 @@
   line-height: 1.5;
   border: 1px solid var(--border, #d1d5db);
   border-radius: 4px;
-  background: var(--bg);
+  background: var(--sticky-surface-bg, var(--bg));
   color: var(--fg);
   resize: vertical;
 }

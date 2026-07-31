@@ -316,6 +316,10 @@ export function App() {
     if (r.kind === 'ready') setTagCounts(r.data);
   }, [ds]);
 
+  const refreshTagsAndCounts = useCallback(async () => {
+    await Promise.all([refreshTags(), refreshTagCounts()]);
+  }, [refreshTagCounts, refreshTags]);
+
   // Phase 3.5.x：拉所有订阅源组名（侧栏"添加组"按钮 + 移动到组子菜单共用）
   // 合并服务端实际组名 + 本地"用户主动添加的空组"缓存,
   // 避免空组被服务端列在 listGroups 结果里之后又因没人用而被淘汰。
@@ -1525,6 +1529,7 @@ export function App() {
         failedFeedIds={syncing ? undefined : failedFeedIds}
         tags={tags}
         tagCounts={tagCounts}
+        onRefreshTags={refreshTagsAndCounts}
         groups={groups}
         onAddFeed={() => setAddDialogOpen(true)}
         onImportOpml={() => {
@@ -1622,6 +1627,7 @@ export function App() {
       feed={selectedFeed}
       onToggleStar={handleToggleStar}
       onToast={pushToast}
+      onTagsChanged={refreshTagsAndCounts}
       aiDockOpen={aiDockOpen}
       onAiDockOpenChange={setAiDockOpen}
     />

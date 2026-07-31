@@ -44,6 +44,8 @@ export interface FeedListProps {
   tags?: Tag[];
   /** Phase 3.5.x：每个 tag 名下的文章数（来自 article_tags SQL 聚合） */
   tagCounts?: Record<string, number>;
+  /** 打开标签页时重新拉取标签与文章数，避免侧栏停留在旧快照。 */
+  onRefreshTags?: () => void | Promise<void>;
   /** Phase 3.5.x：所有订阅源组名（侧栏"移动到组"子菜单 + 顶栏添加组用） */
   groups?: string[];
   /** Phase 3.5.x：打开"添加组"对话框 */
@@ -92,6 +94,7 @@ export function FeedList({
   failedFeedIds,
   tags,
   tagCounts,
+  onRefreshTags,
   groups = [],
   onAddGroup,
   onAddFeed,
@@ -122,6 +125,11 @@ export function FeedList({
       // 静默失败
     }
   }, []);
+
+  useEffect(() => {
+    if (tab === 'tags') void onRefreshTags?.();
+  }, [onRefreshTags, tab]);
+
   const [showAll, setShowAll] = useState(true);
   // Phase 3.5.x：折叠的订阅源组（持久化到 localStorage）
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
@@ -534,7 +542,7 @@ export function FeedList({
             disabled={selectedForBatch.size === 0}
             data-testid="feed-list__batch-delete"
           >
-            删除选中
+            删除
           </button>
           <button
             type="button"
@@ -695,7 +703,7 @@ export function FeedList({
             <EmptyView
               className="feed-list__empty"
               title="还没有标签"
-              hint="在文章阅读区点击“标签”或“标签建议”添加。"
+              hint="在文章阅读区点击“标签”创建或应用。"
             />
           ) : (
             <div className="feed-list__virtuals" data-section="tags">

@@ -1,13 +1,13 @@
 /**
- * Phase 3.5.x 修复 smoke — 侧栏 tab=tags 真按 tag 分类 + AI 标签建议 toggle 修复
+ * Phase 3.5.x 修复 smoke — 侧栏 tab=tags 真按 tag 分类 + 标签栏自动 AI 建议
  *
  * 验证:
  *  A) 切到 tab=tags → 渲染占位("还没有任何标签")或已有 tag 列表
- *  B) handleSuggestTags toggle 修复:
+ *  B) 标签栏自动 AI 建议:
  *     1) 初始 stickyTab=null + tagSuggestions=[]
- *     2) 点 🪄 标签建议 → stickyTab='tag-suggest' + tagSuggestions.length>0
- *     3) 第二次点(显示"🙈 关闭标签建议")→ stickyTab=null, tagSuggestions 长度不变(不重调 AI)
- *     4) 第三次点(显示"🪄 显示标签建议")→ stickyTab='tag-suggest', tagSuggestions 长度仍不变(不重调 AI)
+ *     2) 不存在独立“标签建议”按钮
+ *     3) 点“标签” → stickyTab='tag-manage'，自动出现建议
+ *     4) 关闭再打开“标签” → 复用已有建议，不重复生成
  *
  * 用法:npm run smoke:taglist
  */
@@ -57,7 +57,7 @@ child.on('exit', (code, signal) => {
 
   const ok = /SMOKE_REPORT_PASS/.test(stdout);
   if (ok) {
-    console.log('[smoke-taglist] ✓ 侧栏 tag 分类 + AI 标签建议 toggle 修复 验证全部通过');
+    console.log('[smoke-taglist] ✓ 侧栏 tag 分类 + 标签栏自动 AI 建议 验证全部通过');
     finish(0);
   } else {
     console.error('[smoke-taglist] ✗ 验证失败,未见 SMOKE_REPORT_PASS');

@@ -160,12 +160,19 @@
 .feed-list__group {
   display: flex;
   flex-direction: column;
+}
+
+.feed-list__virtuals {
   padding: 4px 0;
+}
+
+.feed-list__group {
+  padding: 0;
 }
 
 /* 分组标题只在可点击子元素上缩放一次，避免父子 em 叠乘。 */
 .feed-list__group-title {
-  padding: 6px 16px 4px;
+  padding: 2px 16px;
   font-size: inherit;
   color: var(--fg);
   letter-spacing: 0.04em;
@@ -186,14 +193,14 @@
   border: none;
   background: transparent;
   color: var(--fg);
-  font-size: 0.93em;  /* 与 .feed-list__item 一致(根=14 时 ≈13px) */
+  font-size: 0.893em;  /* 根字号 14px 时约 12.5px */
   letter-spacing: 0.04em;
   font-weight: 600;
   flex: 1;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 6px;
+  padding: 2px 6px;
   cursor: pointer;
   text-align: left;
   border-radius: 3px;
@@ -218,8 +225,8 @@
 
 .feed-list__group-arrow svg {
   display: block;
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   fill: currentColor;
 }
 
@@ -459,8 +466,8 @@
   font-size: 0.86em;
 }
 
-/* 主内容区（虚拟 + 订阅源）滚动 */
-.feed-list__virtuals + .feed-list__group,
+/* 系统入口（所有/未读/星标）与订阅源组使用同一条灰色分隔线。 */
+.feed-list__virtuals,
 .feed-list__group {
   border-bottom: 1px solid var(--border-soft);
 }

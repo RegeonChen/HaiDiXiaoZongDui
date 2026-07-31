@@ -96,7 +96,7 @@ git push origin v0.2.0
 | `npm run smoke:task33` | Phase 3.3：AI Provider + Tag/Note/Digest CRUD |
 | `npm run smoke:integration` | Phase 3 Integration：21 项 UI + IPC 全链路 |
 | `npm run smoke:topic` | Phase 4.1：专题 UI（7 项校验） |
-| `npm run smoke:summary` | Phase 3.5.1：摘要悬浮窗（10 项校验） |
+| `npm run smoke:summary` | 摘要底部栏：生成、缓存、切换、拉伸与收起 |
 | `npm run smoke:inline-trans` | Phase 3.5.2：段落内翻译（11 项校验） |
 | `npm run smoke:onboarding` | Phase 4.3：首次启动、8 步引导、设置重开与持久化 |
 
@@ -125,7 +125,7 @@ git push origin v0.2.0
 │   │   ├── Layout/              # 三栏布局 + 顶栏导航
 │   │   ├── SearchBar/           # 模糊搜索
 │   │   ├── GeneralSettingsModal/ # 通用设置弹窗
-│   │   ├── SummaryFloatingPanel/ # AI 摘要悬浮窗
+│   │   ├── StickyBottomPanel/   # 摘要、标签（含 AI 建议）与笔记底部栏
 │   │   ├── TranslatedArticleView/ # 逐段翻译视图
 │   │   └── TranslationSlot/     # 单段翻译插槽
 │   ├── pages/                   # 二级页面
