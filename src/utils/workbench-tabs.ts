@@ -9,7 +9,7 @@ export interface OpenWorkbenchTabResult {
  * VS Code 风格的预览标签：
  * - 普通打开只占用一个 preview 位置，下一次普通打开原位替换。
  * - 已固定的标签不会被替换。
- * - 再次打开已有标签时保留其固定状态。
+ * - 再次打开同一个 preview 时将其固定，明确保留用户重复进入的内容。
  */
 export function openWorkbenchTab(
   tabs: WorkbenchTab[],
@@ -22,7 +22,7 @@ export function openWorkbenchTab(
     nextTabs[existingIndex] = {
       ...existing,
       ...incoming,
-      preview: incoming.preview === false ? false : existing.preview
+      preview: false
     };
     return { tabs: nextTabs, replacedTab: null };
   }

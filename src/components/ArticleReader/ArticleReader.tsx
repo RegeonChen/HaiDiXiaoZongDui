@@ -141,6 +141,8 @@ export function ArticleReader({
   const tagSuggestionsRequestRef = useRef<string | null>(null);
   const currentArticleIdRef = useRef<string | null>(article?.id ?? null);
   currentArticleIdRef.current = article?.id ?? null;
+  const readerScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollToTop, setCanScrollToTop] = useState(false);
 
   useEffect(() => {
     setChatMessages([]);
@@ -149,6 +151,17 @@ export function ArticleReader({
     setChatError(null);
     setSelectionMenu(null);
   }, [article?.id]);
+
+  useEffect(() => {
+    const scroller = readerScrollRef.current;
+    if (scroller) scroller.scrollTop = 0;
+    setCanScrollToTop(false);
+  }, [article?.id]);
+
+  useEffect(() => {
+    const scroller = readerScrollRef.current;
+    setCanScrollToTop(Boolean(scroller && scroller.scrollTop > 240));
+  }, [readerMode]);
 
   useEffect(() => {
     if (!selectionMenu) return;
@@ -721,6 +734,20 @@ export function ArticleReader({
     setStickyTab((prev) => (prev === tab ? null : tab));
   }, []);
 
+  const handleReaderScroll = useCallback(() => {
+    const next = (readerScrollRef.current?.scrollTop ?? 0) > 240;
+    setCanScrollToTop((current) => current === next ? current : next);
+  }, []);
+
+  const handleScrollToTop = useCallback(() => {
+    const scroller = readerScrollRef.current;
+    if (!scroller) return;
+    scroller.scrollTo({
+      top: 0,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    });
+  }, []);
+
   const handleCreateTopic = useCallback(async (value: TopicFormValue) => {
     if (!article) return;
     const r = await ds.topicCreate({
@@ -768,26 +795,44 @@ export function ArticleReader({
         >
           <span className="article-reader__sourcelink-text">{articleUrl}</span>
         </a>
-        <div
-          className="article-reader__mode-switch"
-          role="group"
-          aria-label="阅读显示模式"
-          data-reader-mode={readerMode}
-        >
-          {READER_MODE_OPTIONS.map((option) => (
+        <div className="article-reader__topbar-actions">
+          {readerMode !== 'web' && (
             <button
-              key={option.mode}
               type="button"
-              className={`article-reader__mode-btn ${readerMode === option.mode ? 'is-active' : ''}`}
-              onClick={() => setReaderMode(option.mode)}
-              aria-pressed={readerMode === option.mode}
-              data-reader-mode-option={option.mode}
-              title={option.title}
+              className={`article-reader__back-to-top ${canScrollToTop ? 'is-visible' : ''}`}
+              onClick={handleScrollToTop}
+              disabled={!canScrollToTop}
+              aria-label="回到文章开头"
+              title="回到文章开头"
+              tabIndex={canScrollToTop ? 0 : -1}
+              data-testid="article-reader__back-to-top"
             >
-              <span aria-hidden="true">{option.icon}</span>
-              <span>{option.label}</span>
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 3.5h10M8 13V5.5M4.75 8.75 8 5.5l3.25 3.25" />
+              </svg>
             </button>
-          ))}
+          )}
+          <div
+            className="article-reader__mode-switch"
+            role="group"
+            aria-label="阅读显示模式"
+            data-reader-mode={readerMode}
+          >
+            {READER_MODE_OPTIONS.map((option) => (
+              <button
+                key={option.mode}
+                type="button"
+                className={`article-reader__mode-btn ${readerMode === option.mode ? 'is-active' : ''}`}
+                onClick={() => setReaderMode(option.mode)}
+                aria-pressed={readerMode === option.mode}
+                data-reader-mode-option={option.mode}
+                title={option.title}
+              >
+                <span aria-hidden="true">{option.icon}</span>
+                <span>{option.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -798,7 +843,11 @@ export function ArticleReader({
             data-reader-pane="markdown"
             aria-label="Markdown 阅读版"
           >
-            <div className="article-reader__scroll">
+            <div
+              ref={readerScrollRef}
+              className="article-reader__scroll"
+              onScroll={handleReaderScroll}
+            >
         <header className="article-reader__header">
           <h1 className="article-reader__title">
             {/* Phase 4.1.1:标题前彩色标签 chips
@@ -946,7 +995,6 @@ export function ArticleReader({
             <TranslatedArticleView
               cleanedHtml={displayHtml ?? ''}
               paragraphs={translationParagraphs}
-              onClose={() => removePanel('translation')}
             />
           ) : displayHtml ? (
             <div

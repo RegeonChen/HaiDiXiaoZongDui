@@ -4,7 +4,7 @@
  * 固定顺序：竖向功能栏 / 一级订阅源目录 / 二级文章目录 / 灵活窗口。
  * 只有最右灵活窗口切换标签和内容，前两级目录始终保持原位。
  */
-import { ReactNode, useCallback, useRef } from 'react';
+import { ReactNode, SyntheticEvent, useCallback, useRef } from 'react';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
 import { ResizeHandle } from '../ResizeHandle/ResizeHandle';
 import './Layout.css';
@@ -64,6 +64,8 @@ export interface LayoutProps {
   onOpenSettings: () => void;
   directoryMode: DirectoryMode;
   onReaderAction: () => void;
+  /** 预览窗口内发生实际操作时，将当前标签固定。 */
+  onEditorInteraction: () => void;
 }
 
 function WorkbenchIcon({
@@ -185,7 +187,8 @@ export function Layout({
   onToggleAiDock,
   onOpenSettings,
   directoryMode,
-  onReaderAction
+  onReaderAction,
+  onEditorInteraction
 }: LayoutProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLElement>(null);
@@ -214,6 +217,18 @@ export function Layout({
     },
     [onResizeList]
   );
+
+  const handleEditorInteraction = useCallback((event: SyntheticEvent<HTMLElement>) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    // 标签条负责切换、关闭和显式双击固定，不应把普通标签切换误判为内容操作。
+    if (target.closest('.app-page__tabbar')) return;
+    if (!target.closest(
+      'button, a[href], input, select, textarea, [contenteditable="true"], ' +
+      '[role="button"], [role="menuitem"], [role="option"], [role="separator"]'
+    )) return;
+    onEditorInteraction();
+  }, [onEditorInteraction]);
 
   const sidebarVisible = directoryMode === 'both';
   const articleDirectoryVisible = directoryMode !== 'none';
@@ -331,7 +346,13 @@ export function Layout({
             {articleDirectoryVisible && <section className="pane pane-list">{articlesSlot}</section>}
             {articleDirectoryVisible && <ResizeHandle onDrag={handleListDrag} ariaLabel="调整文章列表宽度" />}
 
-            <section className="app-editor pane pane-reader">
+            <section
+              className="app-editor pane pane-reader"
+              onClickCapture={handleEditorInteraction}
+              onInputCapture={handleEditorInteraction}
+              onChangeCapture={handleEditorInteraction}
+              onSubmitCapture={onEditorInteraction}
+            >
               {tabs.length > 0 && (
                 <div className="app-page__tabbar" role="tablist" aria-label="工作区标签页">
                   {tabs.map((tab) => {

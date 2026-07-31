@@ -67,7 +67,8 @@ describe('Layout fixed directory structure', () => {
       onToggleAiDock: vi.fn(),
       onOpenSettings: vi.fn(),
       directoryMode: 'both',
-      onReaderAction: vi.fn()
+      onReaderAction: vi.fn(),
+      onEditorInteraction: vi.fn()
     };
 
     await act(async () => {
@@ -135,7 +136,8 @@ describe('Layout fixed directory structure', () => {
       onToggleAiDock: vi.fn(),
       onOpenSettings: vi.fn(),
       directoryMode: 'both',
-      onReaderAction
+      onReaderAction,
+      onEditorInteraction: vi.fn()
     };
     const renderMode = async (directoryMode: LayoutProps['directoryMode']) => {
       await act(async () => {
@@ -169,5 +171,66 @@ describe('Layout fixed directory structure', () => {
       container.querySelector<HTMLButtonElement>('[data-page-key="reader"]')?.click();
     });
     expect(onReaderAction).toHaveBeenCalledOnce();
+  });
+
+  it('reports content actions but ignores ordinary tab selection', async () => {
+    const onEditorInteraction = vi.fn();
+    const onTabSelect = vi.fn();
+    const props: LayoutProps = {
+      sidebarSlot: createElement('div'),
+      articlesSlot: createElement('div'),
+      readerSlot: createElement(
+        'button',
+        { type: 'button', 'data-testid': 'reader-action' },
+        '翻译'
+      ),
+      sidebarPercent: 24,
+      listPercent: 28,
+      onResizeSidebar: vi.fn(),
+      onResizeList: vi.fn(),
+      currentPage: 'reader',
+      onPageChange: vi.fn(),
+      tabs: [{
+        id: 'article:1',
+        label: '文章',
+        page: 'reader',
+        articleId: '1',
+        icon: 'article',
+        closeable: true,
+        preview: true
+      }],
+      activeTabId: 'article:1',
+      onTabSelect,
+      onTabPin: vi.fn(),
+      onTabClose: vi.fn(),
+      aiDockOpen: false,
+      aiAvailable: true,
+      onToggleAiDock: vi.fn(),
+      onOpenSettings: vi.fn(),
+      directoryMode: 'both',
+      onReaderAction: vi.fn(),
+      onEditorInteraction
+    };
+
+    await act(async () => {
+      root.render(
+        createElement(
+          ThemeProvider,
+          null,
+          createElement(Layout, props)
+        )
+      );
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="reader-action"]')?.click();
+    });
+    expect(onEditorInteraction).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-tab-id="article:1"]')?.click();
+    });
+    expect(onTabSelect).toHaveBeenCalledWith('article:1');
+    expect(onEditorInteraction).toHaveBeenCalledOnce();
   });
 });

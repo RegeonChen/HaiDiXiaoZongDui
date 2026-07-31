@@ -41,4 +41,13 @@ describe('workbench preview tabs', () => {
     expect(result.tabs).toHaveLength(1);
     expect(result.tabs[0].preview).toBe(false);
   });
+
+  it('pins a preview when the same entry is opened again', () => {
+    const first = openWorkbenchTab([], tab('page:notes'));
+    const second = openWorkbenchTab(first.tabs, tab('page:notes'));
+
+    expect(second.tabs).toHaveLength(1);
+    expect(second.tabs[0].preview).toBe(false);
+    expect(second.replacedTab).toBeNull();
+  });
 });

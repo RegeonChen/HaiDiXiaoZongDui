@@ -55,6 +55,13 @@
   white-space: nowrap;
 }
 
+.article-reader__topbar-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+}
+
 .article-reader__mode-switch {
   display: inline-flex;
   flex: 0 0 auto;
@@ -63,6 +70,59 @@
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--bg);
+}
+
+.article-reader__back-to-top {
+  appearance: none;
+  display: inline-flex;
+  width: 29px;
+  height: 29px;
+  flex: 0 0 29px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  visibility: hidden;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.article-reader__back-to-top.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+.article-reader__back-to-top:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.article-reader__back-to-top:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.article-reader__back-to-top svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .article-reader__mode-btn {

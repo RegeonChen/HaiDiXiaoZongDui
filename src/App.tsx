@@ -538,6 +538,10 @@ export function App() {
     setOpenTabs((prev) => pinWorkbenchTab(prev, tabId));
   }, []);
 
+  const handleEditorInteraction = useCallback(() => {
+    handleTabPin(activeTabId);
+  }, [activeTabId, handleTabPin]);
+
   const handleTabClose = useCallback((tabId: string) => {
     const closingIndex = openTabs.findIndex((tab) => tab.id === tabId);
     if (closingIndex < 0 || !openTabs[closingIndex].closeable) return;
@@ -1710,6 +1714,7 @@ export function App() {
         onOpenSettings={() => ensurePageTab('settings')}
         directoryMode={directoryMode}
         onReaderAction={handleReaderAction}
+        onEditorInteraction={handleEditorInteraction}
       />
       <AddFeedDialog
         open={addDialogOpen}

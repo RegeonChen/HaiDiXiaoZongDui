@@ -869,6 +869,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           };
           transBtn.click();
           await sleep(50);
+          report.inlineTrans.checks.translationActionPinsPreview =
+            document.querySelector('[data-tab-id^="article:"]')?.getAttribute('data-preview') === 'false';
           report.inlineTrans.consoleErrors = consoleErrors;
           console.error = origError;
           window.onerror = origOnError;
@@ -935,10 +937,12 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.inlineTrans.checks.imageWidthConstrained = false;
           }
 
-          // 14) 翻译视图必须能随时隐藏，并能从本地 state 再次显示。
-          const hideButton = document.querySelector('.translated-article-view__hide-button');
-          report.inlineTrans.checks.hideButtonVisible = !!hideButton;
-          hideButton?.click();
+          // 14) 翻译正文不再显示重复的悬浮“隐藏翻译”按钮；统一由工具栏切换。
+          report.inlineTrans.checks.inlineHideButtonRemoved =
+            !document.querySelector('.translated-article-view__hide-button');
+          const toolbarTranslationButton =
+            document.querySelector('.article-reader__toolbar [data-tool="translation"]');
+          toolbarTranslationButton?.click();
           report.inlineTrans.checks.translationHidden = await waitFor(
             () => !!document.querySelector('.article-reader__content') &&
               !document.querySelector('.translated-article-view'),
@@ -954,10 +958,36 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             { timeout: 2000 }
           );
 
+          // 15) 滚动文章后显示顶栏回到开头入口，点击后回到 scrollTop=0。
+          const readerScroll = document.querySelector('.article-reader__scroll');
+          const scrollSpacer = document.createElement('div');
+          scrollSpacer.style.height = '1600px';
+          scrollSpacer.setAttribute('data-smoke-scroll-spacer', 'true');
+          readerScroll?.appendChild(scrollSpacer);
+          if (readerScroll) {
+            readerScroll.scrollTop = 600;
+            readerScroll.dispatchEvent(new Event('scroll', { bubbles: true }));
+          }
+          report.inlineTrans.checks.backToTopAppears = await waitFor(
+            () => document.querySelector('[data-testid="article-reader__back-to-top"]')
+              ?.classList.contains('is-visible') === true,
+            { timeout: 2000 }
+          );
+          const backToTopButton =
+            document.querySelector('[data-testid="article-reader__back-to-top"]');
+          backToTopButton?.click();
+          report.inlineTrans.checks.backToTopWorks = await waitFor(
+            () => (readerScroll?.scrollTop ?? 1) <= 1,
+            { timeout: 3000 }
+          );
+          scrollSpacer.remove();
+
           report.inlineTrans.ok = [
             'viewRendered', 'slotsMin1', 'blockPairsMatchSlots', 'blocksRendered',
-            'allReady', 'translatedTextContains', 'noFailed', 'imageWidthConstrained', 'hideButtonVisible',
-            'translationHidden', 'cachedButtonVisible', 'cachedTranslationReopened'
+            'allReady', 'translatedTextContains', 'noFailed', 'imageWidthConstrained',
+            'translationActionPinsPreview',
+            'inlineHideButtonRemoved', 'translationHidden', 'cachedButtonVisible',
+            'cachedTranslationReopened', 'backToTopAppears', 'backToTopWorks'
             // 注：'initialPending' 不强求——mock 流式推 30ms 起步 + 50ms/段，
             // 探针到达时可能已全部 ready（用 allReady 验证完整性）
           ].every((k) => report.inlineTrans.checks[k] === true);
@@ -2031,7 +2061,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             (techGroupDiv?.querySelectorAll('.feed-list__item').length ?? 0) === 0;
           const collapsedGroupHeight = techGroupDiv?.getBoundingClientRect().height ?? 0;
           report.feedsGroup.checks.collapsedGroupUsesCompactSpacing =
-            Math.abs(collapsedGroupHeight - 30) <= 0.5;
+            Math.abs(collapsedGroupHeight - 32) <= 0.5;
           report.feedsGroup.checks.collapsedGroupHeight = collapsedGroupHeight;
           // 再点 → 验证展开
           techToggleBtn?.click();
@@ -3515,10 +3545,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               previewTabsAfterNavigation[0]?.getAttribute('data-tab-id') === 'page:topics' &&
               previewTabsAfterNavigation[0]?.getAttribute('data-preview') === 'true';
 
-            // VS Code 风格：双击预览标签后固定，后续普通打开不得替换它。
-            previewTabsAfterNavigation[0]?.dispatchEvent(
-              new MouseEvent('dblclick', { bubbles: true })
-            );
+            // 再次点击同一个功能入口后固定，后续普通打开不得替换它。
+            const topicsNavButton = Array.from(navBtns)
+              .find((button) => button.getAttribute('data-page-key') === 'topics');
+            topicsNavButton?.click();
             await sleep(50);
             integrationReport.checks.previewTabPinned =
               document.querySelector('[data-tab-id="page:topics"]')?.getAttribute('data-preview') === 'false';
@@ -3575,6 +3605,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             integrationReport.checks.fontBefore = fontBefore;
             integrationReport.checks.fontAfter = fontAfter;
             integrationReport.checks.fontToggled = fontBefore !== fontAfter;
+            integrationReport.checks.editorActionPinsPreview =
+              document.querySelector('[data-tab-id="page:settings"]')?.getAttribute('data-preview') === 'false';
 
             // 5) 切换视觉主题
             const visualBefore = document.documentElement.getAttribute('data-visual-theme') || 'classic';
@@ -3734,6 +3766,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               'navBtnsOk', 'page_tagsRendered', 'page_notesRendered',
               'page_digestsRendered', 'page_topicsRendered',
               'previewTabReused', 'previewTabPinned', 'pinnedTabRetained',
+              'editorActionPinsPreview',
               'settingsWorkspaceRendered', 'localLogsEntryRemoved', 'aiSettingsRendered',
               'fontThemesOk', 'visualThemesOk', 'fontToggled', 'visualToggled',
               'tagCreated', 'tagDeleted', 'noteCreated', 'notesLayoutWithinBounds',

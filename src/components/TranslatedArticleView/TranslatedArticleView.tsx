@@ -35,8 +35,6 @@ export interface TranslatedArticleViewProps {
     translated: string;
     status: TranslationParagraphStatus;
   }>;
-  /** 隐藏双语视图并回到原始正文。 */
-  onClose: () => void;
 }
 
 type SplitState =
@@ -44,7 +42,7 @@ type SplitState =
   | { kind: 'ready'; blocks: HtmlBlock[] }
   | { kind: 'error'; error: string };
 
-export function TranslatedArticleView({ cleanedHtml, paragraphs, onClose }: TranslatedArticleViewProps) {
+export function TranslatedArticleView({ cleanedHtml, paragraphs }: TranslatedArticleViewProps) {
   const ds = useDataSource();
   const [split, setSplit] = useState<SplitState>({ kind: 'ready', blocks: [] });
   // SplitController：用 token 计数替代 effect 局部 cancelled，
@@ -116,15 +114,6 @@ export function TranslatedArticleView({ cleanedHtml, paragraphs, onClose }: Tran
       data-split-state="ready"
       data-fallback={blocks.length === 0 ? 'true' : 'false'}
     >
-      <div className="translated-article-view__controls">
-        <button
-          type="button"
-          className="translated-article-view__hide-button"
-          onClick={onClose}
-        >
-          隐藏翻译，返回原文
-        </button>
-      </div>
       {effectiveBlocks.map((block) => {
         const slot = paragraphByIndex.get(block.index);
         const hasTranslatableText = htmlBlockHasTranslatableText(block.html);

@@ -11,36 +11,6 @@
   box-sizing: border-box;
 }
 
-.translated-article-view__controls {
-  position: sticky;
-  top: 8px;
-  z-index: 3;
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-  pointer-events: none;
-}
-
-.translated-article-view__hide-button {
-  appearance: none;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 5px 11px;
-  background: color-mix(in srgb, var(--bg-elev) 92%, transparent);
-  color: var(--fg-soft);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  pointer-events: auto;
-  backdrop-filter: blur(8px);
-}
-
-.translated-article-view__hide-button:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
 .translated-article-view__block-pair {
   display: flex;
   flex-direction: column;
