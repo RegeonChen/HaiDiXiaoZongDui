@@ -28,6 +28,13 @@ export interface ChatCompletionOptions {
   timeoutMs?: number;
   /** Qwen 混合思考模型可用；翻译等确定性任务应关闭思考。 */
   enableThinking?: boolean;
+  /**
+   * 强制模型以 JSON 格式输出。
+   * 'json_object' 传递 response_format:{type:'json_object'}；
+   * undefined 不限制格式（默认）。
+   * 注意：多数 OpenAI-compatible Provider 支持此参数，但部分模型可能忽略或报错。
+   */
+  responseFormat?: 'json_object';
 }
 
 interface OpenAIErrorResponse {
@@ -51,7 +58,8 @@ export async function chatCompletion(
     temperature = 0.3,
     maxTokens = 4096,
     timeoutMs = 120_000,
-    enableThinking
+    enableThinking,
+    responseFormat
   } = options;
 
   // provider 不存明文 apiKey；需从 ai_providers 表补充
@@ -79,6 +87,7 @@ export async function chatCompletion(
         messages,
         temperature,
         max_tokens: maxTokens,
+        ...(responseFormat ? { response_format: { type: responseFormat } } : {}),
         ...(enableThinking === undefined ? {} : { enable_thinking: enableThinking })
       }),
       signal: controller.signal
@@ -100,7 +109,15 @@ export async function chatCompletion(
     };
 
     const rawContent = data.choices?.[0]?.message?.content;
-    const content = extractMessageText(rawContent);
+    let content = extractMessageText(rawContent);
+    // DeepSeek 等推理模型在 response_format 约束下可能将正式答案放入 reasoning_content。
+    // 仅当显式请求 JSON 格式时才回退，避免普通对话泄露模型内部思考过程。
+    if (!content && responseFormat === 'json_object') {
+      const reasoning = data.choices?.[0]?.message?.reasoning_content;
+      if (reasoning) {
+        content = extractMessageText(reasoning);
+      }
+    }
     if (!content) {
       // 提供更丰富的诊断信息，帮助用户排查模型/Provider 问题
       const detail: string[] = [];

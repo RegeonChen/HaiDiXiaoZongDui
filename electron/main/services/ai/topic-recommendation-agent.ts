@@ -64,12 +64,14 @@ export async function recommendTopics(
   const output = await chatCompletion(provider, messages, {
     temperature: 0.35,
     maxTokens: 1600,
-    enableThinking: false
+    enableThinking: false,
+    responseFormat: 'json_object'
   });
   return parseTopicRecommendations(
     output,
     input.title,
-    [input.title, input.summary ?? '', input.content].join('\n')
+    [input.title, input.summary ?? '', input.content].join('\n'),
+    !!input.content
   );
 }
 
@@ -107,7 +109,8 @@ export function createTopicRecommendationSourceSignature(
 export function parseTopicRecommendations(
   text: string,
   articleTitle: string,
-  articleEvidence = articleTitle
+  articleEvidence = articleTitle,
+  hasContent = true
 ): TopicNameSuggestion[] {
   const parsed = parseJsonPayload(text);
   const items = Array.isArray(parsed)
@@ -134,7 +137,8 @@ export function parseTopicRecommendations(
 
     const rawKeywords = Array.isArray(item.keywords) ? item.keywords : [];
     const keywords = normalizeKeywords(rawKeywords);
-    if (keywords.length < 2 || !isGroundedCandidate(name, keywords, evidenceKey)) continue;
+    if (keywords.length < 2) continue;
+    if (hasContent && !isGroundedCandidate(name, keywords, evidenceKey)) continue;
 
     const description = cleanLine(
       item.description,
