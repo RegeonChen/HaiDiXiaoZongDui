@@ -86,14 +86,52 @@
           R.prov.checks.chatMultiTurn =
             chat2.success &&
             chat2.data.message.indexOf('Article chat smoke reply') >= 0;
+
+          var topicRecommendations = await api.ai.recommendTopics(chatArticle.id);
+          R.prov.checks.topicRecommendations =
+            topicRecommendations.success &&
+            topicRecommendations.data.suggestions.length === 4 &&
+            topicRecommendations.data.suggestions[0].name !== chatArticle.title &&
+            topicRecommendations.data.suggestions[0].keywords.length >= 4;
+          var cachedTopicRecommendations = await api.ai.recommendTopics(chatArticle.id);
+          R.prov.checks.topicRecommendationsCached =
+            cachedTopicRecommendations.success &&
+            topicRecommendations.success &&
+            cachedTopicRecommendations.data.sourceSignature === topicRecommendations.data.sourceSignature &&
+            cachedTopicRecommendations.data.generatedAt === topicRecommendations.data.generatedAt;
+          if (topicRecommendations.success) {
+            var topicDraft = topicRecommendations.data.suggestions[0];
+            var createdTopic = await api.topic.create({
+              name: topicDraft.name,
+              description: topicDraft.description,
+              keywords: topicDraft.keywords,
+              seedArticleId: chatArticle.id
+            });
+            var topicArticles = createdTopic.success
+              ? await api.topic.getArticles(createdTopic.data.id)
+              : null;
+            R.prov.checks.topicRecommendationCreatesUsableTopic =
+              createdTopic.success &&
+              topicArticles && topicArticles.success &&
+              topicArticles.data.some(function(article) { return article.id === chatArticle.id; });
+            if (createdTopic.success) await api.topic.delete(createdTopic.data.id);
+          } else {
+            R.prov.checks.topicRecommendationCreatesUsableTopic = false;
+          }
         } else {
           R.prov.checks.chatReply = false;
           R.prov.checks.chatMultiTurn = false;
+          R.prov.checks.topicRecommendations = false;
+          R.prov.checks.topicRecommendationsCached = false;
+          R.prov.checks.topicRecommendationCreatesUsableTopic = false;
         }
       } else {
         R.prov.checks.chatArticleReady = false;
         R.prov.checks.chatReply = false;
         R.prov.checks.chatMultiTurn = false;
+        R.prov.checks.topicRecommendations = false;
+        R.prov.checks.topicRecommendationsCached = false;
+        R.prov.checks.topicRecommendationCreatesUsableTopic = false;
       }
 
       var pd = await api.ai.providerDelete(pid);

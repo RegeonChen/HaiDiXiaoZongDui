@@ -15,7 +15,14 @@
  *  - 专题:打开专题表单，以当前文章作为种子创建关联图
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AIChatMessage, Article, Feed, NoteCreateInput, Tag } from '@shared/types';
+import type {
+  AIChatMessage,
+  AITopicRecommendation,
+  Article,
+  Feed,
+  NoteCreateInput,
+  Tag
+} from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
 import { EmptyView } from '../StatusView/EmptyView';
 import { LoadingView } from '../StatusView/LoadingView';
@@ -61,6 +68,12 @@ type ActivePanels = Set<AiPanel>;
 type StickyTabId = 'summary' | 'tag-manage' | 'note';
 
 type TagSuggestionsStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+type TopicRecommendationState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; data: AITopicRecommendation }
+  | { status: 'error'; error: string };
 
 type TranslationParagraphStatus = 'pending' | 'ready' | 'failed';
 
@@ -112,6 +125,9 @@ export function ArticleReader({
   const [contentArticleId, setContentArticleId] = useState<string | null>(null);
   const [noteMarkdown, setNoteMarkdown] = useState('');
   const [topicDialogOpen, setTopicDialogOpen] = useState(false);
+  const [topicRecommendationState, setTopicRecommendationState] = useState<TopicRecommendationState>({
+    status: 'idle'
+  });
   const [chatMessages, setChatMessages] = useState<AIChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
@@ -139,6 +155,7 @@ export function ArticleReader({
   const stickyTabRef = useRef<StickyTabId | null>(stickyTab);
   stickyTabRef.current = stickyTab;
   const tagSuggestionsRequestRef = useRef<string | null>(null);
+  const topicRecommendationRequestRef = useRef(0);
   const currentArticleIdRef = useRef<string | null>(article?.id ?? null);
   currentArticleIdRef.current = article?.id ?? null;
   const readerScrollRef = useRef<HTMLDivElement>(null);
@@ -231,6 +248,8 @@ export function ArticleReader({
       setArticleTags([]);
       setStickyTab(null);
       setTopicDialogOpen(false);
+      setTopicRecommendationState({ status: 'idle' });
+      topicRecommendationRequestRef.current += 1;
       return;
     }
     // Phase 3.5.3:检查文章是否已有缓存的 AI 结果,有则自动加载
@@ -243,6 +262,8 @@ export function ArticleReader({
     tagSuggestionsRequestRef.current = null;
     setNoteMarkdown('');
     setTopicDialogOpen(false);
+    setTopicRecommendationState({ status: 'idle' });
+    topicRecommendationRequestRef.current += 1;
 
     if (article.summary) {
       setSummary(article.summary);
@@ -764,6 +785,36 @@ export function ArticleReader({
     }
   }, [article, ds, onToast]);
 
+  const requestTopicRecommendations = useCallback(async (refresh = false) => {
+    if (!article) return;
+    const requestId = topicRecommendationRequestRef.current + 1;
+    topicRecommendationRequestRef.current = requestId;
+    setTopicRecommendationState({ status: 'loading' });
+    const r = await ds.aiRecommendTopics(article.id, refresh);
+    if (
+      topicRecommendationRequestRef.current !== requestId ||
+      currentArticleIdRef.current !== article.id
+    ) return;
+    if (r.kind === 'ready' && r.data.suggestions.length > 0) {
+      setTopicRecommendationState({ status: 'ready', data: r.data });
+      return;
+    }
+    setTopicRecommendationState({
+      status: 'error',
+      error: r.kind === 'error' ? r.error : 'AI 尚未返回可用专题名'
+    });
+  }, [article, ds]);
+
+  const handleOpenTopicDialog = useCallback(() => {
+    setTopicDialogOpen(true);
+    void requestTopicRecommendations(false);
+  }, [requestTopicRecommendations]);
+
+  const handleCloseTopicDialog = useCallback(() => {
+    topicRecommendationRequestRef.current += 1;
+    setTopicDialogOpen(false);
+  }, []);
+
   if (!article) {
     return (
       <div className="article-reader">
@@ -971,8 +1022,8 @@ export function ArticleReader({
             <button
               type="button"
               className="article-reader__btn"
-              onClick={() => setTopicDialogOpen(true)}
-              title="以当前文章新建专题"
+              onClick={handleOpenTopicDialog}
+              title="由 AI 推荐范围并以当前文章新建专题"
               data-tool="topic"
             >
               专题
@@ -1153,18 +1204,49 @@ export function ArticleReader({
       )}
       {topicDialogOpen && (
         <TopicFormDialog
+          key={`topic-${article.id}-${topicRecommendationState.status}-${topicRecommendationState.status === 'ready' ? topicRecommendationState.data.generatedAt : ''}`}
           mode="create"
-          initialValue={{
-            name: article.title.slice(0, 30),
-            description: `由「${article.title}」触发创建`,
-            keywords: []
-          }}
+          initialValue={topicRecommendationState.status === 'ready'
+            ? topicRecommendationState.data.suggestions[0]
+            : (() => {
+                const parsed = parseArticleTitleTags(article.title);
+                const cleanTitle = parsed.cleanTitle;
+                return {
+                  name: fallbackTopicName(cleanTitle),
+                  description: `持续追踪与「${cleanTitle}」相关的后续进展与多源报道。`,
+                  keywords: [...new Set([
+                    ...parsed.tags.map((tag) => tag.name),
+                    ...articleTags.map((tag) => tag.name)
+                  ])].slice(0, 6)
+                };
+              })()}
+          recommendationStatus={topicRecommendationState.status === 'idle'
+            ? 'loading'
+            : topicRecommendationState.status}
+          recommendations={topicRecommendationState.status === 'ready'
+            ? topicRecommendationState.data.suggestions
+            : []}
+          recommendationError={topicRecommendationState.status === 'error'
+            ? topicRecommendationState.error
+            : null}
+          onRefreshRecommendations={() => void requestTopicRecommendations(true)}
           onSubmit={handleCreateTopic}
-          onClose={() => setTopicDialogOpen(false)}
+          onClose={handleCloseTopicDialog}
         />
       )}
     </div>
   );
+}
+
+function fallbackTopicName(title: string): string {
+  const normalized = title.replace(/\s+/g, ' ').trim();
+  const quoted = normalized.match(/[\u300c『“"]([^\u300d』”"]{2,30})[\u300d』”"]/)?.[1]?.trim();
+  if (quoted) return quoted;
+  const segment = normalized
+    .split(/[:：|｜—–]/)
+    .map((value) => value.trim())
+    .find((value) => value.length >= 2 && value.length <= 30);
+  return segment || [...normalized].slice(0, 30).join('');
 }
 
 /* ============================================================

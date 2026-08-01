@@ -93,7 +93,9 @@
 
 ## 当前状态
 
-截至 2026-07-31：
+截至 2026-08-01：
+
+- **文章页 AI 专题命名推荐（2026-08-01）**：从文章阅读区创建专题时，由当前 AI Provider 基于文章标题、来源、摘要和最佳可用正文生成 4 组稳定的“主题 + 观察维度”候选；首项自动填入专题名、描述和关键词，其他候选可整组切换，也可刷新重生成。推荐结果按文章内容签名缓存，文章变化后自动失效；无可用 Provider 或生成失败时保留可编辑的本地兜底，不阻断专题创建。Main 进程将文章内容视为不可信输入，解析时过滤泛化、重复、证据不足和格式异常的候选；单元测试、Mock UI smoke、真实 IPC + 本地 OpenAI-compatible Provider smoke 均已覆盖。
 
 - **v0.3.2 release 已发布**（`8f4303c` + tag `v0.3.2`）：完成首次启动教程、灵活窗口常驻语义、摘要底部栏与 Markdown 块级渲染、文章标签换行排版、阅读回顶、纸质主题完善、AI Provider `safeStorage` 凭证加密和 Electron 43/Vite 7 工具链升级。发布前通过 typecheck、149 项单测、生产构建、17 组关键 Electron/IPC smoke 与本地 Apple Silicon DMG 打包，生产依赖审计为 0 项已知漏洞。GitHub Actions run `30635226675` 成功生成并发布 `Juhe-Shiyi-0.3.2-arm64.dmg`（132,441,023 bytes，SHA-256 `dd8fc91bd77ed162b4c03be1699f42cf88bff997a0729145fc36e205e1ba783b`）和 `Juhe-Shiyi-Setup-0.3.2-x64.exe`（114,468,043 bytes，SHA-256 `6edef9fa3e7c8f79d640acdc8bd27d1a0f21b545cc84b0a5e936041dea37f3f0`）。远端下载后复核了 DMG 内版本/ICNS/运行时 PNG、Windows 安装器和主程序 16–256 七档图标，以及 Windows `app.asar` 中的 0.3.2 版本和默认菜单栏移除配置。Actions v4 当前会显示 Node 20 弃用但强制使用 Node 24 的非阻塞提示，后续应升级对应 Action 主版本。
 - **v0.3.3 release 已发布**（`4f0a3e8` + tag `v0.3.3`）：主窗口在 macOS 使用 `titleBarStyle: 'hiddenInset'`，让红黄绿窗口按钮、应用名、搜索和右侧工具共用现有 46px 顶栏，并用 `trafficLightPosition: { x: 14, y: 16 }` 将原生交通灯与标题/搜索框视觉中心对齐；preload 仅向 `<html>` 写入受控的 `data-platform` 属性，Renderer 不获得 `process`，CSS 只在 macOS 为交通灯预留 84px 并划分 drag/no-drag 区域。Windows/Linux 继续使用原生标题栏与已移除默认菜单栏的现有行为。发布前通过 typecheck、150 项单测、生产构建、本地 DMG、19 组关键 Electron/IPC smoke 和真实开发窗口交互复核。GitHub Actions run `30639161006` 成功发布 `Juhe-Shiyi-0.3.3-arm64.dmg`（132,441,445 bytes，SHA-256 `bd29e1e0630d85b0fba7eca806aea34ad923989b8c43193b5d96208fb62d8724`）与 `Juhe-Shiyi-Setup-0.3.3-x64.exe`（114,468,556 bytes，SHA-256 `896ecb0fc06cef59208414e0f63fa1160e4c028244fed5bf5c8b02a47feb71ef`）。远端下载后复核了 DMG 内版本、ICNS、运行时 PNG 和标题栏代码，以及 Windows x64 NSIS、主程序 7 档图标、0.3.3 `app.asar` 和平台隔离行为。
@@ -174,7 +176,7 @@
 - **同步进度条**：底部实时进度（"正在同步：XXX 进度：N/M"）+ done 态 3 秒延迟 + 失败红点。
 - **三种阅读模式**（`e25343a` 张宇凡 + `9aef239` 张宇凡）：精简阅读 / 网页 / 分栏（左右各半），通过 `useReaderMode` hook + `shared/article-webview.ts` + 主进程 `installArticleWebviewSecurity`。
 - **GitHub Release 自动化**：`.github/workflows/release.yml` 推 `v*` tag → build-mac (DMG) + build-win (NSIS) + release job。
-- **25 个 smoke 命令 + 149 个单元测试**（另 6 个需外网的真实 Feed 测试按设计跳过）。Phase 4.3 新增 `smoke:onboarding`，使用真实数据库分别启动两次，验证首次自动显示、完整 8 步、设置重开、完成/跳过持久化和重启不再自动显示。
+- **25 个 smoke 命令 + 155 个自动化测试通过**（另 6 个需外网的真实 Feed 测试按设计跳过）。Phase 4.3 新增 `smoke:onboarding`，使用真实临时数据库分别启动两次，验证首次自动显示、完整 8 步、设置重开、完成/跳过持久化和重启不再自动显示。
 - `shared/types.ts` + `shared/ipc.ts` 作为权威协议源；跨模块接口变更需同步更新并通知。
 
 ## 设计决策
@@ -249,7 +251,7 @@
 
 - **Linux 凭证后端要求**：AI Provider API Key 已接入 `safeStorage`；Linux 必须提供 libsecret/KWallet 等安全后端。若 Electron 只能选择 `basic_text`，应用会保留历史 Key 的兼容读取，但拒绝新增或更新 Key，避免重新写入弱保护凭证。
 - **部分数据库仓储缺少单元测试**：Tag / Note / Digest / AIProvider / AiResultCache 的测试覆盖不足（Phase 5 增量补齐）。
-- **AI 真实生成未被自动化测试覆盖**：smoke 探针中 AI section 允许 skipped（需真 API key）。
+- **部分外部 AI Provider 真实生成仍未被自动化覆盖**：专题命名推荐和文章对话已通过本地 OpenAI-compatible 服务走真实 IPC 验证；摘要、翻译、标签等调用外部 Provider 的 smoke 仍允许在没有真实 API Key 时跳过。
 - **跨平台行为测试**：macOS 已完成完整 smoke、DMG 挂载与图标核验；Windows NSIS 已完成本地和云端构建及资源解析，但仍需 Windows 真机安装验证；Linux 尚未构建。
 - **electron-builder 上游依赖公告**：生产依赖 `npm audit --omit=dev` 为 0；完整审计仍报告 16 项 high，全部来自 electron-builder 26.15.7 的打包期传递依赖。npm 当前给出的自动修复会反向安装 25.1.8，不能在未验证的情况下强制执行；等待上游稳定版更新并继续复核。GitHub Actions 同时提示部分官方 actions 的 Node 20 运行时已由平台强制切换到 Node 24。
 - **不同 OpenAI-compatible Provider 兼容性**：当前默认测过 1 家 Provider，需在多 Provider 上兼容性测试。

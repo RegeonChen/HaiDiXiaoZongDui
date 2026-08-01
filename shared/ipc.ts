@@ -20,7 +20,8 @@ import type {
   Topic, TopicCreateInput, TopicUpdateInput,
   EventGroup, Briefing, TimelineEntry, TopicGraph,
   AIProvider, AIProviderCreateInput, AIProviderUpdateInput,
-  AISummary, AITranslation, AIChatMessage, AIChatReply, AITagSuggestion, SummaryDetailLevel,
+  AISummary, AITranslation, AIChatMessage, AIChatReply, AITagSuggestion,
+  AITopicRecommendation, SummaryDetailLevel,
   SyncResult, SyncProgress,
   AppSettings,
   LogEntry,
@@ -163,6 +164,7 @@ export const IPC_CHANNELS = {
   AI_GENERATE_SUMMARY:    'ai:generateSummary',
   AI_GENERATE_TRANSLATION:'ai:generateTranslation',
   AI_CHAT:                'ai:chat',
+  AI_RECOMMEND_TOPICS:    'ai:recommendTopics',
   AI_SUGGEST_TAGS:        'ai:suggestTags',
   AI_GET_SUMMARY:         'ai:getSummary',
   AI_GET_TRANSLATION:     'ai:getTranslation',
@@ -288,6 +290,7 @@ export interface IpcRequestMap {
   [IPC_CHANNELS.AI_GENERATE_SUMMARY]:     { args: { articleId: string; language?: Language; detailLevel?: SummaryDetailLevel }; result: AISummary };
   [IPC_CHANNELS.AI_GENERATE_TRANSLATION]: { args: { articleId: string; targetLanguage?: Language };                               result: AITranslation };
   [IPC_CHANNELS.AI_CHAT]:                 { args: { articleId: string; messages: AIChatMessage[] };                              result: AIChatReply };
+  [IPC_CHANNELS.AI_RECOMMEND_TOPICS]:     { args: { articleId: string; refresh?: boolean };                                      result: AITopicRecommendation };
   [IPC_CHANNELS.AI_SUGGEST_TAGS]:         { args: { articleId: string };                                                          result: AITagSuggestion };
   [IPC_CHANNELS.AI_GET_SUMMARY]:          { args: { articleId: string };                                                          result: AISummary | null };
   [IPC_CHANNELS.AI_GET_TRANSLATION]:      { args: { articleId: string };                                                          result: AITranslation | null };

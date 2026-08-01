@@ -69,9 +69,42 @@ const server = http.createServer((req, res) => {
       const isArticleChat =
         userMsg.includes('article chat smoke') ||
         userMsg.includes('follow-up smoke');
+      const isTopicRecommendation =
+        userMsg.includes('Generate RSS tracking topic recommendations');
 
       res.writeHead(200, { 'content-type': 'application/json' });
-      if (isTag) {
+      if (isTopicRecommendation) {
+        res.end(JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({
+            suggestions: [
+              {
+                name: 'Large Language Model Development',
+                description: 'Track model capabilities, evaluations, and applications across releases.',
+                keywords: ['large language models', 'LLM', 'machine learning', 'AI models'],
+                reason: 'This scope can connect future model releases and evaluations.'
+              },
+              {
+                name: 'Machine Learning Applications',
+                description: 'Track practical uses and integrations of machine learning systems.',
+                keywords: ['machine learning', 'ML applications', 'AI integration'],
+                reason: 'This scope connects product and deployment reports.'
+              },
+              {
+                name: 'Natural Language Processing Models',
+                description: 'Track language model capabilities and NLP benchmarks.',
+                keywords: ['natural language processing', 'NLP', 'language models'],
+                reason: 'This scope focuses on a stable technical field.'
+              },
+              {
+                name: 'AI Model Evaluation',
+                description: 'Track benchmarks and independent comparisons of AI models.',
+                keywords: ['AI evaluation', 'benchmark', 'model performance', 'artificial intelligence'],
+                reason: 'This scope supports cross-source comparisons.'
+              }
+            ]
+          }) } }]
+        }));
+      } else if (isTag) {
         res.end(JSON.stringify({
           choices: [{ message: { content: JSON.stringify([
             { name: 'machine-learning', confidence: 0.95, reason: 'Article discusses ML concepts' },

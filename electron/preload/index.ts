@@ -174,6 +174,9 @@ const api = {
     chat: (articleId: string, messages: IpcArgs<typeof IPC_CHANNELS.AI_CHAT>['messages']): Promise<IpcResponse<typeof IPC_CHANNELS.AI_CHAT>> =>
       invoke(IPC_CHANNELS.AI_CHAT, { articleId, messages }),
 
+    recommendTopics: (articleId: string, refresh = false): Promise<IpcResponse<typeof IPC_CHANNELS.AI_RECOMMEND_TOPICS>> =>
+      invoke(IPC_CHANNELS.AI_RECOMMEND_TOPICS, { articleId, refresh }),
+
     onTranslationProgress: (listener: (event: AITranslationProgressEvent) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, progress: AITranslationProgressEvent): void => {
         listener(progress);

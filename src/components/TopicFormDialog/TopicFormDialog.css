@@ -101,6 +101,126 @@
   color: var(--fg-soft);
 }
 
+.topic-form-dialog__recommendations {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent-soft) 36%, var(--bg));
+}
+
+.topic-form-dialog__recommendations-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topic-form-dialog__recommendations-header > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.topic-form-dialog__recommendations-header span {
+  color: var(--fg-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.topic-form-dialog__refresh {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.topic-form-dialog__refresh:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.topic-form-dialog__recommendation-state {
+  padding: 10px;
+  border-radius: 5px;
+  background: var(--bg-elev);
+  color: var(--fg-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.topic-form-dialog__recommendation-state--error {
+  color: var(--err);
+}
+
+.topic-form-dialog__recommendation-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.topic-form-dialog__recommendation {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.topic-form-dialog__recommendation:hover,
+.topic-form-dialog__recommendation.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.topic-form-dialog__recommendation-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg) !important;
+  font-size: 12px !important;
+  font-weight: 600;
+}
+
+.topic-form-dialog__primary-badge {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white !important;
+  font-size: 9px !important;
+  font-weight: 500;
+}
+
+.topic-form-dialog__recommendation-reason {
+  overflow: hidden;
+  color: var(--fg-soft);
+  display: -webkit-box;
+  font-size: 10px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@media (max-width: 560px) {
+  .topic-form-dialog__recommendation-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .topic-form-dialog__footer {
   display: flex;
   justify-content: flex-end;

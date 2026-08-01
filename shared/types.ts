@@ -580,6 +580,29 @@ export interface AITagSuggestion {
   generatedAt: IsoTimestamp;
 }
 
+/** AI 为“可持续追踪的专题”生成的一组可编辑草案。 */
+export interface TopicNameSuggestion {
+  /** 稳定主体 + 追踪轴线，不应直接复制单篇文章标题。 */
+  name: string;
+  /** 说明专题将持续关注什么，会直接预填到创建表单。 */
+  description: string;
+  /** 供本地候选发现使用的高精度实体、产品名和稳定同义词。 */
+  keywords: string[];
+  /** 面向用户的简短选择理由。 */
+  reason: string;
+}
+
+/** 从一篇种子文章生成的 AI 专题推荐，第一项为默认推荐。 */
+export interface AITopicRecommendation {
+  articleId: string;
+  providerId: string;
+  modelName: string;
+  suggestions: TopicNameSuggestion[];
+  /** 用于判断文章内容是否变化，避免重复消耗 Token 或误用旧结果。 */
+  sourceSignature: string;
+  generatedAt: IsoTimestamp;
+}
+
 // ---- Sync（同步） ----
 
 export type SyncStage = 'fetching' | 'parsing' | 'saving' | 'completed' | 'failed';

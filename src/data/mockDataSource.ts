@@ -36,6 +36,7 @@ import type {
   SummaryDetailLevel,
   AIChatMessage,
   AIChatReply,
+  AITopicRecommendation,
   AITranslationProgressEvent,
   SyncProgress,
   SyncStageEvent,
@@ -768,6 +769,49 @@ export class MockDataSource implements DataSource {
           ? '这是选中内容的 mock 译文。'
           : `这是基于当前文章的 mock 回答：${lastQuestion.slice(0, 80)}`,
         generatedAt: new Date().toISOString()
+      }
+    };
+  }
+
+  async aiRecommendTopics(
+    articleId: string,
+    _refresh = false
+  ): Promise<DataSourceState<AITopicRecommendation>> {
+    await delay(80);
+    return {
+      kind: 'ready',
+      data: {
+        articleId,
+        providerId: 'mock-provider',
+        modelName: 'mock-model',
+        sourceSignature: `mock-${articleId}`,
+        generatedAt: new Date().toISOString(),
+        suggestions: [
+          {
+            name: 'RSS 阅读器演进',
+            description: '持续追踪 RSS 阅读器的产品能力、本地化与 AI 阅读体验。',
+            keywords: ['RSS 阅读器', 'RSS', '本地优先', 'AI 阅读'],
+            reason: '主体稳定，可以聚合不同产品和版本的后续报道。'
+          },
+          {
+            name: '本地优先阅读工具',
+            description: '关注本地优先阅读工具的隐私、离线数据与跨平台实现。',
+            keywords: ['本地优先', '阅读工具', '隐私', '离线数据'],
+            reason: '把追踪范围聚焦在本地数据和隐私设计上。'
+          },
+          {
+            name: 'AI 辅助阅读',
+            description: '追踪摘要、翻译、标签与上下文问答在阅读器中的应用。',
+            keywords: ['AI 阅读', '文章摘要', '翻译', '上下文问答'],
+            reason: '适合汇集智能阅读能力的跨产品进展。'
+          },
+          {
+            name: '桌面信息聚合',
+            description: '持续关注桌面端信息聚合工具的工作流和跨平台体验。',
+            keywords: ['桌面应用', '信息聚合', 'Electron', '跨平台'],
+            reason: '范围更宽，便于对比不同类型的聚合工具。'
+          }
+        ]
       }
     };
   }

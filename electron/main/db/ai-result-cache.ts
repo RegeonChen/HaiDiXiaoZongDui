@@ -10,7 +10,7 @@
 import crypto from 'node:crypto';
 import { getDatabase, saveDatabase } from './connection';
 
-export type AIResultType = 'summary' | 'translation' | 'tag_suggestions';
+export type AIResultType = 'summary' | 'translation' | 'tag_suggestions' | 'topic_recommendations';
 
 export const AiResultCache = {
   get<T = unknown>(articleId: string, resultType: AIResultType): T | null {

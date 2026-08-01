@@ -73,6 +73,7 @@ import {
   type AITranslation,
   type AITranslationProgressEvent,
   type AITagSuggestion,
+  type AITopicRecommendation,
   type AppSettings,
   type Article,
   type ArticleFilter,
@@ -105,7 +106,13 @@ import {
 } from './services/ai/translation-agent.js';
 import { suggestTags } from './services/ai/tag-agent.js';
 import { answerArticleQuestion } from './services/ai/article-chat-agent.js';
+import {
+  createTopicRecommendationSourceSignature,
+  recommendTopics
+} from './services/ai/topic-recommendation-agent.js';
 import { testConnection } from './services/ai/openai-client.js';
+import { normalizeTopicAnalysisInput } from './services/content-pipeline/topic-analysis-input.js';
+import { stripArticleTitleTags } from './db/article-title-tags.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -494,6 +501,29 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.aiChat.checks.conversationPreservedAfterToggle =
             document.querySelectorAll('[data-ai-chat-message-role]').length === 8;
 
+          // 从文章页创建专题：默认使用 AI 主推荐，并可切换其他草案。
+          const articleTitle =
+            document.querySelector('.article-reader__title-text')?.textContent?.trim() || '';
+          document.querySelector('[data-tool="topic"]')?.click();
+          report.aiChat.checks.topicRecommendationLoading = !!await waitFor(
+            () => document.querySelector('[data-testid="topic-form__recommendations-loading"]'),
+            800
+          );
+          report.aiChat.checks.topicRecommendationsReady = !!await waitFor(
+            () => document.querySelectorAll('[data-testid^="topic-form__recommendation-"]').length === 4,
+            2500
+          );
+          const topicNameInput = document.querySelector('.topic-form-dialog__input');
+          const primaryTopicName = topicNameInput?.value || '';
+          report.aiChat.checks.topicPrimaryApplied =
+            primaryTopicName === 'RSS 阅读器演进' && primaryTopicName !== articleTitle;
+          document.querySelector('[data-testid="topic-form__recommendation-1"]')?.click();
+          await sleep(80);
+          report.aiChat.checks.topicAlternativeApplied =
+            topicNameInput?.value === '本地优先阅读工具' &&
+            document.querySelector('.topic-form-dialog__textarea')?.value.includes('隐私');
+          document.querySelector('.topic-form-dialog__close')?.click();
+
           const required = [
             'topRightEntry', 'panelOpened', 'directQuestionAnswered',
             'directReplyUsesMock', 'multiTurnConversation', 'selectionMenuOpened',
@@ -502,7 +532,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             'translationReplyVisible', 'panelHeaderRemoved',
             'topRightEntryActiveWhenOpen', 'topRightEntryInactiveWhenClosed',
             'panelClosedByAiToggle', 'panelReopenedByAiToggle',
-            'conversationPreservedAfterToggle'
+            'conversationPreservedAfterToggle',
+            'topicRecommendationLoading', 'topicRecommendationsReady',
+            'topicPrimaryApplied', 'topicAlternativeApplied'
           ];
           report.aiChat.ok = required.every(
             (key) => report.aiChat.checks[key] === true
@@ -5283,6 +5315,72 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       return fail('AI_CHAT_FAILED', e instanceof Error ? e.message : String(e));
     }
   });
+
+  trustedIpcMain.handle(
+    IPC_CHANNELS.AI_RECOMMEND_TOPICS,
+    async (_, args): Promise<IpcResult<AITopicRecommendation>> => {
+      try {
+        if (!args?.articleId) return fail('INVALID_PARAMS', '缺少 articleId');
+        if (args.refresh !== undefined && typeof args.refresh !== 'boolean') {
+          return fail('INVALID_PARAMS', 'refresh 必须为布尔值');
+        }
+        const article = ArticleRepository.getById(args.articleId);
+        if (!article) return fail('NOT_FOUND', '文章不存在');
+
+        const cleanArticle = {
+          ...article,
+          title: stripArticleTitleTags(article.title)
+        };
+        const normalized = normalizeTopicAnalysisInput(
+          cleanArticle,
+          FeedRepository.getById(article.feedId) ?? undefined
+        );
+        const input = {
+          title: normalized.title,
+          sourceTitle: normalized.sourceTitle,
+          summary: normalized.summary,
+          content: normalized.content
+        };
+        const sourceSignature = createTopicRecommendationSourceSignature(input);
+        const cached = AiResultCache.get<AITopicRecommendation>(
+          article.id,
+          'topic_recommendations'
+        );
+        if (
+          !args.refresh &&
+          cached?.sourceSignature === sourceSignature &&
+          Array.isArray(cached.suggestions) &&
+          cached.suggestions.length > 0
+        ) {
+          return ok(cached);
+        }
+
+        const settings = loadSettings();
+        if (!settings.defaultProviderId) {
+          return fail('NO_PROVIDER', '未设置默认 AI Provider');
+        }
+        const provider = AiProviderRepository.getByIdWithKey(settings.defaultProviderId);
+        if (!provider) return fail('NOT_FOUND', '默认 Provider 不存在');
+
+        const suggestions = await recommendTopics(provider, input);
+        const result: AITopicRecommendation = {
+          articleId: article.id,
+          providerId: provider.id,
+          modelName: provider.modelName,
+          suggestions,
+          sourceSignature,
+          generatedAt: new Date().toISOString()
+        };
+        AiResultCache.set(article.id, 'topic_recommendations', result);
+        return ok(result);
+      } catch (e) {
+        return fail(
+          'AI_TOPIC_RECOMMEND_FAILED',
+          e instanceof Error ? e.message : String(e)
+        );
+      }
+    }
+  );
 
   trustedIpcMain.handle(IPC_CHANNELS.AI_SUGGEST_TAGS, async (_, args): Promise<IpcResult<AITagSuggestion>> => {
     try {
