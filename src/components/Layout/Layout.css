@@ -41,8 +41,7 @@ html[data-platform='darwin'] .app-header [role='button'] {
 }
 
 .app-header__left,
-.app-header__right,
-.app-header__identity {
+.app-header__right {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -60,11 +59,6 @@ html[data-platform='darwin'] .app-header [role='button'] {
 
 .app-header__right > * {
   flex: 0 0 auto;
-}
-
-.app-header__identity {
-  gap: 8px;
-  overflow: hidden;
 }
 
 .app-header__tool-btn {
@@ -99,15 +93,6 @@ html[data-platform='darwin'] .app-header [role='button'] {
 .app-header__tool-btn:disabled {
   opacity: 0.38;
   cursor: not-allowed;
-}
-
-.app-header__title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  line-height: 1;
-  white-space: nowrap;
 }
 
 .app-header__search {
