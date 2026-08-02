@@ -44,6 +44,19 @@ function stringifyKeywords(keywords: string[]): string {
   return keywords.join(', ');
 }
 
+function recommendationErrorHint(error: string): string {
+  if (/JSON|AI_TOPIC_RECOMMEND_FAILED/i.test(error)) {
+    return '模型返回格式异常，可点击“重新推荐”再试。';
+  }
+  if (/NO_PROVIDER|未设置默认 AI Provider|Provider 不存在/i.test(error)) {
+    return '请先在设置中配置并启用默认 AI Provider。';
+  }
+  if (/超时|timeout/i.test(error)) {
+    return '模型响应超时，可稍后重新推荐。';
+  }
+  return '可点击“重新推荐”再试。';
+}
+
 export function TopicFormDialog({
   mode,
   initial,
@@ -169,7 +182,7 @@ export function TopicFormDialog({
                   data-testid="topic-form__recommendations-error"
                 >
                   AI 推荐暂不可用，已保留可编辑的本地草案。
-                  {recommendationError ? ` ${recommendationError}` : ''}
+                  {recommendationError ? ` ${recommendationErrorHint(recommendationError)}` : ''}
                 </div>
               ) : (
                 <div className="topic-form-dialog__recommendation-list">

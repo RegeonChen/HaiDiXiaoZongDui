@@ -6,6 +6,7 @@
  *  - tag CRUD + article 关联
  *  - note CRUD + digest CRUD + export
  *  - ai:chat 文章上下文多轮问答（使用本地 OpenAI-compatible mock）
+ *  - 专题推荐在 Provider 拒绝 response_format 时自动降级并完成真实 IPC
  *  - ai:generateSummary / ai:generateTranslation / ai:suggestTags (需真实 API Key，跳过若未配置)
  *  - ai 结果缓存 (ai:getSummary / ai:getTranslation / ai:getTagSuggestions)
  *  - 字体/视觉主题 + 三栏宽度 settings 持久化 (重启验证)
@@ -30,6 +31,8 @@ if (!fs.existsSync(mainEntry)) {
   console.error('[smoke-3.3] out/main/index.js 不存在，请先跑 npm run build');
   process.exit(2);
 }
+
+let topicResponseFormatRejected = false;
 
 // Mock OpenAI-compatible server 作为 AI 后端
 const server = http.createServer((req, res) => {
@@ -60,8 +63,9 @@ const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
-      let messages;
-      try { messages = JSON.parse(body).messages; } catch { messages = []; }
+      let payload;
+      try { payload = JSON.parse(body); } catch { payload = {}; }
+      const messages = Array.isArray(payload.messages) ? payload.messages : [];
       const userMessages = messages.filter((m) => m.role === 'user');
       const userMsg = (userMessages[userMessages.length - 1] || {}).content || '';
       const isTranslation = userMsg.includes('ORIGINAL:') || userMsg.includes('TRANSLATED:');
@@ -72,8 +76,16 @@ const server = http.createServer((req, res) => {
       const isTopicRecommendation =
         userMsg.includes('Generate RSS tracking topic recommendations');
 
-      res.writeHead(200, { 'content-type': 'application/json' });
       if (isTopicRecommendation) {
+        if (payload.response_format && !topicResponseFormatRejected) {
+          topicResponseFormatRejected = true;
+          res.writeHead(400, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({
+            error: { message: 'Unknown parameter: response_format' }
+          }));
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({
           choices: [{ message: { content: JSON.stringify({
             suggestions: [
@@ -105,6 +117,7 @@ const server = http.createServer((req, res) => {
           }) } }]
         }));
       } else if (isTag) {
+        res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({
           choices: [{ message: { content: JSON.stringify([
             { name: 'machine-learning', confidence: 0.95, reason: 'Article discusses ML concepts' },
@@ -113,14 +126,17 @@ const server = http.createServer((req, res) => {
           ]) } }]
         }));
       } else if (isTranslation) {
+        res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({
           choices: [{ message: { content: '---\nORIGINAL: This is a test article about machine learning.\nTRANSLATED: 这是一篇关于机器学习的测试文章。\n---\nORIGINAL: Large language models have transformed NLP.\nTRANSLATED: 大型语言模型已经改变了自然语言处理。\n---' } }]
         }));
       } else if (isArticleChat) {
+        res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({
           choices: [{ message: { content: 'Article chat smoke reply grounded in the current article.' } }]
         }));
       } else {
+        res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({
           choices: [{ message: { content: 'Summary: This article introduces AI and machine learning concepts, focusing on how large language models have revolutionized natural language processing.' } }]
         }));
@@ -170,6 +186,8 @@ server.listen(0, '127.0.0.1', () => {
       const credentialCheck = await inspectPersistedCredential();
       console.log(`[smoke-3.3] credential storage: ${JSON.stringify(credentialCheck)}`);
       passed = passed && credentialCheck.encrypted && credentialCheck.plaintextAbsent;
+      passed = passed && topicResponseFormatRejected;
+      console.log(`[smoke-3.3] response_format fallback exercised: ${topicResponseFormatRejected}`);
     } catch (error) {
       console.error(`[smoke-3.3] credential storage 检查失败: ${String(error)}`);
       passed = false;

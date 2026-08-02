@@ -74,8 +74,56 @@ describe('topic recommendation agent', () => {
     expect(vi.mocked(chatCompletion)).toHaveBeenCalledWith(
       provider,
       expect.any(Array),
-      expect.objectContaining({ temperature: 0.35, enableThinking: false })
+      expect.objectContaining({
+        temperature: 0.35,
+        enableThinking: false,
+        responseFormat: 'json_object'
+      })
     );
+  });
+
+  it('从分析文字中提取平衡 JSON，并容忍对象或数组尾逗号', () => {
+    const result = parseTopicRecommendations(`
+      analysis fragment {not valid json}
+      {
+        "suggestions": [
+          {
+            "name": "GPT 模型演进",
+            "description": "追踪 GPT 系列模型能力。",
+            "keywords": ["GPT", "OpenAI",],
+            "reason": "适合持续追踪。",
+          },
+        ],
+      }
+    `, input.title, `${input.title}\n${input.content}`);
+
+    expect(result).toEqual([{
+      name: 'GPT 模型演进',
+      description: '追踪 GPT 系列模型能力。',
+      keywords: ['GPT', 'OpenAI'],
+      reason: '适合持续追踪。'
+    }]);
+  });
+
+  it('首次响应完全不是 JSON 时，只追加一次安全的结构修复请求', async () => {
+    vi.mocked(chatCompletion)
+      .mockResolvedValueOnce('I produced prose instead of the requested structure.')
+      .mockResolvedValueOnce(JSON.stringify({
+        suggestions: [{
+          name: 'GPT 模型演进',
+          description: '追踪 GPT 系列模型能力。',
+          keywords: ['GPT', 'OpenAI'],
+          reason: '适合持续追踪。'
+        }]
+      }));
+
+    const result = await recommendTopics(provider, input);
+
+    expect(result[0]?.name).toBe('GPT 模型演进');
+    expect(vi.mocked(chatCompletion)).toHaveBeenCalledTimes(2);
+    const repairMessages = vi.mocked(chatCompletion).mock.calls[1]?.[1];
+    expect(repairMessages?.[0]?.content).toContain('untrusted data');
+    expect(repairMessages?.[1]?.content).toContain('I produced prose');
   });
 
   it('丢弃复制原标题、纯泛词、未在原文落地的推荐和重复项', () => {

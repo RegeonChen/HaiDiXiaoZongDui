@@ -99,10 +99,29 @@ describe('TopicFormDialog AI recommendations', () => {
       }));
     });
     expect(container.querySelector('[data-testid="topic-form__recommendations-error"]')?.textContent)
-      .toContain('NO_PROVIDER');
+      .toContain('请先在设置中配置并启用默认 AI Provider');
+    expect(container.querySelector('[data-testid="topic-form__recommendations-error"]')?.textContent)
+      .not.toContain('NO_PROVIDER');
     const refresh = container.querySelector<HTMLButtonElement>('[data-testid="topic-form__refresh-recommendations"]');
     expect(refresh?.disabled).toBe(false);
     await act(async () => refresh?.click());
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('模型格式错误时显示可操作提示，不暴露内部错误码', async () => {
+    await act(async () => {
+      root.render(createElement(TopicFormDialog, {
+        mode: 'create',
+        initialValue: { name: '本地草案' },
+        recommendationStatus: 'error',
+        recommendationError: 'AI_TOPIC_RECOMMEND_FAILED: 模型返回的专题推荐不是有效 JSON',
+        onRefreshRecommendations: () => undefined,
+        onSubmit: () => undefined,
+        onClose: () => undefined
+      }));
+    });
+    const text = container.querySelector('[data-testid="topic-form__recommendations-error"]')?.textContent;
+    expect(text).toContain('模型返回格式异常');
+    expect(text).not.toContain('AI_TOPIC_RECOMMEND_FAILED');
   });
 });

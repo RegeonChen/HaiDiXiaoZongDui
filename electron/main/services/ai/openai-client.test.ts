@@ -48,4 +48,28 @@ describe('OpenAI-compatible message content', () => {
     await expect(chatCompletion(provider, [{ role: 'user', content: 'Translate' }]))
       .rejects.toThrow(/只返回了 reasoning_content/);
   });
+
+  it('retries once without response_format when a compatible provider rejects it', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: { message: 'Unknown parameter: response_format' }
+      }), { status: 400, headers: { 'content-type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: '{"suggestions":[]}' } }]
+      }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await chatCompletion(provider, [{ role: 'user', content: 'Return JSON' }], {
+      responseFormat: 'json_object'
+    });
+
+    expect(result).toBe('{"suggestions":[]}');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstRequest = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const secondRequest = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    expect(JSON.parse(String(firstRequest.body))).toMatchObject({
+      response_format: { type: 'json_object' }
+    });
+    expect(JSON.parse(String(secondRequest.body))).not.toHaveProperty('response_format');
+  });
 });

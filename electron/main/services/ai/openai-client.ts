@@ -95,10 +95,23 @@ export async function chatCompletion(
 
     if (!response.ok) {
       let detail = `HTTP ${response.status}`;
+      let providerMessage = '';
       try {
         const body = (await response.json()) as OpenAIErrorResponse;
-        if (body.error?.message) detail += `: ${body.error.message}`;
+        if (body.error?.message) {
+          providerMessage = body.error.message;
+          detail += `: ${providerMessage}`;
+        }
       } catch { /* ignore parse errors */ }
+      if (
+        responseFormat &&
+        shouldRetryWithoutResponseFormat(response.status, providerMessage)
+      ) {
+        return chatCompletion(provider, messages, {
+          ...options,
+          responseFormat: undefined
+        });
+      }
       throw new Error(detail);
     }
 
@@ -174,6 +187,12 @@ function contentType(value: unknown): string {
   if (Array.isArray(value)) return 'array';
   if (value === null) return 'null';
   return typeof value;
+}
+
+function shouldRetryWithoutResponseFormat(status: number, message: string): boolean {
+  if (status !== 400 && status !== 422) return false;
+  if (!message.trim()) return true;
+  return /response[\s_-]*format|json[\s_-]*object|structured[\s_-]*output/i.test(message);
 }
 
 /**

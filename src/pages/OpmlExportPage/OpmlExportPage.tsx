@@ -6,7 +6,7 @@
  *  - 默认全选
  *  - 顶栏"全选"/"取消全选"切换
  *  - 单选 + 已选数量实时显示
- *  - 底部"取消导出" / "确认导出"两个按钮
+ *  - 顶部工具条集中放置全选、取消导出和确认导出操作
  *  - 确认导出：调 window.api.opml.export(feedIds)
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -131,6 +131,26 @@ export function OpmlExportPage({ onToast, onClose }: OpmlExportPageProps) {
         >
           {allSelected ? '取消全选' : '全选'}
         </button>
+        <div className="opml-export-page__toolbar-actions">
+          <button
+            type="button"
+            className="opml-export-page__btn opml-export-page__btn--cancel"
+            onClick={onClose}
+            disabled={exporting}
+            data-testid="opml-export__cancel"
+          >
+            取消导出
+          </button>
+          <button
+            type="button"
+            className="opml-export-page__btn opml-export-page__btn--primary"
+            onClick={() => void handleConfirm()}
+            disabled={noneSelected || exporting}
+            data-testid="opml-export__confirm"
+          >
+            {exporting ? '导出中…' : `确认导出（${selected.size}）`}
+          </button>
+        </div>
         <span className="opml-export-page__counter" data-testid="opml-export__counter">
           已选 {selected.size} / {sortedFeeds.length}
         </span>
@@ -174,26 +194,6 @@ export function OpmlExportPage({ onToast, onClose }: OpmlExportPageProps) {
         </ul>
       )}
 
-      <footer className="opml-export-page__footer">
-        <button
-          type="button"
-          className="opml-export-page__btn opml-export-page__btn--cancel"
-          onClick={onClose}
-          disabled={exporting}
-          data-testid="opml-export__cancel"
-        >
-          取消导出
-        </button>
-        <button
-          type="button"
-          className="opml-export-page__btn opml-export-page__btn--primary"
-          onClick={() => void handleConfirm()}
-          disabled={noneSelected || exporting}
-          data-testid="opml-export__confirm"
-        >
-          {exporting ? '导出中…' : `确认导出（${selected.size}）`}
-        </button>
-      </footer>
     </div>
   );
 }

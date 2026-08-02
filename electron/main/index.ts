@@ -3010,6 +3010,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
           // 5) 点"取消全选" → 0/N
           const toggleBtn = document.querySelector('[data-testid="opml-export__toggle-all"]');
+          const toolbar = document.querySelector('.opml-export-page__toolbar');
+          const cancelBtn = document.querySelector('[data-testid="opml-export__cancel"]');
+          const toolbarConfirmBtn = document.querySelector('[data-testid="opml-export__confirm"]');
+          report.opmlExport.checks.exportActionsBesideToggle =
+            !!toolbar && !!cancelBtn && !!toolbarConfirmBtn &&
+            toolbar.contains(toggleBtn) && toolbar.contains(cancelBtn) && toolbar.contains(toolbarConfirmBtn);
+          report.opmlExport.checks.bottomFooterRemoved =
+            !document.querySelector('.opml-export-page__footer');
           if (toggleBtn) toggleBtn.click();
           await sleep(150);
           const counterAfterNone = document.querySelector('[data-testid="opml-export__counter"]')?.textContent || '';
@@ -3101,6 +3109,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           'exportBtnFound', 'opmlExportPageOpened',
           'counterRendered', 'defaultAllSelected',
           'listRendered', 'itemsCountMatchesTotal',
+          'exportActionsBesideToggle', 'bottomFooterRemoved',
           'noneSelectedAfterToggle', 'confirmDisabledWhenNone',
           'allSelectedAfterSecondToggle', 'selectedDecreaseByOne',
           'selectedTwoOff', 'confirmEnabledWhenSome',
