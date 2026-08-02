@@ -95,7 +95,7 @@
 
 截至 2026-08-02：
 
-- **v0.3.4 release candidate 已完成本地验收（2026-08-02）**：版本升至 0.3.4，收录文章页 AI 专题命名推荐、模型 JSON/`response_format` 兼容、OPML 导出操作栏调整、顶栏标题移除与搜索框左移、默认推荐徽标布局、订阅源分组右键新建、空库默认订阅源，以及从 8 步扩展为 12 步的新手教程。发布前将 `sanitize-html` 2.16.0 升级到 2.17.6，生产及完整依赖审计均为 0 项已知漏洞；通过 typecheck、160 项单测、生产构建、24 个独立 Electron/IPC smoke 和本地 Apple Silicon DMG 打包。`Juhe-Shiyi-0.3.4-arm64.dmg` 为 132,605,435 bytes，SHA-256 `6a86b5add78da6211f11ca8795856135addd59fe534306875f9e25fa392990ce`；DMG 内应用、`Info.plist`、`app.asar` 和运行时 PNG 均复核为 0.3.4 / 正确格式。待推送 `v0.3.4` tag 触发 GitHub Actions 双平台发布。
+- **v0.3.4 release 已发布**（`7fd0388` + tag `v0.3.4`）：收录文章页 AI 专题命名推荐、模型 JSON/`response_format` 兼容、OPML 导出操作栏调整、顶栏标题移除与搜索框左移、默认推荐徽标布局、订阅源分组右键新建、空库默认订阅源，以及从 8 步扩展为 12 步的新手教程。发布前将 `sanitize-html` 2.16.0 升级到 2.17.6，生产及完整依赖审计均为 0 项已知漏洞；通过 typecheck、160 项单测、生产构建、24 个独立 Electron/IPC smoke 和本地 Apple Silicon DMG 打包。GitHub Actions run `30729114294` 成功生成并发布 `Juhe-Shiyi-0.3.4-arm64.dmg`（132,602,728 bytes，SHA-256 `8f1d36577ab3ee4f461d565eb3bf3d07fe2c8e076d1f5c37c9710e6f715d8880`）与 `Juhe-Shiyi-Setup-0.3.4-x64.exe`（114,635,763 bytes，SHA-256 `84587e1d990286e81da109cf239d00c0b7da00ac17b29c30fea2189e1ed24ec9`）。远端下载后复核了 DMG 内版本、ICNS、运行时 PNG 和 `app.asar`，以及 Windows x64 NSIS、主程序 16–256 七档图标和 0.3.4 `app.asar`。Actions v4 仍显示 Node 20 弃用但强制使用 Node 24 的非阻塞提示，后续应升级对应 Action 主版本。
 
 - **订阅源分组入口优化（2026-08-02）**：一级目录“+”菜单、对话框标题和提交按钮统一使用“新建订阅源组 / 新建”，成功提示同步改为“已新建订阅源组”。订阅源分组区域向下覆盖列表剩余空白，右键空白处显示同名上下文菜单并复用原新建对话框；订阅源行和分组标题的既有操作不受影响。`FeedList.test.ts` 覆盖菜单文案、空白区域右键和控件区域隔离，`smoke:feeds-group` 通过真实 Electron 窗口验证剩余空白命中、菜单、对话框及完整分组回归。
 
@@ -201,7 +201,7 @@
 ## 路线图
 
 1. Phase 1–4.3、3.7、4.1、4.2：✅ 已完成
-2. Phase 5：v0.3.4 release candidate 已完成本地验收，等待 GitHub Actions 双平台发布 / Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
+2. Phase 5：v0.3.4 已完成 GitHub Actions 双平台发布，Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
