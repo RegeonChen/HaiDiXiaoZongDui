@@ -33,7 +33,6 @@ import { AiProviderRepository } from './db/ai-provider-repository.js';
 import { configureAiCredentialStorage } from './db/ai-provider-credentials.js';
 import { TagRepository } from './db/tag-repository.js';
 import { NoteRepository } from './db/note-repository.js';
-import { DigestRepository } from './db/digest-repository.js';
 import { TopicRepository } from './db/topic-repository.js';
 import { AiResultCache } from './db/ai-result-cache.js';
 import { FeedRepository } from './db/feed-repository.js';
@@ -81,8 +80,6 @@ import {
   type Article,
   type ArticleFilter,
   type Briefing,
-  type Digest,
-  type DigestCreateInput,
   type EventGroup,
   type ExportFormat,
   type Feed,
@@ -3319,7 +3316,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             const expectedSteps = [
               'feeds', 'add', 'articles', 'sync',
               'reader', 'layout', 'tags', 'notes',
-              'digests', 'topics', 'ai', 'search'
+              'topics', 'ai', 'search'
             ];
             const seenSteps = [];
             let allTargetsLocated = true;
@@ -3741,7 +3738,6 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             const pageCheckpoints = [
               { page: 'tags', selector: '.tags-page', text: '标签' },
               { page: 'notes', selector: '.notes-page', text: '笔记' },
-              { page: 'digests', selector: '.digests-page', text: '文摘' },
               { page: 'topics', selector: '.topics-page', text: '专题' }
             ];
             for (const cp of pageCheckpoints) {
@@ -3937,13 +3933,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               integrationReport.checks.noteCreated = false;
             }
 
-            // 8) DigestsPage：列出
-            const navBtn3 = document.querySelector('[data-page-key="digests"]');
-            navBtn3?.click();
-            await sleep(120);
-            integrationReport.checks.digestPageRendered = !!document.querySelector('.digests-page');
-
-            // 9) TopicsPage：真实后端的空数据库状态
+            // 8) TopicsPage：真实后端的空数据库状态
             const navBtn4 = document.querySelector('[data-page-key="topics"]');
             navBtn4?.click();
             await sleep(120);
@@ -3986,13 +3976,12 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             // OK 判定
             const integrationChecks = [
               'navBtnsOk', 'page_tagsRendered', 'page_notesRendered',
-              'page_digestsRendered', 'page_topicsRendered',
+              'page_topicsRendered',
               'previewTabReused', 'previewTabPinned', 'pinnedTabRetained',
               'editorActionPinsPreview',
               'settingsWorkspaceRendered', 'localLogsEntryRemoved', 'aiSettingsRendered',
               'fontThemesOk', 'visualThemesOk', 'fontToggled', 'visualToggled',
               'tagCreated', 'tagDeleted', 'noteCreated', 'notesLayoutWithinBounds',
-              'digestPageRendered',
               'topicsPageRendered', 'topicsEmptyState',
               'backToReader', 'aiBtnsOk', 'aiHeaderEntryExists', 'topicDialogOpens'
             ];
@@ -5712,40 +5701,6 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       if (!NoteRepository.delete(args.id)) return fail('NOT_FOUND', '笔记不存在');
       return ok(undefined);
     } catch (e) { return fail('NOTE_DELETE_FAILED', String(e)); }
-  });
-
-  // ============= Digest (Task 3.3) =============
-
-  trustedIpcMain.handle(IPC_CHANNELS.DIGEST_LIST, async (): Promise<IpcResult<Digest[]>> => {
-    try { return ok(DigestRepository.list()); } catch (e) { return fail('DIGEST_LIST_FAILED', String(e)); }
-  });
-
-  trustedIpcMain.handle(IPC_CHANNELS.DIGEST_GET, async (_, args): Promise<IpcResult<Digest>> => {
-    try {
-      const r = DigestRepository.getById(args.id);
-      if (!r) return fail('NOT_FOUND', '文摘不存在');
-      return ok(r);
-    } catch (e) { return fail('DIGEST_GET_FAILED', String(e)); }
-  });
-
-  trustedIpcMain.handle(IPC_CHANNELS.DIGEST_CREATE, async (_, args): Promise<IpcResult<Digest>> => {
-    try { return ok(DigestRepository.create(args.input as DigestCreateInput)); }
-    catch (e) { return fail('DIGEST_CREATE_FAILED', String(e)); }
-  });
-
-  trustedIpcMain.handle(IPC_CHANNELS.DIGEST_DELETE, async (_, args): Promise<IpcResult<void>> => {
-    try {
-      if (!DigestRepository.delete(args.id)) return fail('NOT_FOUND', '文摘不存在');
-      return ok(undefined);
-    } catch (e) { return fail('DIGEST_DELETE_FAILED', String(e)); }
-  });
-
-  trustedIpcMain.handle(IPC_CHANNELS.DIGEST_EXPORT, async (_, args): Promise<IpcResult<string>> => {
-    try {
-      const r = DigestRepository.exportDigest(args.id, (args.format ?? 'markdown') as ExportFormat);
-      if (!r) return fail('NOT_FOUND', '文摘不存在');
-      return ok(r);
-    } catch (e) { return fail('DIGEST_EXPORT_FAILED', String(e)); }
   });
 
   // ============= Settings (2.5.3 实际持久化到 SQLite) =============

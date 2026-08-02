@@ -9,7 +9,7 @@ import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
 import { ResizeHandle } from '../ResizeHandle/ResizeHandle';
 import './Layout.css';
 
-export type AppPage = 'reader' | 'settings' | 'tags' | 'notes' | 'digests' | 'topics' | 'opml-export';
+export type AppPage = 'reader' | 'settings' | 'tags' | 'notes' | 'topics' | 'opml-export';
 
 export type WorkbenchIconName =
   | 'reader'
@@ -18,7 +18,6 @@ export type WorkbenchIconName =
   | 'ai'
   | 'tags'
   | 'notes'
-  | 'digests'
   | 'topics'
   | 'export';
 
@@ -135,12 +134,6 @@ function WorkbenchIcon({
         <path d="M15 3.5V8h4M8 12h8M8 16h6" />
       </>
     ),
-    digests: (
-      <>
-        <path d="M6 5h14v15H6zM3 8v12h14" />
-        <path d="M9 9h8M9 13h8M9 17h5" />
-      </>
-    ),
     export: (
       <>
         <path d="M12 3v12M8 11l4 4 4-4" />
@@ -250,7 +243,6 @@ export function Layout({
   const navItems: Array<{ id: AppPage; label: string; icon: WorkbenchIconName; title: string }> = [
     { id: 'tags', label: '标签', icon: 'tags', title: '标签管理' },
     { id: 'notes', label: '笔记', icon: 'notes', title: '文章笔记' },
-    { id: 'digests', label: '文摘', icon: 'digests', title: '文摘整理与导出' },
     { id: 'topics', label: '专题', icon: 'topics', title: '专题追踪' }
   ];
 

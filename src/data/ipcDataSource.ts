@@ -14,8 +14,6 @@ import type {
   Note,
   NoteCreateInput,
   NoteUpdateInput,
-  Digest,
-  DigestCreateInput,
   Topic,
   TopicCreateInput,
   TopicUpdateInput,
@@ -88,13 +86,6 @@ export interface FullDataSource extends DataSource {
   noteCreate(input: NoteCreateInput): Promise<DataSourceState<Note>>;
   noteUpdate(id: string, input: NoteUpdateInput): Promise<DataSourceState<Note>>;
   noteDelete(id: string): Promise<void>;
-
-  // --- Digest ---
-  digestList(): Promise<DataSourceState<Digest[]>>;
-  digestGet(id: string): Promise<DataSourceState<Digest>>;
-  digestCreate(input: DigestCreateInput): Promise<DataSourceState<Digest>>;
-  digestDelete(id: string): Promise<void>;
-  digestExport(id: string, format: ExportFormat): Promise<DataSourceState<string>>;
 
   // --- Topic（Phase 4.1 完整化：list/create/update/delete + 4 tab 数据）---
   topicList(): Promise<DataSourceState<Topic[]>>;
@@ -336,28 +327,6 @@ export class IpcDataSource implements FullDataSource {
 
   async noteDelete(id: string): Promise<void> {
     throwOnError(await window.api.note.delete(id), 'noteDelete');
-  }
-
-  // ============== Digest ==============
-
-  async digestList(): Promise<DataSourceState<Digest[]>> {
-    return unwrap(await window.api.digest.list());
-  }
-
-  async digestGet(id: string): Promise<DataSourceState<Digest>> {
-    return unwrap(await window.api.digest.get(id));
-  }
-
-  async digestCreate(input: DigestCreateInput): Promise<DataSourceState<Digest>> {
-    return unwrap(await window.api.digest.create(input));
-  }
-
-  async digestDelete(id: string): Promise<void> {
-    throwOnError(await window.api.digest.delete(id), 'digestDelete');
-  }
-
-  async digestExport(id: string, format: ExportFormat): Promise<DataSourceState<string>> {
-    return unwrap(await window.api.digest.export(id, format));
   }
 
   // ============== Topic ==============

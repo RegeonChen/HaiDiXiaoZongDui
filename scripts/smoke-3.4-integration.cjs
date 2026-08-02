@@ -2,8 +2,8 @@
  * Phase 3 Integration 端到端 smoke
  *
  * 验证项：
- *  - 顶栏 4 个内容工具按钮（标签/笔记/文摘/专题），设置位于右上角
- *  - 页面切换：reader → settings/tags/notes/digests/topics → reader
+ *  - 顶栏 3 个内容工具按钮（标签/笔记/专题），设置位于右上角
+ *  - 页面切换：reader → settings/tags/notes/topics → reader
  *  - SettingsPage：AI Provider + 字体主题 + 视觉主题 入口齐全
  *  - 设置工作区不再出现本地日志入口或页面
  *  - 切换字体主题 + 视觉主题后 <html data-font-theme> / data-visual-theme 改变

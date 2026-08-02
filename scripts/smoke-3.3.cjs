@@ -4,7 +4,7 @@
  * 覆盖 PLAN.md Task 3.3 Verification 全部点：
  *  - provider CRUD + test (连通性校验)
  *  - tag CRUD + article 关联
- *  - note CRUD + digest CRUD + export
+ *  - note CRUD + export
  *  - ai:chat 文章上下文多轮问答（使用本地 OpenAI-compatible mock）
  *  - 专题推荐在 Provider 拒绝 response_format 时自动降级并完成真实 IPC
  *  - ai:generateSummary / ai:generateTranslation / ai:suggestTags (需真实 API Key，跳过若未配置)
@@ -219,7 +219,6 @@ server.listen(0, '127.0.0.1', () => {
       printChecks('provider', report.provider);
       printChecks('tag', report.tag);
       printChecks('note', report.note);
-      printChecks('digest', report.digest);
       printChecks('ai_summary', report.ai_summary);
       printChecks('ai_translation', report.ai_translation);
       printChecks('ai_tags', report.ai_tags);

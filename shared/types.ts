@@ -274,26 +274,6 @@ export interface NoteUpdateInput {
   markdownContent?: string;
 }
 
-// ---- Digest（文摘） ----
-
-export interface Digest {
-  id: string;
-  /**
-   * 文摘名称。用户自定义，纯文本。
-   * 导出时作为文件名的一部分（经 sanitize 处理，移除非法文件名字符）。
-   */
-  name: string;
-  /** 包含的笔记 ID 列表（按排序） */
-  noteIds: string[];
-  createdAt: IsoTimestamp;
-  updatedAt: IsoTimestamp;
-}
-
-export interface DigestCreateInput {
-  name: string;
-  noteIds: string[];
-}
-
 /**
  * 导出文件格式。
  * - markdown: 默认格式，可编辑，包含 YAML front matter 元数据和 Markdown 正文

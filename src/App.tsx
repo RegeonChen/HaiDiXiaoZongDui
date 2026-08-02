@@ -2,7 +2,7 @@
  * App 入口
  * Task 2.1 + Phase 2.5.1 + Phase 3 Integration
  *
- * 数据流：FullDataSource 抽象 → feeds / articles / content / tag / note / digest / topic / ai / settings / log
+ * 数据流：FullDataSource 抽象 → feeds / articles / content / tag / note / topic / ai / settings / log
  * 状态：useSelection（feedId / articleId）、usePaneWidths（三栏宽度）、currentPage（页面切换）
  *
  * Phase 2.5.1：删除订阅源、OPML 导入自动同步、三栏拖拽
@@ -39,7 +39,6 @@ import { LoadingView } from './components/StatusView/LoadingView';
 import { ErrorView } from './components/StatusView/ErrorView';
 import { TagsPage } from './pages/TagsPage/TagsPage';
 import { NotesPage } from './pages/NotesPage/NotesPage';
-import { DigestsPage } from './pages/DigestsPage/DigestsPage';
 import { TopicsPage } from './pages/TopicsPage/TopicsPage';
 import { OpmlExportPage } from './pages/OpmlExportPage/OpmlExportPage';
 import { UnifiedSettingsPage } from './pages/UnifiedSettingsPage/UnifiedSettingsPage';
@@ -477,7 +476,6 @@ export function App() {
       settings: { label: '设置', icon: 'settings', closeable: true },
       tags: { label: '标签管理', icon: 'tags', closeable: true },
       notes: { label: '笔记', icon: 'notes', closeable: true },
-      digests: { label: '文摘', icon: 'digests', closeable: true },
       topics: { label: '专题', icon: 'topics', closeable: true },
       'opml-export': { label: '导出 OPML', icon: 'export', closeable: true }
     };
@@ -1680,9 +1678,6 @@ export function App() {
       break;
     case 'notes':
       pageSlot = <NotesPage onToast={pushToast} />;
-      break;
-    case 'digests':
-      pageSlot = <DigestsPage onToast={pushToast} />;
       break;
     case 'topics':
       pageSlot = <TopicsPage onToast={pushToast} onOpenArticle={handleTopicOpenArticle} />;

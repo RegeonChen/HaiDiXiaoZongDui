@@ -16,7 +16,6 @@ import type {
   Article, ArticleFilter,
   Tag, TagCreateInput, TagUpdateInput,
   Note, NoteCreateInput, NoteUpdateInput,
-  Digest, DigestCreateInput, ExportFormat,
   Topic, TopicCreateInput, TopicUpdateInput,
   EventGroup, Briefing, TimelineEntry, TopicGraph,
   AIProvider, AIProviderCreateInput, AIProviderUpdateInput,
@@ -130,13 +129,6 @@ export const IPC_CHANNELS = {
   NOTE_CREATE:          'note:create',
   NOTE_UPDATE:          'note:update',
   NOTE_DELETE:          'note:delete',
-
-  // -- Digest（文摘） --
-  DIGEST_LIST:     'digest:list',
-  DIGEST_GET:      'digest:get',
-  DIGEST_CREATE:   'digest:create',
-  DIGEST_DELETE:   'digest:delete',
-  DIGEST_EXPORT:   'digest:export',
 
   // -- Topic（专题） --
   TOPIC_LIST:          'topic:list',
@@ -256,13 +248,6 @@ export interface IpcRequestMap {
   [IPC_CHANNELS.NOTE_CREATE]:          { args: { input: NoteCreateInput };              result: Note };
   [IPC_CHANNELS.NOTE_UPDATE]:          { args: { id: string; input: NoteUpdateInput };  result: Note };
   [IPC_CHANNELS.NOTE_DELETE]:          { args: { id: string };                          result: void };
-
-  // -- Digest --
-  [IPC_CHANNELS.DIGEST_LIST]:   { args: void;                                    result: Digest[] };
-  [IPC_CHANNELS.DIGEST_GET]:    { args: { id: string };                          result: Digest };
-  [IPC_CHANNELS.DIGEST_CREATE]: { args: { input: DigestCreateInput };            result: Digest };
-  [IPC_CHANNELS.DIGEST_DELETE]: { args: { id: string };                          result: void };
-  [IPC_CHANNELS.DIGEST_EXPORT]: { args: { id: string; format: ExportFormat };    result: string };
 
   // -- Topic --
   [IPC_CHANNELS.TOPIC_LIST]:              { args: void;                                                result: Topic[] };

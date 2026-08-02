@@ -16,8 +16,6 @@ import type {
   Note,
   NoteCreateInput,
   NoteUpdateInput,
-  Digest,
-  DigestCreateInput,
   Topic,
   TopicCreateInput,
   TopicUpdateInput,
@@ -68,7 +66,6 @@ export class MockDataSource implements DataSource {
   // 让 tagAddToArticle / tagRemoveFromArticle / tagGetByArticle / articles(tagIds) 真正可用
   private articleTagMap: Map<string, Set<string>> = new Map();
   private notesState: Note[] = [];
-  private digestsState: Digest[] = [];
   private topicsState: Topic[] = [];
   private topicGraphState: Map<string, TopicGraph> = new Map();
   private providersState: AIProvider[] = [];
@@ -558,38 +555,6 @@ export class MockDataSource implements DataSource {
 
   async noteDelete(id: string): Promise<void> {
     this.notesState = this.notesState.filter((n) => n.id !== id);
-  }
-
-  // ============== Digest ==============
-
-  async digestList(): Promise<DataSourceState<Digest[]>> {
-    return { kind: 'ready', data: this.digestsState };
-  }
-
-  async digestGet(id: string): Promise<DataSourceState<Digest>> {
-    const d = this.digestsState.find((x) => x.id === id);
-    if (!d) return { kind: 'error', error: `文摘 ${id} 不存在` };
-    return { kind: 'ready', data: d };
-  }
-
-  async digestCreate(input: DigestCreateInput): Promise<DataSourceState<Digest>> {
-    const digest: Digest = {
-      id: this.nextId('digest'),
-      name: input.name,
-      noteIds: input.noteIds,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    this.digestsState = [...this.digestsState, digest];
-    return { kind: 'ready', data: digest };
-  }
-
-  async digestDelete(id: string): Promise<void> {
-    this.digestsState = this.digestsState.filter((d) => d.id !== id);
-  }
-
-  async digestExport(_id: string, _format: ExportFormat): Promise<DataSourceState<string>> {
-    return { kind: 'error', error: 'mock 模式不支持导出' };
   }
 
   // ============== Topic ==============

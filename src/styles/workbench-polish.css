@@ -296,7 +296,6 @@
 /* ----- 二级页面共同骨架 ----- */
 .settings-page,
 .notes-page,
-.digests-page,
 .opml-export-page,
 .tags-page,
 .topics-page {
@@ -314,7 +313,6 @@
 
 .settings-page__title,
 .notes-page__title,
-.digests-page__title,
 .opml-export-page__title,
 .tags-page__title,
 .topics-page__title {
@@ -344,7 +342,6 @@
 .settings-page__section,
 .tags-page__right,
 .notes-page__item,
-.digests-page__item,
 .opml-export-page__toolbar,
 .topics-page__item {
   border: 1px solid var(--border);
@@ -390,7 +387,6 @@
 .settings-page__input,
 .notes-page__select,
 .notes-page__textarea,
-.digests-page__input,
 .tags-page__input {
   min-height: 33px;
   border-radius: 7px;
@@ -401,7 +397,6 @@
 .settings-page__input:focus,
 .notes-page__select:focus,
 .notes-page__textarea:focus,
-.digests-page__input:focus,
 .tags-page__input:focus {
   outline: none;
   border-color: var(--border-strong);
@@ -428,7 +423,6 @@
 
 .settings-page__btn,
 .notes-page__btn,
-.digests-page__btn,
 .tags-page__btn,
 .opml-export-page__btn,
 .opml-export-page__toolbar-btn,
@@ -444,7 +438,6 @@
 
 .settings-page__btn:hover,
 .notes-page__btn:hover:not(:disabled),
-.digests-page__btn:hover:not(:disabled),
 .tags-page__btn:hover:not(:disabled),
 .opml-export-page__btn:hover:not(:disabled),
 .opml-export-page__toolbar-btn:hover,
@@ -456,7 +449,6 @@
 
 .settings-page__btn--primary:hover,
 .notes-page__btn--primary:hover:not(:disabled),
-.digests-page__btn--primary:hover:not(:disabled),
 .tags-page__btn--primary:hover:not(:disabled),
 .opml-export-page__btn--primary:hover:not(:disabled),
 .topics-page__new-btn:hover {
@@ -666,7 +658,6 @@
 
 .settings-page__empty,
 .notes-page__empty,
-.digests-page__empty,
 .opml-export-page__empty,
 .tags-page__empty,
 .status-view {
@@ -679,7 +670,6 @@
 
 .settings-page__empty,
 .notes-page__empty,
-.digests-page__empty,
 .opml-export-page__empty,
 .tags-page__empty {
   padding: 32px 16px;
@@ -699,8 +689,7 @@
   box-shadow: var(--shadow-sm);
 }
 
-.notes-page__form,
-.digests-page__form {
+.notes-page__form {
   margin-bottom: 16px;
   padding: 14px;
   border: 1px solid var(--border);
@@ -713,13 +702,8 @@
   min-height: 130px;
 }
 
-.notes-page__item,
-.digests-page__item {
+.notes-page__item {
   padding: 13px 15px;
-}
-
-.digests-page__form {
-  margin-top: 18px;
 }
 
 /* ----- 标签管理 ----- */
@@ -878,7 +862,6 @@
 @media (max-width: 1050px) {
   .settings-page,
   .notes-page,
-  .digests-page,
   .opml-export-page,
   .tags-page,
   .topics-page {

@@ -55,18 +55,6 @@ export const NoteRepository = {
     const db = getDatabase();
     const existing = this.getById(id);
     if (!existing) return false;
-    // 从所有包含此笔记的 digests 中移除
-    const digestRows = db.exec('SELECT id, note_ids FROM digests');
-    if (digestRows.length > 0 && digestRows[0].values.length > 0) {
-      for (const row of digestRows[0].values) {
-        const digestId = row[digestRows[0].columns.indexOf('id')] as string;
-        const noteIdsRaw = row[digestRows[0].columns.indexOf('note_ids')] as string;
-        let noteIds: string[];
-        try { noteIds = JSON.parse(noteIdsRaw) as string[]; } catch { continue; }
-        const newIds = noteIds.filter((nid) => nid !== id);
-        db.run('UPDATE digests SET note_ids=? WHERE id=?', [JSON.stringify(newIds), digestId]);
-      }
-    }
     db.run('DELETE FROM notes WHERE id = ?', [id]);
     saveDatabase();
     return true;

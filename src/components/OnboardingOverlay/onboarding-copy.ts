@@ -9,7 +9,6 @@ export type OnboardingStepId =
   | 'layout'
   | 'tags'
   | 'notes'
-  | 'digests'
   | 'topics'
   | 'ai'
   | 'search';
@@ -46,7 +45,6 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   { id: 'layout', target: '[data-page-key="reader"]', padding: 7 },
   { id: 'tags', target: '[data-page-key="tags"]', padding: 8 },
   { id: 'notes', target: '[data-page-key="notes"]', padding: 8 },
-  { id: 'digests', target: '[data-page-key="digests"]', padding: 8 },
   { id: 'topics', target: '[data-page-key="topics"]', padding: 8 },
   { id: 'ai', target: '[data-testid="app-header__ai"]', padding: 7 },
   { id: 'search', target: '.app-header__search', padding: 6 }
@@ -102,12 +100,7 @@ export const ONBOARDING_COPY: Record<OnboardingLanguage, OnboardingCopy> = {
       notes: {
         title: '记录阅读笔记',
         description: '选中文章正文即可摘录为笔记，支持 Markdown 格式，记录你的思考与观点。',
-        hint: '笔记保存在本地，导出文摘时会一起包含。'
-      },
-      digests: {
-        title: '整理与导出文摘',
-        description: '将多篇文章的笔记和摘录汇集成一份文摘，支持导出为 Markdown 或 HTML 文件。',
-        hint: '适合整理专题阅读成果，方便归档和分享。'
+        hint: '笔记保存在本地，可随时查阅和编辑。'
       },
       topics: {
         title: '追踪专题动态',
@@ -175,12 +168,7 @@ export const ONBOARDING_COPY: Record<OnboardingLanguage, OnboardingCopy> = {
       notes: {
         title: 'Take reading notes',
         description: 'Select text to excerpt as a note with Markdown formatting. Capture your thoughts and insights.',
-        hint: 'Notes stay local and are included when exporting digests.'
-      },
-      digests: {
-        title: 'Compile and export digests',
-        description: 'Collect notes from multiple articles into a digest, exportable as Markdown or HTML.',
-        hint: 'Great for summarizing topic research and archiving your reading.'
+        hint: 'Notes stay local and can be reviewed anytime.'
       },
       topics: {
         title: 'Track topic developments',

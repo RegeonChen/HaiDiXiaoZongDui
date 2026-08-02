@@ -8,7 +8,6 @@
     prov: { ok: false, error: null, checks: {}, skipped: false },
     tag:  { ok: false, error: null, checks: {} },
     note: { ok: false, error: null, checks: {} },
-    dig:  { ok: false, error: null, checks: {} },   // digest
     ais:  { ok: false, error: null, checks: {}, skipped: false },
     ait:  { ok: false, error: null, checks: {}, skipped: false },
     aig:  { ok: false, error: null, checks: {}, skipped: false },
@@ -197,21 +196,6 @@
     }
     R.note.ok = OK(R.note.checks);
   } catch (e) { R.note.error = String(e); }
-
-  // ---- digest ----
-  try {
-    var d = await api.digest.create({ name: 'TD', noteIds: [] });
-    R.dig.checks.create = d.success && !!d.data.id;
-    var did = d.success ? d.data.id : '';
-    R.dig.checks.list = (await api.digest.list()).success && (await api.digest.list()).data.length >= 1;
-    R.dig.checks.get = (await api.digest.get(did)).success && (await api.digest.get(did)).data.name === 'TD';
-    var ex = await api.digest.export(did, 'markdown');
-    R.dig.checks.exportMd = ex.success && typeof ex.data === 'string' && ex.data.indexOf('TD') >= 0;
-    var eh = await api.digest.export(did, 'html');
-    R.dig.checks.exportHtml = eh.success && typeof eh.data === 'string' && eh.data.indexOf('<!DOCTYPE html>') >= 0;
-    R.dig.checks.delete = (await api.digest.delete(did)).success;
-    R.dig.ok = OK(R.dig.checks);
-  } catch (e) { R.dig.error = String(e); }
 
   // ---- AI gen + cache (requires real API; skipped in smoke) ----
   R.ais.skipped = 'Needs real API key';

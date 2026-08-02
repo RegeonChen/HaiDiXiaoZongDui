@@ -240,24 +240,6 @@ const api = {
       invoke(IPC_CHANNELS.NOTE_DELETE, { id })
   },
 
-  // —— Digest (Task 3.3) ——
-  digest: {
-    list: (): Promise<IpcResponse<typeof IPC_CHANNELS.DIGEST_LIST>> =>
-      invokeVoid(IPC_CHANNELS.DIGEST_LIST),
-
-    get: (id: string): Promise<IpcResponse<typeof IPC_CHANNELS.DIGEST_GET>> =>
-      invoke(IPC_CHANNELS.DIGEST_GET, { id }),
-
-    create: (input: IpcArgs<typeof IPC_CHANNELS.DIGEST_CREATE>['input']): Promise<IpcResponse<typeof IPC_CHANNELS.DIGEST_CREATE>> =>
-      invoke(IPC_CHANNELS.DIGEST_CREATE, { input }),
-
-    delete: (id: string): Promise<IpcResponse<typeof IPC_CHANNELS.DIGEST_DELETE>> =>
-      invoke(IPC_CHANNELS.DIGEST_DELETE, { id }),
-
-    export: (id: string, format: IpcArgs<typeof IPC_CHANNELS.DIGEST_EXPORT>['format']): Promise<IpcResponse<typeof IPC_CHANNELS.DIGEST_EXPORT>> =>
-      invoke(IPC_CHANNELS.DIGEST_EXPORT, { id, format })
-  },
-
   // —— Topic（专题关联 + 演化图）——
   topic: {
     list: (): Promise<IpcResponse<typeof IPC_CHANNELS.TOPIC_LIST>> =>
