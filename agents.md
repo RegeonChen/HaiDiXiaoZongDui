@@ -95,7 +95,7 @@
 
 截至 2026-08-02：
 
-- **v0.3.5 release candidate 已完成本地验收（2026-08-02）**：版本升至 0.3.5，收录订阅与 AI 系统代理兼容、Tag Agent 和专题推荐结构化响应加固、AI 请求超时与脱敏诊断、摘要宽度自适应、通用设置数字输入和工作台表单/预览标签交互修复。通过双端 typecheck、183 项单测、生产构建、24 个独立 Electron/IPC smoke、生产及完整依赖审计和本地 Apple Silicon DMG 打包。`Juhe-Shiyi-0.3.5-arm64.dmg` 为 132,601,110 bytes，SHA-256 `275ecc3ae33cd0146bfa9fcdddc65d05b14a4a00769f5fd7d0d185fc2d8e2f68`；DMG 校验及包内版本、`app.asar`、ICNS 和运行时 PNG 复核通过。待推送 `v0.3.5` tag 触发 GitHub Actions 双平台发布。
+- **v0.3.5 release 已发布**（`f578030` + tag `v0.3.5`）：收录订阅与 AI 系统代理兼容、Tag Agent 和专题推荐结构化响应加固、AI 请求超时与脱敏诊断、摘要宽度自适应、通用设置数字输入和工作台表单/预览标签交互修复。发布前通过双端 typecheck、183 项单测、生产构建、24 个独立 Electron/IPC smoke、生产及完整依赖审计和本地 Apple Silicon DMG 打包。GitHub Actions run `30752853247` 成功生成并发布 `Juhe-Shiyi-0.3.5-arm64.dmg`（132,598,151 bytes，SHA-256 `9843c996cb29cf2e12f2e3e9185351f7e396f262b6d0115fdfd442a0844856c0`）与 `Juhe-Shiyi-Setup-0.3.5-x64.exe`（114,640,248 bytes，SHA-256 `22d759408cefecdf0223f758f905095179d4369817c8d1ca70f8c150f31dbb5b`）。远端下载后复核了 DMG 内版本、ICNS、运行时 PNG 和 `app.asar`，以及 Windows x64 NSIS、主程序 16–256 七档图标和 0.3.5 `app.asar`。
 
 - **v0.3.4 release 已发布**（`7fd0388` + tag `v0.3.4`）：收录文章页 AI 专题命名推荐、模型 JSON/`response_format` 兼容、OPML 导出操作栏调整、顶栏标题移除与搜索框左移、默认推荐徽标布局、订阅源分组右键新建、空库默认订阅源，以及从 8 步扩展为 12 步的新手教程。发布前将 `sanitize-html` 2.16.0 升级到 2.17.6，生产及完整依赖审计均为 0 项已知漏洞；通过 typecheck、160 项单测、生产构建、24 个独立 Electron/IPC smoke 和本地 Apple Silicon DMG 打包。GitHub Actions run `30729114294` 成功生成并发布 `Juhe-Shiyi-0.3.4-arm64.dmg`（132,602,728 bytes，SHA-256 `8f1d36577ab3ee4f461d565eb3bf3d07fe2c8e076d1f5c37c9710e6f715d8880`）与 `Juhe-Shiyi-Setup-0.3.4-x64.exe`（114,635,763 bytes，SHA-256 `84587e1d990286e81da109cf239d00c0b7da00ac17b29c30fea2189e1ed24ec9`）。远端下载后复核了 DMG 内版本、ICNS、运行时 PNG 和 `app.asar`，以及 Windows x64 NSIS、主程序 16–256 七档图标和 0.3.4 `app.asar`。Actions v4 仍显示 Node 20 弃用但强制使用 Node 24 的非阻塞提示，后续应升级对应 Action 主版本。
 
@@ -209,7 +209,7 @@
 ## 路线图
 
 1. Phase 1–4.3、3.7、4.1、4.2：✅ 已完成
-2. Phase 5：v0.3.4 已完成 GitHub Actions 双平台发布，Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
+2. Phase 5：v0.3.5 已完成 GitHub Actions 双平台发布，Windows 真机与 Linux 验证 / 课程交付资料准备（进行中）
 
 详细任务和验收标准位于 `PLAN.md`，本文件不重复记录任务级进度。
 
@@ -267,5 +267,5 @@
 - **部分数据库仓储缺少单元测试**：Tag / Note / Digest / AIProvider / AiResultCache 的测试覆盖不足（Phase 5 增量补齐）。
 - **部分外部 AI Provider 真实生成仍未被自动化覆盖**：专题命名推荐和文章对话已通过本地 OpenAI-compatible 服务走真实 IPC 验证；摘要、翻译、标签等调用外部 Provider 的 smoke 仍允许在没有真实 API Key 时跳过。
 - **跨平台行为测试**：macOS 已完成完整 smoke、DMG 挂载与图标核验；Windows NSIS 已完成本地和云端构建及资源解析，但仍需 Windows 真机安装验证；Linux 尚未构建。
-- **electron-builder 上游依赖公告**：生产依赖 `npm audit --omit=dev` 为 0；完整审计仍报告 16 项 high，全部来自 electron-builder 26.15.7 的打包期传递依赖。npm 当前给出的自动修复会反向安装 25.1.8，不能在未验证的情况下强制执行；等待上游稳定版更新并继续复核。GitHub Actions 同时提示部分官方 actions 的 Node 20 运行时已由平台强制切换到 Node 24。
+- **GitHub Actions 运行时提示**：生产及完整依赖审计均为 0 项已知漏洞；部分官方 Actions v4 仍声明 Node 20 运行时，GitHub 当前会强制切换到 Node 24 并显示非阻塞提示，后续应升级对应 Action 主版本。
 - **不同 OpenAI-compatible Provider 兼容性**：当前默认测过 1 家 Provider，需在多 Provider 上兼容性测试。
