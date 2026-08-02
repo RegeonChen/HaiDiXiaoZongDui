@@ -5,6 +5,7 @@
  *   1) feed CRUD 通过 IPC 正常（创建/列表/去重/更新/删除）
  *   2) article 列表查询正常
  *   3) 数据库使用隔离的临时 userData，二次启动后仍能读取 Feed 与 settings
+ *   4) 空库首次启动只写入一次默认订阅源，二次启动不重复
  *
  * 用法：
  *   npm run build && node scripts/smoke-2.3.cjs

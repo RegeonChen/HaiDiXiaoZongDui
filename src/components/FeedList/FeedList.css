@@ -166,6 +166,13 @@
   padding: 4px 0;
 }
 
+.feed-list__groups-area {
+  display: flex;
+  flex: 1 0 auto;
+  min-height: 64px;
+  flex-direction: column;
+}
+
 .feed-list__group {
   padding: 0;
 }

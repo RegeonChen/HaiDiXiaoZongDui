@@ -197,7 +197,9 @@ export function TopicFormDialog({
                       data-testid={`topic-form__recommendation-${index}`}
                     >
                       <span className="topic-form-dialog__recommendation-name">
-                        {suggestion.name}
+                        <span className="topic-form-dialog__recommendation-title">
+                          {suggestion.name}
+                        </span>
                         {index === 0 && <span className="topic-form-dialog__primary-badge">默认</span>}
                       </span>
                       {suggestion.reason && (

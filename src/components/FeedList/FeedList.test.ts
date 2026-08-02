@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { act, createElement } from 'react';
+import { act, createElement, Fragment } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOCK_ARTICLES, MOCK_FEEDS } from '../../data/mockData';
+import { ContextMenuHost } from '../ContextMenu/ContextMenu';
 import { FeedList, type FeedListProps } from './FeedList';
 
 describe('FeedList', () => {
@@ -62,7 +63,7 @@ describe('FeedList', () => {
     expect(container.querySelector('[data-testid="feed-list__add-feed"]')?.textContent).toContain('添加订阅源');
     expect(container.querySelector('[data-testid="feed-list__import-opml"]')?.textContent).toContain('导入 OPML');
     expect(container.querySelector('[data-testid="feed-list__export-opml"]')?.textContent).toContain('导出 OPML');
-    expect(container.querySelector('[data-testid="feed-list__add-group"]')?.textContent).toContain('添加订阅源组');
+    expect(container.querySelector('[data-testid="feed-list__add-group"]')?.textContent).toContain('新建订阅源组');
 
     await clickMenuItem('feed-list__add-feed');
     expect(onAddFeed).toHaveBeenCalledOnce();
@@ -79,6 +80,60 @@ describe('FeedList', () => {
     await openMenu();
     await clickMenuItem('feed-list__add-group');
     expect(onAddGroup).toHaveBeenCalledOnce();
+  });
+
+  it('opens the new-group action when right-clicking blank space in the groups area', async () => {
+    const onAddGroup = vi.fn();
+    const props: FeedListProps = {
+      feeds: [],
+      articles: [],
+      selected: 'all',
+      onSelect: vi.fn(),
+      onDeleteFeed: vi.fn(),
+      groups: ['空白测试组'],
+      onAddGroup
+    };
+
+    await act(async () => {
+      root.render(
+        createElement(
+          Fragment,
+          null,
+          createElement(FeedList, props),
+          createElement(ContextMenuHost)
+        )
+      );
+    });
+
+    const emptyGroupSpace = container.querySelector<HTMLElement>('.feed-list__group-empty');
+    expect(emptyGroupSpace).not.toBeNull();
+
+    await act(async () => {
+      emptyGroupSpace?.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 40,
+        clientY: 80
+      }));
+    });
+
+    const contextAction = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>('.context-menu__item')
+    ).find((item) => item.textContent?.trim() === '新建订阅源组');
+    expect(contextAction).not.toBeUndefined();
+
+    await act(async () => {
+      contextAction?.click();
+    });
+    expect(onAddGroup).toHaveBeenCalledOnce();
+    expect(document.body.querySelector('.context-menu')).toBeNull();
+
+    await act(async () => {
+      container.querySelector<HTMLElement>('.feed-list__group-toggle')?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+      );
+    });
+    expect(document.body.querySelector('.context-menu')).toBeNull();
   });
 
   it('uses the shared, two-line empty state for an empty tag directory', async () => {

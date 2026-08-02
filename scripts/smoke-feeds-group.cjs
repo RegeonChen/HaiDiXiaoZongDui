@@ -1,10 +1,11 @@
 /**
- * Phase 3.5.x 订阅源分组 smoke — 添加组 / 移动到组 / 删除组 / "未分组"兜底
+ * Phase 3.5.x 订阅源分组 smoke — 新建组 / 空白处右键 / 移动到组 / 删除组 / "未分组"兜底
  *
- * 验证 16 项关键探针:
+ * 验证关键探针:
  *  - 初始 listGroups 返回 MOCK_FEEDS 预填的组
  *  - 侧栏按 groupName 渲染分组
- *  - "添加组" 按钮 + AddGroupDialog + input + submit → 新组立即渲染
+ *  - "+" 菜单显示"新建订阅源组"，AddGroupDialog + input + submit → 新组立即渲染
+ *  - 分组空白处右键显示同名选项并打开同一个新建对话框
  *  - 移动订阅源到新组 → 重新渲染显示在新组
  *  - 移回 null → "未分组" 组出现
  *  - 删组 IPC + 按钮存在
@@ -60,7 +61,7 @@ child.on('exit', (code, signal) => {
 
   const ok = /SMOKE_REPORT_PASS/.test(stdout);
   if (ok) {
-    console.log('[smoke-feeds-group] ✓ 订阅源分组(添加组/移动到组/删除组)验证全部通过');
+    console.log('[smoke-feeds-group] ✓ 订阅源分组(新建组/空白处右键/移动到组/删除组)验证全部通过');
     finish(0);
   } else {
     console.error('[smoke-feeds-group] ✗ 验证失败,未见 SMOKE_REPORT_PASS');

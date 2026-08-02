@@ -513,6 +513,15 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             () => document.querySelectorAll('[data-testid^="topic-form__recommendation-"]').length === 4,
             2500
           );
+          const primaryBadge = document.querySelector('.topic-form-dialog__primary-badge');
+          const primaryBadgeStyle = primaryBadge ? getComputedStyle(primaryBadge) : null;
+          const primaryBadgeRect = primaryBadge?.getBoundingClientRect();
+          report.aiChat.checks.topicPrimaryBadgeSingleLine =
+            primaryBadge?.textContent?.trim() === '默认' &&
+            primaryBadgeStyle?.whiteSpace === 'nowrap' &&
+            primaryBadgeStyle?.flexShrink === '0' &&
+            primaryBadgeStyle?.writingMode === 'horizontal-tb' &&
+            !!primaryBadgeRect && primaryBadgeRect.width > primaryBadgeRect.height;
           const topicNameInput = document.querySelector('.topic-form-dialog__input');
           const primaryTopicName = topicNameInput?.value || '';
           report.aiChat.checks.topicPrimaryApplied =
@@ -534,7 +543,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             'panelClosedByAiToggle', 'panelReopenedByAiToggle',
             'conversationPreservedAfterToggle',
             'topicRecommendationLoading', 'topicRecommendationsReady',
-            'topicPrimaryApplied', 'topicAlternativeApplied'
+            'topicPrimaryBadgeSingleLine', 'topicPrimaryApplied', 'topicAlternativeApplied'
           ];
           report.aiChat.ok = required.every(
             (key) => report.aiChat.checks[key] === true
@@ -1873,6 +1882,15 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           // 2) list feeds
           const fl = await window.api.feed.list();
           report.db.checks.listFeeds = fl.success && fl.data?.length >= 1;
+          const defaultFeeds = fl.success
+            ? fl.data.filter(function(feed) {
+                return feed.url === 'https://soulhacker.me/index.xml';
+              })
+            : [];
+          report.db.checks.defaultFeedSeededOnce =
+            defaultFeeds.length === 1 &&
+            defaultFeeds[0]?.title === 'Soul Hacker' &&
+            defaultFeeds[0]?.groupName === '个人博客';
 
           // 3) duplicate feed (idempotent)
           const f2 = await window.api.feed.create({ url: 'https://smoke-test.example.com/rss' });
@@ -1910,7 +1928,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       })()
     `;
   } else if (smokeFeedsGroup) {
-    // Phase 3.5.x 订阅源分组 smoke:添加组 / 移动到组 / 删除组 / "未分组"兜底
+    // Phase 3.5.x 订阅源分组 smoke:新建组 / 分组空白处右键 / 移动到组 / 删除组 / "未分组"兜底
     // 走真 IPC 模式(不 mock):seed 真实 feeds + 调真实 IPC,验证后端持久化 + UI 渲染
     probe = `
       (async () => {
@@ -2001,7 +2019,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               virtualStyle.borderBottomColor;
           }
 
-          // C) 打开"添加组"对话框 → input "测试组" → submit → 侧栏出现新组
+          // C) 打开"新建订阅源组"对话框 → input "测试组" → submit → 侧栏出现新组
           const createBtn = document.querySelector('[data-testid="feed-list__create"]');
           createBtn?.click();
           await waitFor(
@@ -2010,6 +2028,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           );
           const addGroupBtn = document.querySelector('[data-testid="feed-list__add-group"]');
           report.feedsGroup.checks.addGroupBtnVisible = !!addGroupBtn;
+          report.feedsGroup.checks.addGroupBtnUsesNewLabel =
+            (addGroupBtn?.textContent || '').includes('新建订阅源组');
           addGroupBtn?.click();
           await waitFor(
             () => !!document.querySelector('.add-group-dialog'),
@@ -2017,6 +2037,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           );
           report.feedsGroup.checks.addGroupDialogOpened =
             !!document.querySelector('.add-group-dialog');
+          report.feedsGroup.checks.addGroupDialogUsesNewLabel =
+            (document.querySelector('.add-group-dialog__title')?.textContent || '').trim() ===
+              '新建订阅源组';
           const inputEl = document.querySelector('[data-testid="add-group-input"]');
           if (inputEl) {
             const nativeSetter = Object.getOwnPropertyDescriptor(
@@ -2027,6 +2050,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           }
           await sleep(50);
           const submitBtn = document.querySelector('[data-testid="add-group-submit"]');
+          report.feedsGroup.checks.addGroupSubmitUsesNewLabel =
+            (submitBtn?.textContent || '').trim() === '新建';
           submitBtn?.click();
           await waitFor(
             () => {
@@ -2042,6 +2067,65 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           ).find((el) => el.getAttribute('data-feed-group') === '测试组');
           report.feedsGroup.checks.addGroupRenders = newGroupRendered;
           report.feedsGroup.checks.dialogClosedAfterSubmit =
+            !document.querySelector('.add-group-dialog');
+
+          // C2) 在分组空白处右键 → 同名选项 → 打开同一个新建组对话框
+          const groupsArea = document.querySelector('[data-testid="feed-list__groups-area"]');
+          const emptyTestGroup = document.querySelector(
+            '.feed-list__group[data-feed-group="测试组"] .feed-list__group-empty'
+          );
+          report.feedsGroup.checks.groupsAreaAvailable = !!groupsArea;
+          report.feedsGroup.checks.emptyGroupSpaceAvailable = !!emptyTestGroup;
+          let blankContextTarget = emptyTestGroup;
+          if (groupsArea) {
+            const areaRect = groupsArea.getBoundingClientRect();
+            const bodyRect = document.querySelector('.feed-list__body')?.getBoundingClientRect();
+            report.feedsGroup.checks.groupsAreaCoversRemainingSpace =
+              !!bodyRect && areaRect.bottom >= bodyRect.bottom - 1;
+            const renderedGroups = Array.from(groupsArea.querySelectorAll('.feed-list__group'));
+            const lastGroup = renderedGroups[renderedGroups.length - 1];
+            if (lastGroup && areaRect.height > 0) {
+              const lastGroupRect = lastGroup.getBoundingClientRect();
+              const blankX = areaRect.left + Math.min(20, areaRect.width / 2);
+              const blankY = Math.min(areaRect.bottom - 8, lastGroupRect.bottom + 12);
+              const hitTarget = document.elementFromPoint(blankX, blankY);
+              report.feedsGroup.checks.remainingBlankSpaceHitTargetsGroupsArea =
+                hitTarget === groupsArea;
+              if (hitTarget === groupsArea) blankContextTarget = hitTarget;
+            }
+          }
+          if (blankContextTarget) {
+            const rect = blankContextTarget.getBoundingClientRect();
+            blankContextTarget.dispatchEvent(new MouseEvent('contextmenu', {
+              bubbles: true,
+              cancelable: true,
+              clientX: rect.left + 12,
+              clientY: rect.top + 8
+            }));
+          }
+          await waitFor(
+            () => Array.from(document.querySelectorAll('.context-menu__item')).some(
+              (item) => (item.textContent || '').trim() === '新建订阅源组'
+            ),
+            { timeout: 1500 }
+          );
+          const blankAreaNewGroupAction = Array.from(
+            document.querySelectorAll('.context-menu__item')
+          ).find((item) => (item.textContent || '').trim() === '新建订阅源组');
+          report.feedsGroup.checks.blankAreaContextMenuOpened = !!blankAreaNewGroupAction;
+          blankAreaNewGroupAction?.click();
+          await waitFor(
+            () => !!document.querySelector('.add-group-dialog'),
+            { timeout: 1500 }
+          );
+          report.feedsGroup.checks.blankAreaContextMenuOpensDialog =
+            !!document.querySelector('.add-group-dialog');
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          await waitFor(
+            () => !document.querySelector('.add-group-dialog'),
+            { timeout: 1500 }
+          );
+          report.feedsGroup.checks.blankAreaDialogClosesWithEscape =
             !document.querySelector('.add-group-dialog');
 
           // D) 移动 fNone 到 "测试组" → 验证 feedRenderedInNewGroup
@@ -2266,8 +2350,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             'seedFeedsCreated', 'initialListGroupsOk', 'groupTitlesRendered',
             'ungroupedInitiallyRendered', 'groupTitleSlightlySmallerThanFeed',
             'virtualDividerMatchesGroupDivider',
-            'addGroupBtnVisible', 'addGroupDialogOpened',
+            'addGroupBtnVisible', 'addGroupBtnUsesNewLabel',
+            'addGroupDialogOpened', 'addGroupDialogUsesNewLabel',
+            'addGroupSubmitUsesNewLabel',
             'addGroupRenders', 'dialogClosedAfterSubmit',
+            'groupsAreaAvailable', 'emptyGroupSpaceAvailable',
+            'groupsAreaCoversRemainingSpace', 'remainingBlankSpaceHitTargetsGroupsArea',
+            'blankAreaContextMenuOpened', 'blankAreaContextMenuOpensDialog',
+            'blankAreaDialogClosesWithEscape',
             'moveToGroupIpcOk', 'feedRenderedInNewGroup',
             'moveToUngroupedIpcOk', 'ungroupedBucketRendered',
             'deleteGroupBtnVisible', 'clearGroupIpcOk', 'clearGroupIpcReturned',
@@ -3253,7 +3343,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
                 }
               }
             }
-            report.onboarding.checks.eightStepsInOrder =
+            report.onboarding.checks.twelveStepsInOrder =
               seenSteps.join(',') === expectedSteps.join(',');
             report.onboarding.checks.allTargetsLocated = allTargetsLocated;
             report.onboarding.checks.cardStayedMounted = cardStayedMounted;
@@ -4121,28 +4211,40 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       })()
     `;
   } else if (smokeUI) {
-    // Phase 2.1 smoke: verify three-pane layout + click interaction + theme switch
+    // Phase 2.1 smoke: verify four-part workbench layout + click interaction + theme switch
     probe = `
       (async () => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         const report = { ui: { ok: false, error: null, checks: {} } };
 
         try {
-          // 1) 三栏 layout 节点都存在
+          // 1) 四段式工作台和三级内容节点都存在
+          const workbench = document.querySelector('.app-workbench__content');
           const main = document.querySelector('.app-main');
           const sidebar = document.querySelector('.pane-feeds');
           const list = document.querySelector('.pane-list');
           const reader = document.querySelector('.pane-reader');
-          report.ui.checks.layoutRendered = !!(main && sidebar && list && reader);
+          report.ui.checks.layoutRendered = !!(workbench && main && sidebar && list && reader);
 
-          // 2) 三栏宽度加起来约等于 main 宽度（容差 2px）
-          if (main && sidebar && list && reader) {
-            const sumW = sidebar.offsetWidth + list.offsetWidth + reader.offsetWidth;
+          // 2) 当前布局是两层 grid：一级目录在 app-main 外，不能再把三块内容直接与 main 比较。
+          if (workbench && main && sidebar && list && reader) {
+            const outerHandle = Array.from(workbench.children).find(
+              (node) => node.classList.contains('resize-handle')
+            );
+            const innerHandle = Array.from(main.children).find(
+              (node) => node.classList.contains('resize-handle')
+            );
+            const outerSumW = sidebar.offsetWidth + (outerHandle?.offsetWidth ?? 0) + main.offsetWidth;
+            const innerSumW = list.offsetWidth + (innerHandle?.offsetWidth ?? 0) + reader.offsetWidth;
+            const workbenchW = workbench.offsetWidth;
             const mainW = main.offsetWidth;
-            // 容差 10px：fr 单位会引入最多 1px 舍入误差，两个 ResizeHandle 占 8px。
-            // 之前用 2px 会在 fr 实际宽度不是整数时 fail，与 Layout 行为无关。
-            report.ui.checks.paneWidths = Math.abs(sumW - mainW) <= 10;
-            report.ui.checks.paneSum = sumW;
+            report.ui.checks.paneWidths =
+              !!outerHandle && !!innerHandle &&
+              Math.abs(outerSumW - workbenchW) <= 2 &&
+              Math.abs(innerSumW - mainW) <= 2;
+            report.ui.checks.outerPaneSum = outerSumW;
+            report.ui.checks.workbenchW = workbenchW;
+            report.ui.checks.innerPaneSum = innerSumW;
             report.ui.checks.mainW = mainW;
           }
 
@@ -4190,10 +4292,25 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             report.ui.checks.themeAfterSystem = document.documentElement.getAttribute('data-theme');
           }
 
+          // 8) 搜索框应位于顶栏最左侧，空扩展位排在其后。
+          const headerSearch = document.querySelector('.app-header__search');
+          const headerLeft = document.querySelector('.app-header__left');
+          if (headerSearch && headerLeft) {
+            const searchRect = headerSearch.getBoundingClientRect();
+            const leftRect = headerLeft.getBoundingClientRect();
+            report.ui.checks.headerSearchLeftmost =
+              !!(headerSearch.compareDocumentPosition(headerLeft) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+              searchRect.left < leftRect.left;
+            report.ui.checks.headerSearchLeft = searchRect.left;
+            report.ui.checks.headerSpacerLeft = leftRect.left;
+          } else {
+            report.ui.checks.headerSearchLeftmost = false;
+          }
+
           // OK 判定：列出要校验为 boolean 的字段
           const boolChecks = [
             'layoutRendered', 'paneWidths', 'feedButtonsOk', 'articleButtonsOk',
-            'clickSelectsArticle'
+            'clickSelectsArticle', 'headerSearchLeftmost'
           ];
           const themeChecks = ['themeAfterDark', 'themeAfterSystem'];
           const boolOk = boolChecks.every((k) => report.ui.checks[k] === true);
@@ -5849,7 +5966,10 @@ app.whenReady().then(async () => {
 
   await initDatabase();
   runMigrations();
-  seedDefaultFeeds();
+  // 生产启动时为空库写入默认源；自动化 smoke 默认保持各自的精确夹具，
+  // 仅 smokeV2 专门覆盖首次写入和跨重启不重复。
+  const isAutomatedSmoke = SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi || SMOKE_FLAGS.seedFeeds;
+  if (!isAutomatedSmoke || SMOKE_FLAGS.smokeV2) seedDefaultFeeds();
   if (
     (SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) &&
     !SMOKE_FLAGS.smokeOnboarding

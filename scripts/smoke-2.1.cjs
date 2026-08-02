@@ -2,13 +2,14 @@
  * Task 2.1 烟雾测试 — UI Shell
  *
  * 验证项（headless 下靠 probe 注入 + DOM 探测）：
- *  1) .app-main 与三栏 .pane-feeds/.pane-list/.pane-reader 渲染完成
- *  2) 三栏宽度加起来 = main 宽度（容差 2px）
+ *  1) 四段式工作台与 .pane-feeds/.pane-list/.pane-reader 渲染完成
+ *  2) 一级目录 + 外层手柄 + 编辑区 = 工作台宽度；文章目录 + 内层手柄 + 阅读区 = 编辑区宽度
  *  3) 订阅源侧栏 ≥ 5 项
  *  4) 文章列表 ≥ 5 项
  *  5) 点击第一篇文章后阅读区标题更新
  *  6) 主题切换：dark 按钮点完 <html data-theme="dark">
  *  7) 切回 system 后 data-theme 跟随
+ *  8) 搜索框位于顶栏左侧扩展位之前
  *
  * 用法：npm run smoke:ui
  * 退出码 0 = 全过

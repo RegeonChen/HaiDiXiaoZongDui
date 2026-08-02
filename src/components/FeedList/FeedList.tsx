@@ -2,7 +2,7 @@
  * 订阅源侧栏（Mercury 风格）
  *
  *  - tab 切换：订阅源 / 标签（按 tag 分类文章，Phase 3.5.x 落地）
- *  - 一级目录右上角"+"：添加订阅源、导入/导出 OPML、添加订阅源组
+ *  - 一级目录右上角"+"：添加订阅源、导入/导出 OPML、新建订阅源组
  *  - 底部状态栏：订阅源数 / 文章数 / 未读数
  *  - 右键订阅源 → 弹菜单（同步 / 移动到组 / 删除 / 复制 URL）
  *  - 选中态：mercury 风格的圆点 + 灰底
@@ -14,7 +14,7 @@
  *
  * Phase 3.5.x 订阅源分组：
  *  - tab=sources 按 groupName 聚合分组（"未分组"作为兜底组）
- *  - "+" 菜单中的"添加订阅源组"添加空组（本地缓存，需用户把订阅源移动到新组来激活）
+ *  - "+" 菜单或分组空白处右键可新建空组（本地缓存，需用户把订阅源移动到新组来激活）
  *  - 右键菜单"移动到..."子菜单列出所有组 + "未分组"
  *  - 组标题旁"+删除"按钮可删除组（组内订阅源移到未分组）
  */
@@ -46,9 +46,9 @@ export interface FeedListProps {
   tagCounts?: Record<string, number>;
   /** 打开标签页时重新拉取标签与文章数，避免侧栏停留在旧快照。 */
   onRefreshTags?: () => void | Promise<void>;
-  /** Phase 3.5.x：所有订阅源组名（侧栏"移动到组"子菜单 + 顶栏添加组用） */
+  /** Phase 3.5.x：所有订阅源组名（侧栏"移动到组"子菜单 + 新建组入口用） */
   groups?: string[];
-  /** Phase 3.5.x：打开"添加组"对话框 */
+  /** Phase 3.5.x：打开"新建订阅源组"对话框 */
   onAddGroup?: () => void;
   /** 一级目录右上角 "+" 菜单：添加订阅源。 */
   onAddFeed?: () => void;
@@ -144,7 +144,7 @@ export function FeedList({
   });
   // "更多" 菜单开关
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  // 一级目录右上角 "+"：统一承载添加订阅源、OPML 导入/导出和添加组。
+  // 一级目录右上角 "+"：统一承载添加订阅源、OPML 导入/导出和新建组。
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   // Bug 2 修复：批量管理模式( ... 改为批量删除入口)
   const [batchMode, setBatchMode] = useState(false);
@@ -359,6 +359,29 @@ export function FeedList({
     ]);
   };
 
+  const handleGroupsAreaContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (batchMode || !onAddGroup) return;
+
+    const target = e.target;
+    if (
+      target instanceof Element &&
+      target.closest('button, input, a, [role="button"], .feed-list__item-wrap')
+    ) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    setCreateMenuOpen(false);
+    setMoreMenuOpen(false);
+    showContextMenu(e.clientX, e.clientY, [
+      {
+        label: '新建订阅源组',
+        onClick: onAddGroup
+      }
+    ]);
+  }, [batchMode, onAddGroup]);
+
   return (
     <div className={`feed-list ${batchMode ? 'is-batch' : ''}`}>
       {/* 顶部 tab + 操作行 */}
@@ -512,7 +535,7 @@ export function FeedList({
                   data-testid="feed-list__add-group"
                 >
                   <span aria-hidden="true">⊞</span>
-                  <span>添加订阅源组</span>
+                  <span>新建订阅源组</span>
                 </button>
               )}
             </div>
@@ -577,24 +600,30 @@ export function FeedList({
 
       {/* 真实订阅源分组 */}
       {tab === 'sources' && showAll && (
-        grouped.length === 0 ? (
-          <EmptyView
-            className="feed-list__empty"
-            title="还没有订阅源"
-            hint="点击一级目录右上角的“+”，添加 RSS、Atom 或 JSON Feed 订阅源。"
-          />
-        ) : (
-          grouped.map(([group, list]) => {
-            // "未分组"是兜底组，不能删除也不能添加（也没意义）
-            const canDelete = group !== UNGROUPED_KEY && !!onDeleteGroup;
-            const isCollapsed = collapsedGroups.has(group);
-            return (
-              <div
-                key={group}
-                className={`feed-list__group ${isCollapsed ? 'is-collapsed' : ''}`}
-                data-feed-group={group}
-                data-collapsed={isCollapsed ? 'true' : 'false'}
-              >
+        <div
+          className="feed-list__groups-area"
+          aria-label="订阅源分组"
+          onContextMenu={handleGroupsAreaContextMenu}
+          data-testid="feed-list__groups-area"
+        >
+          {grouped.length === 0 ? (
+            <EmptyView
+              className="feed-list__empty"
+              title="还没有订阅源"
+              hint="点击一级目录右上角的“+”，添加 RSS、Atom 或 JSON Feed 订阅源。"
+            />
+          ) : (
+            grouped.map(([group, list]) => {
+              // "未分组"是兜底组，不能删除也不能添加（也没意义）
+              const canDelete = group !== UNGROUPED_KEY && !!onDeleteGroup;
+              const isCollapsed = collapsedGroups.has(group);
+              return (
+                <div
+                  key={group}
+                  className={`feed-list__group ${isCollapsed ? 'is-collapsed' : ''}`}
+                  data-feed-group={group}
+                  data-collapsed={isCollapsed ? 'true' : 'false'}
+                >
                 <div className="feed-list__group-title">
                   <button
                     type="button"
@@ -690,10 +719,11 @@ export function FeedList({
                     );
                   })
                 ))}
-              </div>
-            );
-          })
-        )
+                </div>
+              );
+            })
+          )}
+        </div>
       )}
 
       {/* tab=tags:按 tag 分类文章(Phase 3.5.x 落地) */}

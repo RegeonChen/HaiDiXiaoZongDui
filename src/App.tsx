@@ -1344,7 +1344,7 @@ export function App() {
         if (prev.some((g) => g.toLowerCase() === name.toLowerCase())) return prev;
         return [...prev, name].sort((a, b) => a.localeCompare(b, 'zh'));
       });
-      pushToast(`已添加组「${name}」`, 'success');
+      pushToast(`已新建订阅源组「${name}」`, 'success');
       return { ok: true, message: 'ok' };
     },
     [pushToast]

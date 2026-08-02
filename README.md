@@ -2,7 +2,7 @@
 
 跨平台、本地优先的桌面 RSS 阅读器。Electron 43 + React 18 + TypeScript strict + SQLite。
 
-**当前版本：0.3.3 | 开发阶段：Phase 5（交付准备）**
+**当前版本：0.3.4 | 开发阶段：Phase 5（交付准备）**
 
 ## 功能特性
 
@@ -17,7 +17,7 @@
 - 浅色 / 深色 / 跟随系统，纸质深色与经典深色一致
 - 中英文界面切换
 - 专题追踪与多源简报
-- 首次启动新手教程（8 步聚光引导，可从设置中再次查看）
+- 首次启动新手教程（12 步聚光引导，可从设置中再次查看）
 
 ## 快速开始
 
@@ -98,7 +98,7 @@ git push origin v0.2.0
 | `npm run smoke:topic` | Phase 4.1：专题 UI（7 项校验） |
 | `npm run smoke:summary` | 摘要底部栏：生成、缓存、切换、拉伸与收起 |
 | `npm run smoke:inline-trans` | Phase 3.5.2：段落内翻译（11 项校验） |
-| `npm run smoke:onboarding` | Phase 4.3：首次启动、8 步引导、设置重开与持久化 |
+| `npm run smoke:onboarding` | Phase 4.3：首次启动、12 步引导、设置重开与持久化 |
 
 烟测均通过无头 Electron 环境运行，可在 CI 中执行。
 
@@ -170,5 +170,5 @@ git push origin v0.2.0
 | Phase 3.4 | ✅ | Bug 修复 + 搜索 + 通用设置弹窗 |
 | Phase 3.5 | ✅ | 悬浮摘要窗 + 逐段翻译 + AI 持久化 |
 | Phase 3.6 | ✅ | 翻译纯译文 + 同步进度 + 侧栏计数 |
-| Phase 4 | ✅ | 专题追踪 + 8 步首次启动新手教程 |
+| Phase 4 | ✅ | 专题追踪 + 12 步首次启动新手教程 |
 | Phase 5 | 🟡 | 凭证加密与工具链升级已完成；三平台真机验收暂缓 |

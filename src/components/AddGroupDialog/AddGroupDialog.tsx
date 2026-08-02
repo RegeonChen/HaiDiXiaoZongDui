@@ -1,5 +1,5 @@
 /**
- * 添加订阅源组对话框
+ * 新建订阅源组对话框
  *
  *  - 单一文本输入（组名）
  *  - idle / error 两态（不涉及后端 IO，立即关闭）
@@ -78,9 +78,9 @@ export function AddGroupDialog({ open, existingGroups, onClose, onSubmit }: AddG
         onSubmit={handleSubmit}
         aria-modal="true"
         role="dialog"
-        aria-label="添加订阅源组"
+        aria-label="新建订阅源组"
       >
-        <h2 className="add-group-dialog__title">添加订阅源组</h2>
+        <h2 className="add-group-dialog__title">新建订阅源组</h2>
         <p className="add-group-dialog__hint">
           给订阅源分组归类。组名可以是任意文本（如「技术」「资讯」）。
         </p>
@@ -128,7 +128,7 @@ export function AddGroupDialog({ open, existingGroups, onClose, onSubmit }: AddG
             disabled={!name.trim()}
             data-testid="add-group-submit"
           >
-            添加
+            新建
           </button>
         </div>
       </form>

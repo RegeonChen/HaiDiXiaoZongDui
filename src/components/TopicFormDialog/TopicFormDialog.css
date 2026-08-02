@@ -163,7 +163,7 @@
 
 .topic-form-dialog__recommendation-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
   gap: 8px;
 }
 
@@ -189,20 +189,32 @@
 
 .topic-form-dialog__recommendation-name {
   display: flex;
-  align-items: center;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 6px;
   color: var(--fg) !important;
   font-size: 12px !important;
   font-weight: 600;
 }
 
+.topic-form-dialog__recommendation-title {
+  min-width: 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .topic-form-dialog__primary-badge {
+  flex: 0 0 auto;
   padding: 1px 5px;
   border-radius: 999px;
   background: var(--accent);
   color: white !important;
   font-size: 9px !important;
   font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
 }
 
 .topic-form-dialog__recommendation-reason {
@@ -213,12 +225,6 @@
   line-height: 1.4;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-}
-
-@media (max-width: 560px) {
-  .topic-form-dialog__recommendation-list {
-    grid-template-columns: 1fr;
-  }
 }
 
 .topic-form-dialog__footer {

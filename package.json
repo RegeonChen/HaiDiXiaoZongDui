@@ -1,6 +1,6 @@
 {
   "name": "juhe-shivi",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "聚合拾遗 — 跨平台、本地优先的桌面 RSS 阅读器",
   "private": true,
   "author": "聚合拾遗团队",
@@ -54,7 +54,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "rss-parser": "^3.13.0",
-    "sanitize-html": "^2.16.0",
+    "sanitize-html": "^2.17.6",
     "sql.js": "^1.14.1",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2"
