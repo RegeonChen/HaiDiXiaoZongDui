@@ -1,0 +1,32 @@
+fix(notes): 底栏 note tab 实时显示已保存的笔记(根因 + v0.3.5 兼容)
+
+主修复(笔记不显示真根因):
+  - note tab 渲染只包含输入表单(textarea + 添加按钮 + 清空),
+    handleAddNote 只 setNoteMarkdown('') + toast,没把笔记存到任何
+    state,底栏里完全没有"已添加笔记"区域
+  - 修法:
+    1. 加 articleNotes: Note[] state + notesLoading state
+    2. useEffect 监听 article.id 变化时,按 updatedAt 倒序从
+       ds.noteListByArticle 加载该文章所有笔记
+    3. handleAddNote 成功后立即 setArticleNotes(prev => [new, ...prev]),
+       底栏立即可见新笔记
+    4. 加 handleDeleteNote: ds.noteDelete + 同步从 state 移除
+    5. note tab 渲染分两块:输入表单 + 已保存笔记列表(渲染 Markdown)
+    6. 笔记项:Markdown 内容 + 相对时间("刚刚 / X 分钟前")+ 删除按钮
+    7. 加 formatNoteTime helper(从 sync-progress-bar 借鉴)
+    8. CSS 加 .sticky-note__list / __items / __item 等样式,列表用
+       flex:1 + overflow-y:auto 撑满 form 之外空间
+    9. article 切换 reset effect 加 setArticleNotes([]) / setNotesLoading(false)
+
+顺手修 v0.3.5 删 DigestsPage 遗留 bug(与本任务无关):
+  - shared/ipc.ts TOPIC_EXPORT_BRIEFING 仍引用 ExportFormat 但 import 被删
+    → 加 ExportFormat 到 import
+  - electron/main/index.ts smoke:integration 硬编码 navBtns=4 但
+    v0.3.5 后只剩 3 个(删 digests) → 改 === 3
+  - electron/main/index.ts smoke:task33 coreSections 仍含 'dig' 但
+    dig section 已删 → 从 coreSections 移除
+
+验收:19/19 smoke 全过(phase4.2 / onboarding / integration / tagmanage
+/ reader-modes / ai-chat / phase2 / feed-actions / opml-export-selection
+/ feeds-group / search-pagination / ui-ipc / images / coexist / taglist
+/ task33 / summary / translation)+ 183 单测全过。
