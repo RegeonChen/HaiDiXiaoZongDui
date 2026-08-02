@@ -3758,10 +3758,10 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           // 3 个内容工具 + 设置页切换 + AI 工具栏 + 主题切换
           const integrationReport = { ok: false, error: null, checks: {} };
           try {
-            // 1) Activity Bar 只保留 3 个内容工具；设置与 AI 位于右上角。
+            // 1) Activity Bar 只保留标签、笔记、专题 3 个内容工具；
+            // 设置与 AI 位于右上角。
             const navBtns = document.querySelectorAll('.app-header__nav-btn');
             integrationReport.checks.navBtnCount = navBtns.length;
-            // 文摘功能移除后，工作台页面入口只保留标签、笔记、专题三项。
             integrationReport.checks.navBtnsOk = navBtns.length === 3;
 
             // 2) 切到每个内容工具，验证页面在统一编辑器标签中渲染。
@@ -5099,9 +5099,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
       pass = raw.includes('"ui":{"ok":true');
     } else if (smokeTask33) {
       const report33 = JSON.parse(raw);
-      // 核心 section（base/sp/prov/tag/note/dig）不得跳过，必须全部通过。
-      // AI section（ais/ait/aig/aic）可跳过，但未跳过则必须通过。
-      const coreSections = ['base', 'sp', 'prov', 'tag', 'note', 'dig'];
+      // 核心 section（base/sp/prov/tag/note）不得跳过，必须全部通过。
+      // v0.3.5 移除 DigestsPage 后 dig 不再是核心 section;AI section 可跳过。
+      const coreSections = ['base', 'sp', 'prov', 'tag', 'note'];
       const aiSections = ['ais', 'ait', 'aig', 'aic'];
       pass = coreSections.every((s) => {
         const sec = report33[s];

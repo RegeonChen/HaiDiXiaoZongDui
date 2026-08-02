@@ -1007,13 +1007,23 @@
 .sticky-note {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   height: 100%;
+  min-height: 0;
+}
+
+.sticky-note__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
 .sticky-note__input {
-  flex: 1;
+  /* Phase 4.3.5:不强制 flex:1,form 区域按内容自适应,
+     剩余空间让给 __list(已保存笔记列表) */
   min-height: 60px;
+  max-height: 140px;
   padding: 6px 10px;
   font-family: var(--font-mono, monospace);
   font-size: 13px;
@@ -1029,6 +1039,143 @@
   display: flex;
   gap: 6px;
   justify-content: flex-end;
+}
+
+/* Phase 4.3.5:已保存笔记列表(占满 form 之外的剩余空间) */
+.sticky-note__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border-soft, #e5e7eb);
+  padding-top: 8px;
+}
+
+.sticky-note__empty {
+  margin: 0;
+  padding: 12px 8px;
+  color: var(--muted, #6b7280);
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.sticky-note__list-header {
+  color: var(--muted, #6b7280);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 0 2px;
+}
+
+.sticky-note__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sticky-note__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft, #e5e7eb);
+  border-radius: 6px;
+  background: var(--sticky-surface-bg, var(--bg));
+}
+
+.sticky-note__item-content {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg);
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.sticky-note__item-content p {
+  margin: 0 0 0.5em;
+}
+
+.sticky-note__item-content p:last-child {
+  margin-bottom: 0;
+}
+
+.sticky-note__item-content pre {
+  margin: 0.5em 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  background: var(--bg, #fff);
+  border: 1px solid var(--border-soft, #e5e7eb);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.sticky-note__item-content code {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+}
+
+.sticky-note__item-content pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.sticky-note__item-content h1,
+.sticky-note__item-content h2,
+.sticky-note__item-content h3 {
+  margin: 0.5em 0 0.3em;
+  font-size: 14px;
+}
+
+.sticky-note__item-content ul,
+.sticky-note__item-content ol {
+  margin: 0 0 0.5em;
+  padding-left: 1.4em;
+}
+
+.sticky-note__item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+}
+
+.sticky-note__item-time {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sticky-note__item-remove {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted, #6b7280);
+  font-size: 14px;
+  line-height: 1;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.sticky-note__item-remove:hover {
+  background: var(--err, #dc2626);
+  color: #fff;
+  border-color: var(--err, #dc2626);
 }
 
 html[data-theme="dark"] .sticky-tag-manage__chip-remove {
