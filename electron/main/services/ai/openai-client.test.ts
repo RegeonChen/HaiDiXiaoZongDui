@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AIProvider } from '../../../../shared/types';
-import { chatCompletion, extractMessageText } from './openai-client';
+import {
+  chatCompletion,
+  extractMessageText,
+  resetResponseFormatCompatibilityCache
+} from './openai-client';
 
 const provider = {
   id: 'provider-1', name: 'Qwen', baseUrl: 'https://example.com/v1',
@@ -8,7 +12,10 @@ const provider = {
   _apiKey: 'test-key'
 } as AIProvider & { _apiKey: string };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  resetResponseFormatCompatibilityCache();
+});
 
 describe('OpenAI-compatible message content', () => {
   it('extracts strings, text objects and text-part arrays', () => {
@@ -72,11 +79,19 @@ describe('OpenAI-compatible message content', () => {
       }), { status: 400, headers: { 'content-type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         choices: [{ message: { content: '{"suggestions":[]}' } }]
+      }), { status: 200, headers: { 'content-type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: '{"suggestions":[{"name":"cached"}]}' } }]
       }), { status: 200, headers: { 'content-type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
+    const attempts: Array<{ responseFormatSent: boolean; downgrade: string | null }> = [];
 
     const result = await chatCompletion(provider, [{ role: 'user', content: 'Return JSON' }], {
-      responseFormat: 'json_object'
+      responseFormat: 'json_object',
+      onRequestAttempt: (attempt) => attempts.push({
+        responseFormatSent: attempt.responseFormatSent,
+        downgrade: attempt.responseFormatDowngrade
+      })
     });
 
     expect(result).toBe('{"suggestions":[]}');
@@ -87,5 +102,29 @@ describe('OpenAI-compatible message content', () => {
       response_format: { type: 'json_object' }
     });
     expect(JSON.parse(String(secondRequest.body))).not.toHaveProperty('response_format');
+    expect(attempts).toEqual([
+      { responseFormatSent: true, downgrade: null },
+      { responseFormatSent: false, downgrade: 'provider_rejected' }
+    ]);
+
+    const cachedResult = await chatCompletion(
+      provider,
+      [{ role: 'user', content: 'Return JSON again' }],
+      {
+        responseFormat: 'json_object',
+        onRequestAttempt: (attempt) => attempts.push({
+          responseFormatSent: attempt.responseFormatSent,
+          downgrade: attempt.responseFormatDowngrade
+        })
+      }
+    );
+    expect(cachedResult).toContain('cached');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const cachedRequest = fetchMock.mock.calls[2]?.[1] as RequestInit;
+    expect(JSON.parse(String(cachedRequest.body))).not.toHaveProperty('response_format');
+    expect(attempts.at(-1)).toEqual({
+      responseFormatSent: false,
+      downgrade: 'cached_unsupported'
+    });
   });
 });

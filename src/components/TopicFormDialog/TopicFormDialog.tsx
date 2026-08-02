@@ -45,14 +45,29 @@ function stringifyKeywords(keywords: string[]): string {
 }
 
 function recommendationErrorHint(error: string): string {
-  if (/JSON|AI_TOPIC_RECOMMEND_FAILED/i.test(error)) {
-    return '模型返回格式异常，可点击“重新推荐”再试。';
-  }
   if (/NO_PROVIDER|未设置默认 AI Provider|Provider 不存在/i.test(error)) {
     return '请先在设置中配置并启用默认 AI Provider。';
   }
-  if (/超时|timeout/i.test(error)) {
+  if (/AI_TOPIC_TIMEOUT|超时|timeout/i.test(error)) {
     return '模型响应超时，可稍后重新推荐。';
+  }
+  if (/AI_TOPIC_AUTH_FAILED|HTTP\s+(?:401|403)|unauthori[sz]ed|forbidden/i.test(error)) {
+    return 'AI Provider 鉴权失败，请检查 API Key 和模型权限。';
+  }
+  if (/AI_TOPIC_RATE_LIMITED|HTTP\s+429|rate[ _-]*limit|too many requests/i.test(error)) {
+    return '模型服务当前请求较多，请稍后重新推荐。';
+  }
+  if (/AI_TOPIC_NETWORK_FAILED|AI_TOPIC_PROVIDER_UNAVAILABLE|fetch failed|network|HTTP\s+5\d\d/i.test(error)) {
+    return '暂时无法连接模型服务，请检查网络或稍后重试。';
+  }
+  if (/AI_TOPIC_EMPTY_RESPONSE|模型返回空内容|未返回 choices/i.test(error)) {
+    return '模型没有返回可用答案，可点击“重新推荐”再试。';
+  }
+  if (/AI_TOPIC_NO_USABLE_SUGGESTIONS|模型未生成可用的专题推荐/i.test(error)) {
+    return '模型候选与文章内容不够匹配，可调整本地草案或重新推荐。';
+  }
+  if (/AI_TOPIC_INVALID_RESPONSE|不是有效 JSON|invalid\s+json|json\s+parse/i.test(error)) {
+    return '模型返回格式异常，可点击“重新推荐”再试。';
   }
   return '可点击“重新推荐”再试。';
 }

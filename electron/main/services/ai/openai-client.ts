@@ -35,11 +35,25 @@ export interface ChatCompletionOptions {
    * 注意：多数 OpenAI-compatible Provider 支持此参数，但部分模型可能忽略或报错。
    */
   responseFormat?: 'json_object';
+  /**
+   * 每次真正发起 HTTP 请求前触发。只包含尝试次数和格式兼容状态，
+   * 不包含 Prompt、响应正文、URL 或凭证，可用于上层记录脱敏诊断。
+   */
+  onRequestAttempt?: (attempt: ChatCompletionAttemptInfo) => void;
+}
+
+export interface ChatCompletionAttemptInfo {
+  attempt: number;
+  responseFormatSent: boolean;
+  responseFormatDowngrade: 'cached_unsupported' | 'provider_rejected' | null;
 }
 
 interface OpenAIErrorResponse {
   error?: { message: string; type?: string; code?: string };
 }
+
+const responseFormatUnsupportedProviders = new Set<string>();
+let configuredAiFetch: typeof fetch | null = null;
 
 // ============================================================
 // 公共 API
@@ -59,7 +73,8 @@ export async function chatCompletion(
     maxTokens = 4096,
     timeoutMs = 120_000,
     enableThinking,
-    responseFormat
+    responseFormat,
+    onRequestAttempt
   } = options;
 
   // provider 不存明文 apiKey；需从 ai_providers 表补充
@@ -71,94 +86,126 @@ export async function chatCompletion(
 
   const baseUrl = provider.baseUrl.replace(/\/+$/, '');
   const url = `${baseUrl}/chat/completions`;
+  const compatibilityKey = responseFormatCompatibilityKey(provider, baseUrl);
+  const deadline = Date.now() + timeoutMs;
+  let activeResponseFormat = responseFormat;
+  let downgradeReason: ChatCompletionAttemptInfo['responseFormatDowngrade'] = null;
+  let attempt = 0;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (responseFormat && responseFormatUnsupportedProviders.has(compatibilityKey)) {
+    activeResponseFormat = undefined;
+    downgradeReason = 'cached_unsupported';
+  }
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: provider.modelName,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-        ...(responseFormat ? { response_format: { type: responseFormat } } : {}),
-        ...(enableThinking === undefined ? {} : { enable_thinking: enableThinking })
-      }),
-      signal: controller.signal
+  while (true) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) throw new Error(`请求超时（${timeoutMs / 1000}s）`);
+    attempt += 1;
+    safelyReportRequestAttempt(onRequestAttempt, {
+      attempt,
+      responseFormatSent: activeResponseFormat === 'json_object',
+      responseFormatDowngrade: downgradeReason
     });
 
-    if (!response.ok) {
-      let detail = `HTTP ${response.status}`;
-      let providerMessage = '';
-      try {
-        const body = (await response.json()) as OpenAIErrorResponse;
-        if (body.error?.message) {
-          providerMessage = body.error.message;
-          detail += `: ${providerMessage}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), remainingMs);
+    try {
+      const response = await (configuredAiFetch ?? globalThis.fetch)(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: provider.modelName,
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+          ...(activeResponseFormat
+            ? { response_format: { type: activeResponseFormat } }
+            : {}),
+          ...(enableThinking === undefined ? {} : { enable_thinking: enableThinking })
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+        let providerMessage = '';
+        try {
+          const body = (await response.json()) as OpenAIErrorResponse;
+          if (body.error?.message) {
+            providerMessage = body.error.message;
+            detail += `: ${providerMessage}`;
+          }
+        } catch { /* ignore parse errors */ }
+        if (
+          activeResponseFormat &&
+          shouldRetryWithoutResponseFormat(response.status, providerMessage)
+        ) {
+          responseFormatUnsupportedProviders.add(compatibilityKey);
+          activeResponseFormat = undefined;
+          downgradeReason = 'provider_rejected';
+          continue;
         }
-      } catch { /* ignore parse errors */ }
-      if (
-        responseFormat &&
-        shouldRetryWithoutResponseFormat(response.status, providerMessage)
-      ) {
-        return chatCompletion(provider, messages, {
-          ...options,
-          responseFormat: undefined
-        });
+        throw new Error(detail);
       }
-      throw new Error(detail);
-    }
 
-    const data = await response.json() as {
-      choices?: { message?: { content?: unknown; reasoning_content?: unknown; role?: string } }[];
-      error?: { message: string; type?: string };
-      model?: string;
-    };
+      const data = await response.json() as {
+        choices?: { message?: { content?: unknown; reasoning_content?: unknown; role?: string } }[];
+        error?: { message: string; type?: string };
+        model?: string;
+      };
 
-    const rawContent = data.choices?.[0]?.message?.content;
-    let content = extractMessageText(rawContent);
-    // DeepSeek 等推理模型在 response_format 约束下可能将正式答案放入 reasoning_content。
-    // 仅当显式请求 JSON 格式时才回退，避免普通对话泄露模型内部思考过程。
-    if (!content && responseFormat === 'json_object') {
-      const reasoning = data.choices?.[0]?.message?.reasoning_content;
-      if (reasoning) {
-        content = extractMessageText(reasoning);
-      }
-    }
-    if (!content) {
-      // 提供更丰富的诊断信息，帮助用户排查模型/Provider 问题
-      const detail: string[] = [];
-      if (!data.choices || data.choices.length === 0) {
-        detail.push('模型未返回 choices 数组');
-      } else if (!data.choices[0].message) {
-        detail.push('choices[0] 缺少 message 字段');
-      } else if (!content) {
-        detail.push(`message.content 无可用文本（原始类型: ${contentType(rawContent)}）`);
-        if (data.choices[0].message.reasoning_content) {
-          detail.push('模型只返回了 reasoning_content，未返回正式答案');
+      const rawContent = data.choices?.[0]?.message?.content;
+      let content = extractMessageText(rawContent);
+      // DeepSeek 等推理模型可能将结构化正式答案放入 reasoning_content。
+      // 只要调用方原始请求是 JSON 任务就允许回退；普通对话仍不会读取该字段。
+      if (!content && responseFormat === 'json_object') {
+        const reasoning = data.choices?.[0]?.message?.reasoning_content;
+        if (reasoning) {
+          content = extractMessageText(reasoning);
         }
       }
-      if (data.model) detail.push(`模型: ${data.model}`);
-      if (data.error) detail.push(`API 错误: ${data.error.message}`);
-      const suffix = detail.length > 0 ? ` (${detail.join(', ')})` : '';
-      throw new Error(`模型返回空内容${suffix}`);
-    }
+      if (!content) {
+        // 提供更丰富的诊断信息，帮助用户排查模型/Provider 问题
+        const detail: string[] = [];
+        if (!data.choices || data.choices.length === 0) {
+          detail.push('模型未返回 choices 数组');
+        } else if (!data.choices[0].message) {
+          detail.push('choices[0] 缺少 message 字段');
+        } else if (!content) {
+          detail.push(`message.content 无可用文本（原始类型: ${contentType(rawContent)}）`);
+          if (data.choices[0].message.reasoning_content) {
+            detail.push('模型只返回了 reasoning_content，未返回正式答案');
+          }
+        }
+        if (data.model) detail.push(`模型: ${data.model}`);
+        if (data.error) detail.push(`API 错误: ${data.error.message}`);
+        const suffix = detail.length > 0 ? ` (${detail.join(', ')})` : '';
+        throw new Error(`模型返回空内容${suffix}`);
+      }
 
-    return content;
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      throw new Error(`请求超时（${timeoutMs / 1000}s）`);
+      return content;
+    } catch (e) {
+      if (isAbortError(e)) {
+        throw new Error(`请求超时（${timeoutMs / 1000}s）`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
     }
-    throw e;
-  } finally {
-    clearTimeout(timer);
   }
+}
+
+/** 测试和 Provider 配置变更后可显式清除进程内兼容性记忆。 */
+export function resetResponseFormatCompatibilityCache(): void {
+  responseFormatUnsupportedProviders.clear();
+}
+
+/** Main 进程注入 Electron net.fetch，使 AI 请求继承系统代理与 Chromium 网络栈。 */
+export function configureAiFetch(fetchImpl: typeof fetch): void {
+  configuredAiFetch = fetchImpl;
 }
 
 /**
@@ -187,6 +234,28 @@ function contentType(value: unknown): string {
   if (Array.isArray(value)) return 'array';
   if (value === null) return 'null';
   return typeof value;
+}
+
+function responseFormatCompatibilityKey(provider: AIProvider, baseUrl: string): string {
+  return `${provider.id}\u0000${baseUrl}\u0000${provider.modelName}`;
+}
+
+function safelyReportRequestAttempt(
+  callback: ChatCompletionOptions['onRequestAttempt'],
+  attempt: ChatCompletionAttemptInfo
+): void {
+  try {
+    callback?.(attempt);
+  } catch {
+    // 诊断回调不得影响真实 AI 请求。
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (!!error && typeof error === 'object' && 'name' in error && error.name === 'AbortError')
+  );
 }
 
 function shouldRetryWithoutResponseFormat(status: number, message: string): boolean {

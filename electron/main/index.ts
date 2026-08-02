@@ -110,10 +110,11 @@ import {
 import { suggestTags } from './services/ai/tag-agent.js';
 import { answerArticleQuestion } from './services/ai/article-chat-agent.js';
 import {
+  classifyTopicRecommendationFailure,
   createTopicRecommendationSourceSignature,
   recommendTopics
 } from './services/ai/topic-recommendation-agent.js';
-import { testConnection } from './services/ai/openai-client.js';
+import { configureAiFetch, testConnection } from './services/ai/openai-client.js';
 import { normalizeTopicAnalysisInput } from './services/content-pipeline/topic-analysis-input.js';
 import { stripArticleTitleTags } from './db/article-title-tags.js';
 
@@ -3792,6 +3793,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             let fontAfter = fontBefore;
             for (const card of fontCards) {
               if (!card.classList.contains('is-active')) {
+                // HTMLElement.click() 不会像真实鼠标操作那样先聚焦按钮；显式 focus
+                // 才能覆盖 Layout 的 onFocusCapture 固定语义，同时避免恢复会打断
+                // controlled input 输入的 onInputCapture。
+                card.focus();
+                await waitFor(() =>
+                  document.querySelector('[data-tab-id="page:settings"]')
+                    ?.getAttribute('data-preview') === 'false',
+                { timeout: 1000 });
                 card.click();
                 // 等 IPC settings:update 完成 + React re-render + useEffect applyToHtml
                 await waitFor(() => {
@@ -5484,6 +5493,11 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
   trustedIpcMain.handle(
     IPC_CHANNELS.AI_RECOMMEND_TOPICS,
     async (_, args): Promise<IpcResult<AITopicRecommendation>> => {
+      const startedAt = Date.now();
+      let modelName = 'unresolved';
+      let requestAttempts = 0;
+      let repairAttempted = false;
+      let responseFormatDowngraded = false;
       try {
         if (!args?.articleId) return fail('INVALID_PARAMS', '缺少 articleId');
         if (args.refresh !== undefined && typeof args.refresh !== 'boolean') {
@@ -5517,6 +5531,11 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
           Array.isArray(cached.suggestions) &&
           cached.suggestions.length > 0
         ) {
+          recordLocalLog('info', 'ai:topic-recommendation', '专题推荐命中本地缓存', {
+            modelName: cached.modelName,
+            durationMs: Date.now() - startedAt,
+            suggestionCount: cached.suggestions.length
+          });
           return ok(cached);
         }
 
@@ -5526,8 +5545,21 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
         }
         const provider = AiProviderRepository.getByIdWithKey(settings.defaultProviderId);
         if (!provider) return fail('NOT_FOUND', '默认 Provider 不存在');
+        modelName = provider.modelName;
+        recordLocalLog('info', 'ai:topic-recommendation', '开始生成专题推荐', {
+          modelName,
+          refresh: args.refresh === true
+        });
 
-        const suggestions = await recommendTopics(provider, input);
+        const suggestions = await recommendTopics(provider, input, {
+          onRequestAttempt: (attempt) => {
+            requestAttempts += 1;
+            if (attempt.responseFormatDowngrade) responseFormatDowngraded = true;
+          },
+          onRepairAttempt: () => {
+            repairAttempted = true;
+          }
+        });
         const result: AITopicRecommendation = {
           articleId: article.id,
           providerId: provider.id,
@@ -5537,12 +5569,26 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
           generatedAt: new Date().toISOString()
         };
         AiResultCache.set(article.id, 'topic_recommendations', result);
+        recordLocalLog('info', 'ai:topic-recommendation', '专题推荐生成完成', {
+          modelName,
+          durationMs: Date.now() - startedAt,
+          requestAttempts,
+          repairAttempted,
+          responseFormatDowngraded,
+          suggestionCount: suggestions.length
+        });
         return ok(result);
       } catch (e) {
-        return fail(
-          'AI_TOPIC_RECOMMEND_FAILED',
-          e instanceof Error ? e.message : String(e)
-        );
+        const failure = classifyTopicRecommendationFailure(e);
+        recordLocalLog('warn', 'ai:topic-recommendation', '专题推荐生成失败', {
+          modelName,
+          durationMs: Date.now() - startedAt,
+          requestAttempts,
+          repairAttempted,
+          responseFormatDowngraded,
+          errorCategory: failure.category
+        });
+        return fail(failure.code, failure.message);
       }
     }
   );
@@ -6058,6 +6104,10 @@ app.whenReady().then(async () => {
   if (SMOKE_FLAGS.smokeTopic) seedTopicSmokeData();
 
   const trustedRendererUrl = getTrustedRendererUrl();
+  configureAiFetch((input, init) => net.fetch(
+    input instanceof URL ? input.toString() : input,
+    init
+  ));
   registerIpcHandlers(trustedRendererUrl);
   const contentPipelineStore = new SqliteContentPipelineStore();
   const chromiumTextFetcher = createTextFetcher((input, init) => net.fetch(input, init));

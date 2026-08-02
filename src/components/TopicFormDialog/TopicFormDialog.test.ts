@@ -124,4 +124,36 @@ describe('TopicFormDialog AI recommendations', () => {
     expect(text).toContain('模型返回格式异常');
     expect(text).not.toContain('AI_TOPIC_RECOMMEND_FAILED');
   });
+
+  it('超时和限流显示真实类别，不再统一误报为格式异常', async () => {
+    await act(async () => {
+      root.render(createElement(TopicFormDialog, {
+        mode: 'create',
+        initialValue: { name: '本地草案' },
+        recommendationStatus: 'error',
+        recommendationError: 'AI_TOPIC_TIMEOUT: 请求超时（45s）',
+        onRefreshRecommendations: () => undefined,
+        onSubmit: () => undefined,
+        onClose: () => undefined
+      }));
+    });
+    let text = container.querySelector('[data-testid="topic-form__recommendations-error"]')?.textContent;
+    expect(text).toContain('模型响应超时');
+    expect(text).not.toContain('格式异常');
+
+    await act(async () => {
+      root.render(createElement(TopicFormDialog, {
+        mode: 'create',
+        initialValue: { name: '本地草案' },
+        recommendationStatus: 'error',
+        recommendationError: 'AI_TOPIC_RATE_LIMITED: HTTP 429',
+        onRefreshRecommendations: () => undefined,
+        onSubmit: () => undefined,
+        onClose: () => undefined
+      }));
+    });
+    text = container.querySelector('[data-testid="topic-form__recommendations-error"]')?.textContent;
+    expect(text).toContain('模型服务当前请求较多');
+    expect(text).not.toContain('格式异常');
+  });
 });

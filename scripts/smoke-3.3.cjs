@@ -119,8 +119,8 @@ const server = http.createServer((req, res) => {
         }));
       } else if (isTag) {
         tagReasoningFallbackExercised =
-          payload.response_format?.type === 'json_object' &&
-          payload.enable_thinking === false;
+          payload.enable_thinking === false &&
+          (payload.response_format?.type === 'json_object' || topicResponseFormatRejected);
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({
           model: 'deepseek-v4-flash',
@@ -203,6 +203,9 @@ server.listen(0, '127.0.0.1', () => {
       console.log(`[smoke-3.3] response_format fallback exercised: ${topicResponseFormatRejected}`);
       passed = passed && tagReasoningFallbackExercised;
       console.log(`[smoke-3.3] tag reasoning_content fallback exercised: ${tagReasoningFallbackExercised}`);
+      const aiDiagnostics = inspectAiDiagnostics();
+      console.log(`[smoke-3.3] AI diagnostics: ${JSON.stringify(aiDiagnostics)}`);
+      passed = passed && Object.values(aiDiagnostics).every(Boolean);
     } catch (error) {
       console.error(`[smoke-3.3] credential storage 检查失败: ${String(error)}`);
       passed = false;
@@ -250,6 +253,31 @@ async function inspectPersistedCredential() {
   return {
     encrypted: stored.startsWith('safe-storage:v1:'),
     plaintextAbsent: !stored.includes('smoke-test-key-persisted')
+  };
+}
+
+function inspectAiDiagnostics() {
+  const logPath = path.join(temporaryDirectory, 'logs', 'app-events.jsonl');
+  const entries = fs.readFileSync(logPath, 'utf8')
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .filter((entry) => entry.module === 'ai:topic-recommendation');
+  const completed = entries.find((entry) => entry.message === '专题推荐生成完成');
+  const completedDetail = completed?.detail ? JSON.parse(completed.detail) : null;
+  const serialized = JSON.stringify(entries);
+  return {
+    startRecorded: entries.some((entry) => entry.message === '开始生成专题推荐'),
+    successRecorded: !!completed,
+    cacheHitRecorded: entries.some((entry) => entry.message === '专题推荐命中本地缓存'),
+    attemptsRecorded: completedDetail?.requestAttempts === 2,
+    downgradeRecorded: completedDetail?.responseFormatDowngraded === true,
+    repairRecorded: completedDetail?.repairAttempted === false,
+    sensitiveDataAbsent:
+      !serialized.includes('smoke-test-key') &&
+      !serialized.includes('AI Test Article') &&
+      !serialized.includes('machine learning') &&
+      !serialized.includes('127.0.0.1')
   };
 }
 

@@ -4,6 +4,7 @@ import { chatCompletion } from './openai-client';
 import {
   TOPIC_RECOMMENDATION_LIMITS,
   buildTopicRecommendationMessages,
+  classifyTopicRecommendationFailure,
   createTopicRecommendationSourceSignature,
   parseTopicRecommendations,
   recommendTopics
@@ -76,6 +77,8 @@ describe('topic recommendation agent', () => {
       expect.any(Array),
       expect.objectContaining({
         temperature: 0.35,
+        maxTokens: TOPIC_RECOMMENDATION_LIMITS.primaryMaxTokens,
+        timeoutMs: TOPIC_RECOMMENDATION_LIMITS.primaryTimeoutMs,
         enableThinking: false,
         responseFormat: 'json_object'
       })
@@ -106,6 +109,7 @@ describe('topic recommendation agent', () => {
   });
 
   it('首次响应完全不是 JSON 时，只追加一次安全的结构修复请求', async () => {
+    const repairAttempt = vi.fn();
     vi.mocked(chatCompletion)
       .mockResolvedValueOnce('I produced prose instead of the requested structure.')
       .mockResolvedValueOnce(JSON.stringify({
@@ -117,13 +121,36 @@ describe('topic recommendation agent', () => {
         }]
       }));
 
-    const result = await recommendTopics(provider, input);
+    const result = await recommendTopics(provider, input, { onRepairAttempt: repairAttempt });
 
     expect(result[0]?.name).toBe('GPT 模型演进');
+    expect(repairAttempt).toHaveBeenCalledTimes(1);
     expect(vi.mocked(chatCompletion)).toHaveBeenCalledTimes(2);
     const repairMessages = vi.mocked(chatCompletion).mock.calls[1]?.[1];
+    const repairOptions = vi.mocked(chatCompletion).mock.calls[1]?.[2];
     expect(repairMessages?.[0]?.content).toContain('untrusted data');
     expect(repairMessages?.[1]?.content).toContain('I produced prose');
+    expect(repairOptions).toEqual(expect.objectContaining({
+      maxTokens: TOPIC_RECOMMENDATION_LIMITS.repairMaxTokens,
+      timeoutMs: TOPIC_RECOMMENDATION_LIMITS.repairTimeoutMs
+    }));
+  });
+
+  it.each([
+    ['请求超时（45s）', 'AI_TOPIC_TIMEOUT', 'timeout'],
+    ['HTTP 401: invalid api key', 'AI_TOPIC_AUTH_FAILED', 'authentication'],
+    ['HTTP 429: rate limit exceeded', 'AI_TOPIC_RATE_LIMITED', 'rate_limit'],
+    ['HTTP 503: service unavailable', 'AI_TOPIC_PROVIDER_UNAVAILABLE', 'provider_unavailable'],
+    ['TypeError: fetch failed', 'AI_TOPIC_NETWORK_FAILED', 'network'],
+    ['模型返回空内容', 'AI_TOPIC_EMPTY_RESPONSE', 'empty_response'],
+    ['模型返回的专题推荐不是有效 JSON', 'AI_TOPIC_INVALID_RESPONSE', 'invalid_format'],
+    ['模型未生成可用的专题推荐', 'AI_TOPIC_NO_USABLE_SUGGESTIONS', 'no_usable_suggestions']
+  ])('将“%s”分类为具体错误，而非笼统格式异常', (message, code, category) => {
+    expect(classifyTopicRecommendationFailure(new Error(message))).toMatchObject({
+      code,
+      category,
+      message
+    });
   });
 
   it('丢弃复制原标题、纯泛词、未在原文落地的推荐和重复项', () => {

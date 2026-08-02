@@ -3,7 +3,11 @@ import type {
   AIProvider,
   TopicNameSuggestion
 } from '../../../../shared/types';
-import { chatCompletion, type ChatMessage } from './openai-client';
+import {
+  chatCompletion,
+  type ChatCompletionAttemptInfo,
+  type ChatMessage
+} from './openai-client';
 
 export interface TopicRecommendationInput {
   title: string;
@@ -13,14 +17,46 @@ export interface TopicRecommendationInput {
 }
 
 export const TOPIC_RECOMMENDATION_LIMITS = {
-  articleCharacters: 12_000,
+  articleCharacters: 6_000,
   suggestions: 4,
   nameCharacters: 48,
   descriptionCharacters: 160,
   reasonCharacters: 120,
   keywords: 8,
-  keywordCharacters: 40
+  keywordCharacters: 40,
+  primaryMaxTokens: 1_000,
+  primaryTimeoutMs: 45_000,
+  repairMaxTokens: 700,
+  repairTimeoutMs: 15_000
 } as const;
+
+export type TopicRecommendationRequestStage = 'primary' | 'repair';
+
+export interface TopicRecommendationRequestAttempt extends ChatCompletionAttemptInfo {
+  stage: TopicRecommendationRequestStage;
+}
+
+export interface TopicRecommendationOptions {
+  onRequestAttempt?: (attempt: TopicRecommendationRequestAttempt) => void;
+  onRepairAttempt?: () => void;
+}
+
+export type TopicRecommendationFailureCategory =
+  | 'timeout'
+  | 'authentication'
+  | 'rate_limit'
+  | 'provider_unavailable'
+  | 'network'
+  | 'empty_response'
+  | 'invalid_format'
+  | 'no_usable_suggestions'
+  | 'unknown';
+
+export interface TopicRecommendationFailure {
+  code: string;
+  category: TopicRecommendationFailureCategory;
+  message: string;
+}
 
 const GENERIC_NAME_KEYS = new Set([
   'ai', '人工智能', '科技', '新闻', '资讯', '行业动态',
@@ -66,28 +102,34 @@ const REPAIR_SYSTEM_PROMPT = [
 
 export async function recommendTopics(
   provider: AIProvider & { _apiKey: string },
-  input: TopicRecommendationInput
+  input: TopicRecommendationInput,
+  options: TopicRecommendationOptions = {}
 ): Promise<TopicNameSuggestion[]> {
   const messages = buildTopicRecommendationMessages(input);
   const output = await chatCompletion(provider, messages, {
     temperature: 0.35,
-    maxTokens: 1600,
+    maxTokens: TOPIC_RECOMMENDATION_LIMITS.primaryMaxTokens,
+    timeoutMs: TOPIC_RECOMMENDATION_LIMITS.primaryTimeoutMs,
     enableThinking: false,
-    responseFormat: 'json_object'
+    responseFormat: 'json_object',
+    onRequestAttempt: requestAttemptReporter(options, 'primary')
   });
   const evidence = [input.title, input.summary ?? '', input.content].join('\n');
   try {
     return parseTopicRecommendations(output, input.title, evidence, !!input.content);
   } catch (error) {
     if (!isInvalidJsonError(error)) throw error;
+    safelyNotifyRepairAttempt(options.onRepairAttempt);
     const repairedOutput = await chatCompletion(
       provider,
       buildTopicRecommendationRepairMessages(output),
       {
         temperature: 0,
-        maxTokens: 1600,
+        maxTokens: TOPIC_RECOMMENDATION_LIMITS.repairMaxTokens,
+        timeoutMs: TOPIC_RECOMMENDATION_LIMITS.repairTimeoutMs,
         enableThinking: false,
-        responseFormat: 'json_object'
+        responseFormat: 'json_object',
+        onRequestAttempt: requestAttemptReporter(options, 'repair')
       }
     );
     return parseTopicRecommendations(
@@ -97,6 +139,42 @@ export async function recommendTopics(
       !!input.content
     );
   }
+}
+
+export function classifyTopicRecommendationFailure(error: unknown): TopicRecommendationFailure {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/请求超时|\btimeout\b|timed?\s*out/i.test(message)) {
+    return { code: 'AI_TOPIC_TIMEOUT', category: 'timeout', message };
+  }
+  if (/HTTP\s+(?:401|403)\b|unauthori[sz]ed|forbidden|invalid[ _-]*api[ _-]*key/i.test(message)) {
+    return { code: 'AI_TOPIC_AUTH_FAILED', category: 'authentication', message };
+  }
+  if (/HTTP\s+429\b|rate[ _-]*limit|too many requests|quota/i.test(message)) {
+    return { code: 'AI_TOPIC_RATE_LIMITED', category: 'rate_limit', message };
+  }
+  if (/模型返回的专题推荐不是有效 JSON|invalid\s+json|json\s+parse/i.test(message)) {
+    return { code: 'AI_TOPIC_INVALID_RESPONSE', category: 'invalid_format', message };
+  }
+  if (/模型返回空内容|未返回 choices|缺少 message/i.test(message)) {
+    return { code: 'AI_TOPIC_EMPTY_RESPONSE', category: 'empty_response', message };
+  }
+  if (/模型未生成可用的专题推荐/i.test(message)) {
+    return {
+      code: 'AI_TOPIC_NO_USABLE_SUGGESTIONS',
+      category: 'no_usable_suggestions',
+      message
+    };
+  }
+  if (/HTTP\s+5\d\d\b|service unavailable|bad gateway|gateway timeout/i.test(message)) {
+    return { code: 'AI_TOPIC_PROVIDER_UNAVAILABLE', category: 'provider_unavailable', message };
+  }
+  if (
+    /fetch failed|failed to fetch|network|ENOTFOUND|EAI_AGAIN|ECONN(?:RESET|REFUSED)|EHOSTUNREACH|ENETUNREACH|ERR_(?:NAME_NOT_RESOLVED|CONNECTION|PROXY|CERT)|certificate|proxy/i
+      .test(message)
+  ) {
+    return { code: 'AI_TOPIC_NETWORK_FAILED', category: 'network', message };
+  }
+  return { code: 'AI_TOPIC_RECOMMEND_FAILED', category: 'unknown', message };
 }
 
 export function buildTopicRecommendationMessages(
@@ -142,6 +220,27 @@ function buildTopicRecommendationRepairMessages(output: string): ChatMessage[] {
       ].join('\n')
     }
   ];
+}
+
+function requestAttemptReporter(
+  options: TopicRecommendationOptions,
+  stage: TopicRecommendationRequestStage
+): (attempt: ChatCompletionAttemptInfo) => void {
+  return (attempt) => {
+    try {
+      options.onRequestAttempt?.({ ...attempt, stage });
+    } catch {
+      // 诊断回调不得影响推荐结果。
+    }
+  };
+}
+
+function safelyNotifyRepairAttempt(callback: TopicRecommendationOptions['onRepairAttempt']): void {
+  try {
+    callback?.();
+  } catch {
+    // 诊断回调不得影响推荐结果。
+  }
 }
 
 export function parseTopicRecommendations(
