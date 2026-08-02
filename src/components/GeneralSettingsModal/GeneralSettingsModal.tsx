@@ -12,13 +12,12 @@
  *
  * 修改即时生效 + 持久化（通过 useAppearance.setFontTheme 等），不跳转子页面。
  *
- * Phase 4.2.1 关键改动：
- *   - "系统字号"与"正文字号"两个独立滑块
- *   - 拖动"系统字号"→ 左/中栏文字即时变化，**右栏正文不变**（独立 CSS 变量 --ui-font-size）
- *   - 拖动"正文字号"→ 仅右栏正文变化（CSS 变量 --font-size，ArticleReader 不引用 --ui-font-size）
- *   - 各自持久化到 AppSettings，重启后各自保持
+ * 字号/宽度输入采用非受控模式（defaultValue）：
+ *   - 浏览器原生上下箭头直接生效，不依赖 React state 回写
+ *   - onChange 立即应用视觉效果（如果值在合法范围）
+ *   - onBlur / Enter 钳制到合法边界并持久化
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAppearance } from '../../hooks/useAppearance';
 import { useTheme } from '../../hooks/useTheme';
 import './GeneralSettingsModal.css';
@@ -41,29 +40,25 @@ const VISUAL_THEMES: Array<{ id: 'classic' | 'paper'; label: string; description
   { id: 'paper', label: '纸质', description: '暖黄护眼（深色模式下与经典一致）' }
 ];
 
-/** 将一个本地字符串值钳制到 [min, max] 并转为数字，无法解析时退回 fallback。 */
-function clampInput(raw: string, min: number, max: number, fallback: number): number {
-  const n = Number(raw);
-  if (isNaN(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.round(n)));
+/** 从 input 读取当前值，钳制到 [min, max]，越界时写回 input。返回 clamped 值。 */
+function clampInputElement(el: HTMLInputElement, min: number, max: number): number {
+  let n = Number(el.value);
+  if (isNaN(n)) n = min;
+  n = Math.max(min, Math.min(max, Math.round(n)));
+  if (String(n) !== el.value) {
+    el.value = String(n);
+  }
+  return n;
 }
 
 export function GeneralSettingsModal({ open, embedded = false, onClose, onToast }: GeneralSettingsModalProps) {
-  // 必须在所有 hooks 之前
   const { effective: effectiveTheme } = useTheme();
   const appearance = useAppearance(effectiveTheme);
 
-  // 本地桥接 state — 解决 controlled input 被异步 IPC 回写覆盖的问题：
-  // onChange 先更新本地 state（用户立即看到输入）；若值合法则逐次写入 appearance。
-  // onBlur / Enter 时钳制到边界并最终持久化。
-  const [sysFontSizeText, setSysFontSizeText] = useState(String(appearance.systemFontSize));
-  const [fontSizeText, setFontSizeText] = useState(String(appearance.fontSize));
-  const [readingWidthText, setReadingWidthText] = useState(String(appearance.readingWidth));
-
-  // 外部状态变化时同步本地副本（例如默认值恢复）
-  useEffect(() => { setSysFontSizeText(String(appearance.systemFontSize)); }, [appearance.systemFontSize]);
-  useEffect(() => { setFontSizeText(String(appearance.fontSize)); }, [appearance.fontSize]);
-  useEffect(() => { setReadingWidthText(String(appearance.readingWidth)); }, [appearance.readingWidth]);
+  // 非受控输入 ref，用于 blur/Enter 时读取和钳制
+  const sysFontRef = useRef<HTMLInputElement>(null);
+  const fontSizeRef = useRef<HTMLInputElement>(null);
+  const readingWidthRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -85,56 +80,57 @@ export function GeneralSettingsModal({ open, embedded = false, onClose, onToast 
     onToast(ok ? '视觉主题已切换' : '切换失败', ok ? 'success' : 'error');
   };
 
-  // ---- 系统字号 ----
-  const onSysFontChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value;
-    setSysFontSizeText(raw);
-    const n = Number(raw);
+  // ---- 系统字号：onChange 即时应用视觉效果，onBlur/Enter 钳制并持久化 ----
+  const onSysFontChange = () => {
+    const el = sysFontRef.current;
+    if (!el) return;
+    const n = Number(el.value);
     if (!isNaN(n) && n >= 10 && n <= 24) {
       void appearance.setSystemFontSize(n);
     }
   };
   const commitSysFont = () => {
-    const clamped = clampInput(sysFontSizeText, 10, 24, appearance.systemFontSize);
-    setSysFontSizeText(String(clamped));
+    const el = sysFontRef.current;
+    if (!el) return;
+    const clamped = clampInputElement(el, 10, 24);
     void appearance.setSystemFontSize(clamped);
   };
 
   // ---- 正文字号 ----
-  const onFontSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value;
-    setFontSizeText(raw);
-    const n = Number(raw);
+  const onFontSizeChange = () => {
+    const el = fontSizeRef.current;
+    if (!el) return;
+    const n = Number(el.value);
     if (!isNaN(n) && n >= 12 && n <= 24) {
       void appearance.setFontSize(n);
     }
   };
   const commitFontSize = () => {
-    const clamped = clampInput(fontSizeText, 12, 24, appearance.fontSize);
-    setFontSizeText(String(clamped));
+    const el = fontSizeRef.current;
+    if (!el) return;
+    const clamped = clampInputElement(el, 12, 24);
     void appearance.setFontSize(clamped);
   };
 
   // ---- 阅读宽度 ----
-  const onReadingWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value;
-    setReadingWidthText(raw);
-    const n = Number(raw);
+  const onReadingWidthChange = () => {
+    const el = readingWidthRef.current;
+    if (!el) return;
+    const n = Number(el.value);
     if (!isNaN(n) && n >= 500 && n <= 1400) {
       void appearance.setReadingWidth(n);
     }
   };
   const commitReadingWidth = () => {
-    const clamped = clampInput(readingWidthText, 500, 1400, appearance.readingWidth);
-    setReadingWidthText(String(clamped));
+    const el = readingWidthRef.current;
+    if (!el) return;
+    const clamped = clampInputElement(el, 500, 1400);
     void appearance.setReadingWidth(clamped);
   };
 
-  // 通用键盘处理：Enter → blur（触发 commit）
-  const commitOnEnter = (commit: () => void) => (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const onEnterKey = (commit: () => void) => (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      (e.target as HTMLInputElement).blur();
-      // blur 事件会在 blur 之后触发，但我们直接 commit 以确保 Enter 也能立即生效
+      e.preventDefault();
       commit();
     }
   };
@@ -224,15 +220,16 @@ export function GeneralSettingsModal({ open, embedded = false, onClose, onToast 
                   系统字号
                 </label>
                 <input
+                  ref={sysFontRef}
                   id="general-modal__system-font-size-input"
                   type="number"
                   className="general-modal__input"
                   min={10}
                   max={24}
-                  value={sysFontSizeText}
+                  defaultValue={appearance.systemFontSize}
                   onChange={onSysFontChange}
                   onBlur={commitSysFont}
-                  onKeyDown={commitOnEnter(commitSysFont)}
+                  onKeyDown={onEnterKey(commitSysFont)}
                   data-testid="general-modal__system-font-size"
                   title="左栏（订阅源）和中栏（文章列表）的文字大小，不影响右栏阅读区"
                 />
@@ -242,15 +239,16 @@ export function GeneralSettingsModal({ open, embedded = false, onClose, onToast 
               <div className="general-modal__row" data-testid="general-modal__font-size-row">
                 <label className="general-modal__label" htmlFor="general-modal__font-size-input">正文字号</label>
                 <input
+                  ref={fontSizeRef}
                   id="general-modal__font-size-input"
                   type="number"
                   className="general-modal__input"
                   min={12}
                   max={24}
-                  value={fontSizeText}
+                  defaultValue={appearance.fontSize}
                   onChange={onFontSizeChange}
                   onBlur={commitFontSize}
-                  onKeyDown={commitOnEnter(commitFontSize)}
+                  onKeyDown={onEnterKey(commitFontSize)}
                   data-testid="general-modal__font-size"
                   title="右栏阅读区文字大小，不影响左/中栏 UI"
                 />
@@ -260,16 +258,17 @@ export function GeneralSettingsModal({ open, embedded = false, onClose, onToast 
               <div className="general-modal__row">
                 <label className="general-modal__label" htmlFor="general-modal__reading-width-input">阅读宽度</label>
                 <input
+                  ref={readingWidthRef}
                   id="general-modal__reading-width-input"
                   type="number"
                   className="general-modal__input"
                   min={500}
                   max={1400}
                   step={50}
-                  value={readingWidthText}
+                  defaultValue={appearance.readingWidth}
                   onChange={onReadingWidthChange}
                   onBlur={commitReadingWidth}
-                  onKeyDown={commitOnEnter(commitReadingWidth)}
+                  onKeyDown={onEnterKey(commitReadingWidth)}
                   title="右栏阅读区最大宽度"
                 />
                 <span className="general-modal__hint">px</span>
