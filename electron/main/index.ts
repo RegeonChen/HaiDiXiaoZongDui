@@ -5552,12 +5552,23 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       if (!args?.articleId) return fail('INVALID_PARAMS', '缺少 articleId');
       const article = ArticleRepository.getById(args.articleId);
       if (!article) return fail('NOT_FOUND', '文章不存在');
-      if (!article.cleanedMarkdown) return fail('CONTENT_NOT_READY', '文章正文尚未清洗完成');
+      // Phase 4.3.4 真根因修复:之前只检查 cleanedMarkdown,
+      //   当文章只有 cleanedHtml(没有 Markdown 派生)时返 CONTENT_NOT_READY,
+      //   但 ArticleReader 的 tagSuggestionContentReady 已经
+      //   把 cleanedHtml 算作 ready,前端会触发 aiSuggestTags → 一直失败
+      //   修法:三选一 fallback(cleanedMarkdown 优先,其次 cleanedHtml,其次原文)
+      const articleContent = article.cleanedMarkdown
+        ?? article.cleanedHtml
+        ?? article.rawText
+        ?? null;
+      if (!articleContent) {
+        return fail('CONTENT_NOT_READY', '文章正文尚未清洗完成，请先在阅读区打开文章触发清洗');
+      }
       const settings = loadSettings();
       if (!settings.defaultProviderId) return fail('NO_PROVIDER', '未设置默认 AI Provider');
       const provider = AiProviderRepository.getByIdWithKey(settings.defaultProviderId);
       if (!provider) return fail('NOT_FOUND', '默认 Provider 不存在');
-      const suggestions = await suggestTags(provider, article.cleanedMarkdown, settings.tagPromptTemplate);
+      const suggestions = await suggestTags(provider, articleContent, settings.tagPromptTemplate);
       const result: AITagSuggestion = { id: crypto.randomUUID(), articleId: article.id, providerId: provider.id, modelName: provider.modelName, suggestions, generatedAt: new Date().toISOString() };
       AiResultCache.set(article.id, 'tag_suggestions', result);
       return ok(result);

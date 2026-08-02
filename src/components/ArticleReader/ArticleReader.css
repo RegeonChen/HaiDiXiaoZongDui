@@ -626,7 +626,14 @@
 
 /* 摘要 */
 .sticky-summary {
-  min-height: 100%;
+  /* Phase 4.3.4:让摘要内容填满整个 panel body,不再有大量留白
+     - 用 flex column + flex:1 让 .sticky-summary__content 撑满
+     - min-height: 0 让 flex child 可以正常 overflow 滚动 */
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
   padding: 4px 2px;
   box-sizing: border-box;
 }
@@ -658,6 +665,12 @@
 }
 
 .sticky-summary__content {
+  /* Phase 4.3.4:flex:1 + min-height:0 + overflow-y:auto 让摘要填满 panel body
+     内容超长时可滚动,不再受 panel 高度限制 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  max-width: 76ch;
   width: 100%;
   min-width: 0;
   padding: 4px 8px 12px;

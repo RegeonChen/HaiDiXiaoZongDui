@@ -126,6 +126,9 @@ async function fetchWithRetry(
   const code = isTimeoutError(lastError)
     ? 'HTTP_TIMEOUT'
     : 'HTTP_REQUEST_FAILED';
+  // Bug 2 真根因修复已由远端在 7 月 31 日实现（networkErrorHint 正则匹配多种
+  //   Node net/undici 错误码,中文 hint 附加到 baseMessage 后);
+  //   保留远端实现,这里只做最小适配
   const baseMessage = code === 'HTTP_TIMEOUT'
     ? `请求超时：${url.hostname}`
     : `请求失败：${url.hostname}`;
