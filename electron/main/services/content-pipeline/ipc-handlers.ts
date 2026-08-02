@@ -45,6 +45,7 @@ export function registerContentPipelineIpc(
   secureHandle(IPC_CHANNELS.SYNC_ALL, async () => {
     const results = await services.sync.syncAll();
     const failedCount = results.filter((result) => !result.success).length;
+    const failureCodes = uniqueFailureCodes(results.map((result) => result.error));
     security.recordLog?.(
       failedCount > 0 ? 'warn' : 'info',
       'sync:all',
@@ -52,7 +53,8 @@ export function registerContentPipelineIpc(
       {
         totalCount: results.length,
         successCount: results.length - failedCount,
-        failedCount
+        failedCount,
+        ...(failureCodes ? { failureCodes } : {})
       }
     );
     return success(results);
@@ -61,6 +63,7 @@ export function registerContentPipelineIpc(
   secureHandle(IPC_CHANNELS.SYNC_FEED, async (_event, args) => {
     const feedId = requiredString(args, 'feedId');
     const result = await services.sync.syncFeed(feedId);
+    const failureCode = stableFailureCode(result.error);
     security.recordLog?.(
       result.success ? 'info' : 'warn',
       'sync:feed',
@@ -69,7 +72,8 @@ export function registerContentPipelineIpc(
         feedId,
         success: result.success,
         newArticles: result.newArticles,
-        updatedArticles: result.updatedArticles
+        updatedArticles: result.updatedArticles,
+        ...(failureCode ? { failureCode } : {})
       }
     );
     return success(result);
@@ -269,6 +273,15 @@ function optionalStringArray(value: unknown, key: string): string[] | undefined 
     }
   }
   return result;
+}
+
+function uniqueFailureCodes(errors: Array<string | null>): string | null {
+  const codes = [...new Set(errors.map(stableFailureCode).filter((code): code is string => code !== null))];
+  return codes.length > 0 ? codes.join(',') : null;
+}
+
+function stableFailureCode(error: string | null): string | null {
+  return error?.match(/^\[([A-Z0-9_]+)\]/)?.[1] ?? null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

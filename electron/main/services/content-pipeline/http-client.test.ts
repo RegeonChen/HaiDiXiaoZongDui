@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
-import { fetchText } from './http-client';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createTextFetcher, fetchText } from './http-client';
 
 const openServers: Array<ReturnType<typeof createServer>> = [];
 
@@ -88,5 +88,52 @@ describe('fetchText', () => {
       .rejects.toMatchObject({ code: 'HTTP_OPTIONS_INVALID' });
     await expect(fetchText('https://example.com', { maxBytes: -1 }))
       .rejects.toMatchObject({ code: 'HTTP_OPTIONS_INVALID' });
+  });
+
+  it('uses an injected network stack for Chromium-compatible production requests', async () => {
+    const request = vi.fn(async () => new Response('proxy-aware', {
+      status: 200,
+      headers: { 'content-type': 'text/plain; charset=utf-8' }
+    }));
+    const textFetcher = createTextFetcher(request);
+
+    await expect(textFetcher('https://example.com/feed', { retries: 0 }))
+      .resolves.toBe('proxy-aware');
+    expect(request).toHaveBeenCalledWith(
+      'https://example.com/feed',
+      expect.objectContaining({
+        redirect: 'follow',
+        signal: expect.any(AbortSignal)
+      })
+    );
+  });
+
+  it('turns safe nested transport codes into actionable diagnostics', async () => {
+    const dnsError = Object.assign(new Error('lookup failed for a private hostname'), {
+      code: 'ENOTFOUND'
+    });
+    const request = vi.fn(async (): Promise<Response> => {
+      throw new TypeError('fetch failed', { cause: dnsError });
+    });
+    const textFetcher = createTextFetcher(request);
+
+    await expect(textFetcher('https://example.com/feed', { retries: 0 }))
+      .rejects.toMatchObject({
+        code: 'HTTP_REQUEST_FAILED',
+        message: '请求失败：example.com（域名解析失败）'
+      });
+  });
+
+  it('keeps timeouts distinct from other connection failures', async () => {
+    const request = vi.fn(async (): Promise<Response> => {
+      throw Object.assign(new Error('net::ERR_TIMED_OUT'), { code: 'ERR_TIMED_OUT' });
+    });
+    const textFetcher = createTextFetcher(request);
+
+    await expect(textFetcher('https://example.com/feed', { retries: 0 }))
+      .rejects.toMatchObject({
+        code: 'HTTP_TIMEOUT',
+        message: '请求超时：example.com（连接超时）'
+      });
   });
 });

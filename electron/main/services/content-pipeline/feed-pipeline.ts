@@ -1,5 +1,6 @@
 import { parseFeed } from './feed-parser';
 import { fetchText } from './http-client';
+import type { TextFetcher } from './http-client';
 import type { CleanedContent, FeedPipelineOutput } from './types';
 
 export interface FeedPipelineInput {
@@ -12,11 +13,7 @@ export interface FeedPipelineOptions {
   onStage?: (stage: 'fetching' | 'parsing') => void;
 }
 
-export type TextFetcher = (url: string, options?: {
-  timeoutMs?: number;
-  maxBytes?: number;
-  accept?: string;
-}) => Promise<string>;
+export type { TextFetcher } from './http-client';
 
 export type ContentCleaner = (html: string, articleUrl: string) => CleanedContent;
 

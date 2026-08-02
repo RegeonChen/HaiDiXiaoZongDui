@@ -40,6 +40,9 @@ import { FeedRepository } from './db/feed-repository.js';
 import { ArticleRepository } from './db/article-repository.js';
 import { SqliteContentPipelineStore } from './db/content-pipeline-store.js';
 import { ArticleContentService } from './services/content-pipeline/article-content-service.js';
+import { ArticleContentPipeline } from './services/content-pipeline/article-content-pipeline.js';
+import { FeedPipeline } from './services/content-pipeline/feed-pipeline.js';
+import { createTextFetcher } from './services/content-pipeline/http-client.js';
 import {
   installNavigationGuards,
   isTrustedRendererUrl,
@@ -4060,7 +4063,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
           // 2) sync
           const synced = await window.api.sync.feed(created.data.id);
-          report.realFeed.checks.syncFeed = synced.success;
+          report.realFeed.checks.syncFeed = synced.success && synced.data?.success === true;
           report.realFeed.syncResult = synced.success ? synced.data : null;
 
           // 3) feed info (siteTitle)
@@ -4077,7 +4080,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           if (list.success && list.data.items.length > 0) {
             const first = list.data.items[0];
             report.realFeed.checks.hasTitle = first.title.length > 0;
-            report.realFeed.checks.hasContent = first.rawHtml.length > 0;
+            const cleaned = await window.api.content.getCleanedHtml(first.id);
+            report.realFeed.checks.hasContent =
+              cleaned.success && typeof cleaned.data === 'string' && cleaned.data.trim().length > 0;
             report.realFeed.firstTitle = first.title;
 
             // 6) mark read + starred
@@ -6011,9 +6016,13 @@ app.whenReady().then(async () => {
   const trustedRendererUrl = getTrustedRendererUrl();
   registerIpcHandlers(trustedRendererUrl);
   const contentPipelineStore = new SqliteContentPipelineStore();
+  const chromiumTextFetcher = createTextFetcher((input, init) => net.fetch(input, init));
   disposeContentPipelineIpc = registerContentPipelineIpc({
-    sync: new SyncService(contentPipelineStore),
-    content: new ArticleContentService(contentPipelineStore),
+    sync: new SyncService(contentPipelineStore, new FeedPipeline(chromiumTextFetcher)),
+    content: new ArticleContentService(
+      contentPipelineStore,
+      new ArticleContentPipeline(chromiumTextFetcher)
+    ),
     opml: new OpmlApplicationService(contentPipelineStore)
   }, {
     trustedRendererUrl,

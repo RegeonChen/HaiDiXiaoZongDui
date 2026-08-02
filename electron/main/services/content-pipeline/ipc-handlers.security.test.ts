@@ -39,6 +39,37 @@ beforeEach(() => {
 });
 
 describe('content pipeline IPC security', () => {
+  it('records stable network failure codes without persisting feed URLs', async () => {
+    const harness = createHarness({ importPath: null, exportPath: null }, {
+      feed: {
+        feedId: 'feed-1',
+        success: false,
+        error: '[HTTP_REQUEST_FAILED] 请求失败：example.com（域名解析失败）',
+        newArticles: 0,
+        updatedArticles: 0,
+        stages: [],
+        startedAt: '2026-08-02T00:00:00.000Z',
+        finishedAt: '2026-08-02T00:00:01.000Z'
+      }
+    });
+
+    await expect(invoke(IPC_CHANNELS.SYNC_FEED, trustedRendererUrl, { feedId: 'feed-1' }))
+      .resolves.toMatchObject({ success: true });
+    expect(harness.recordLog).toHaveBeenCalledWith(
+      'warn',
+      'sync:feed',
+      '订阅源同步失败',
+      {
+        feedId: 'feed-1',
+        success: false,
+        newArticles: 0,
+        updatedArticles: 0,
+        failureCode: 'HTTP_REQUEST_FAILED'
+      }
+    );
+    expect(JSON.stringify(harness.recordLog.mock.calls)).not.toContain('example.com');
+  });
+
   it('uses only Main-approved OPML paths and ignores Renderer-supplied arguments', async () => {
     const harness = createHarness({
       importPath: '/approved/subscriptions.opml',
@@ -209,7 +240,10 @@ describe('renderer URL policy', () => {
 function createHarness(paths: {
   importPath: string | null;
   exportPath: string | null;
-}): {
+}, syncResults: {
+  feed?: Awaited<ReturnType<ContentPipelineIpcServices['sync']['syncFeed']>>;
+  all?: Awaited<ReturnType<ContentPipelineIpcServices['sync']['syncAll']>>;
+} = {}): {
   importFile: ReturnType<typeof vi.fn>;
   exportFile: ReturnType<typeof vi.fn>;
   selectOpmlExportPath: ReturnType<typeof vi.fn>;
@@ -222,8 +256,8 @@ function createHarness(paths: {
   const recordLog = vi.fn();
   const services = {
     sync: {
-      syncAll: vi.fn(async () => []),
-      syncFeed: vi.fn(),
+      syncAll: vi.fn(async () => syncResults.all ?? []),
+      syncFeed: vi.fn(async () => syncResults.feed),
       getProgress: vi.fn(() => ({ totalFeeds: 0, completedFeeds: 0, results: [] }))
     },
     content: {

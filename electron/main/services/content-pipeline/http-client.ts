@@ -8,17 +8,38 @@ export interface FetchTextOptions {
   retries?: number;
 }
 
+export type HttpFetch = (input: string, init?: RequestInit) => Promise<Response>;
+export type TextFetcher = (url: string, options?: FetchTextOptions) => Promise<string>;
+
 const DEFAULT_USER_AGENT = 'JuheShiyi/0.1 (+local desktop RSS reader)';
+
+/**
+ * Creates a text fetcher backed by a caller-selected network stack. Production
+ * injects Electron net.fetch so Feed and article requests inherit Chromium's
+ * system proxy handling; unit tests and non-Electron callers retain Node fetch.
+ */
+export function createTextFetcher(request: HttpFetch): TextFetcher {
+  return (urlValue, options = {}) => fetchTextWith(request, urlValue, options);
+}
 
 export async function fetchText(
   urlValue: string,
   options: FetchTextOptions = {}
+): Promise<string> {
+  return fetchTextWith((input, init) => globalThis.fetch(input, init), urlValue, options);
+}
+
+async function fetchTextWith(
+  request: HttpFetch,
+  urlValue: string,
+  options: FetchTextOptions
 ): Promise<string> {
   const url = assertHttpUrl(urlValue);
   const timeoutMs = positiveInteger(options.timeoutMs, 15_000, 'timeoutMs');
   const maxBytes = positiveInteger(options.maxBytes, 5 * 1024 * 1024, 'maxBytes');
 
   const response = await fetchWithRetry(
+    request,
     url,
     {
       redirect: 'follow',
@@ -75,6 +96,7 @@ export async function fetchText(
 }
 
 async function fetchWithRetry(
+  request: HttpFetch,
   url: URL,
   init: RequestInit,
   timeoutMs: number,
@@ -85,7 +107,7 @@ async function fetchWithRetry(
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await fetch(url, {
+      const response = await request(url.toString(), {
         ...init,
         signal: AbortSignal.timeout(timeoutMs)
       });
@@ -104,7 +126,15 @@ async function fetchWithRetry(
   const code = isTimeoutError(lastError)
     ? 'HTTP_TIMEOUT'
     : 'HTTP_REQUEST_FAILED';
-  throw new ContentPipelineError(code, `请求失败：${url.hostname}`, lastError);
+  const baseMessage = code === 'HTTP_TIMEOUT'
+    ? `请求超时：${url.hostname}`
+    : `请求失败：${url.hostname}`;
+  const hint = networkErrorHint(lastError);
+  throw new ContentPipelineError(
+    code,
+    hint ? `${baseMessage}（${hint}）` : baseMessage,
+    lastError
+  );
 }
 
 function positiveInteger(value: number | undefined, fallback: number, name: string): number {
@@ -122,7 +152,47 @@ function boundedRetries(value: number | undefined): number {
 }
 
 function isTimeoutError(error: unknown): boolean {
-  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+  return errorSignals(error).some((signal) =>
+    /(?:^|\b)(?:TimeoutError|AbortError|ETIMEDOUT|ERR_TIMED_OUT)(?:\b|$)/i.test(signal)
+  );
+}
+
+function networkErrorHint(error: unknown): string | null {
+  const signals = errorSignals(error).join(' ');
+  const hints: Array<[RegExp, string]> = [
+    [/ERR_PROXY_CONNECTION_FAILED|ECONNREFUSED.*proxy/i, '代理服务器连接失败'],
+    [/ERR_TUNNEL_CONNECTION_FAILED/i, '代理隧道连接失败'],
+    [/ERR_INTERNET_DISCONNECTED|ENETDOWN|ENETUNREACH/i, '网络连接不可用'],
+    [/ENOTFOUND|EAI_AGAIN|ERR_NAME_NOT_RESOLVED|ERR_NAME_RESOLUTION_FAILED/i, '域名解析失败'],
+    [/CERT_HAS_EXPIRED|ERR_CERT_DATE_INVALID/i, '服务器证书已过期或系统时间异常'],
+    [
+      /UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT_IN_CHAIN|DEPTH_ZERO_SELF_SIGNED_CERT|ERR_CERT_AUTHORITY_INVALID/i,
+      '无法验证服务器证书'
+    ],
+    [/ECONNREFUSED|ERR_CONNECTION_REFUSED/i, '连接被拒绝'],
+    [/ECONNRESET|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED/i, '连接被重置'],
+    [/ETIMEDOUT|ERR_TIMED_OUT|TimeoutError|AbortError/i, '连接超时'],
+    [/ERR_NETWORK_CHANGED/i, '网络环境发生变化']
+  ];
+  return hints.find(([pattern]) => pattern.test(signals))?.[1] ?? null;
+}
+
+function errorSignals(error: unknown): string[] {
+  const signals: string[] = [];
+  let current: unknown = error;
+  const visited = new Set<object>();
+
+  for (let depth = 0; depth < 4 && current && typeof current === 'object'; depth += 1) {
+    if (visited.has(current)) break;
+    visited.add(current);
+    const candidate = current as { name?: unknown; message?: unknown; code?: unknown; cause?: unknown };
+    if (typeof candidate.name === 'string') signals.push(candidate.name);
+    if (typeof candidate.message === 'string') signals.push(candidate.message);
+    if (typeof candidate.code === 'string') signals.push(candidate.code);
+    current = candidate.cause;
+  }
+
+  return signals;
 }
 
 function retryDelayMs(retryAfter: string | null, attempt: number): number {

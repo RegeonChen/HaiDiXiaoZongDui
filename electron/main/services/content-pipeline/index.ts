@@ -6,7 +6,8 @@ export type { HtmlBlock } from './content-cleaner';
 export { ContentPipelineError } from './errors';
 export { parseFeed, normalizeHttpUrl } from './feed-parser';
 export { FeedPipeline } from './feed-pipeline';
-export { fetchText } from './http-client';
+export { createTextFetcher, fetchText } from './http-client';
+export type { FetchTextOptions, HttpFetch, TextFetcher } from './http-client';
 export { registerContentPipelineIpc } from './ipc-handlers';
 export {
   exportOpml,
