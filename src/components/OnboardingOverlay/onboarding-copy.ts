@@ -37,7 +37,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   { id: 'feeds', target: '.pane-feeds', padding: 4 },
   { id: 'add', target: '[data-testid="feed-list__create"]', padding: 8 },
   { id: 'articles', target: '.pane-list', padding: 4 },
-  { id: 'sync', target: '[data-testid="feed-action__sync"]', padding: 8 },
+  { id: 'sync', target: '[data-testid="article-list__action-bar"]', padding: 8 },
   { id: 'reader', target: '.app-editor', padding: 4 },
   { id: 'layout', target: '[data-page-key="reader"]', padding: 7 },
   { id: 'ai', target: '[data-testid="app-header__ai"]', padding: 7 },
