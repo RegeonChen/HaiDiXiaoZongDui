@@ -97,6 +97,10 @@
 
 - **v0.3.4 release 已发布**（`7fd0388` + tag `v0.3.4`）：收录文章页 AI 专题命名推荐、模型 JSON/`response_format` 兼容、OPML 导出操作栏调整、顶栏标题移除与搜索框左移、默认推荐徽标布局、订阅源分组右键新建、空库默认订阅源，以及从 8 步扩展为 12 步的新手教程。发布前将 `sanitize-html` 2.16.0 升级到 2.17.6，生产及完整依赖审计均为 0 项已知漏洞；通过 typecheck、160 项单测、生产构建、24 个独立 Electron/IPC smoke 和本地 Apple Silicon DMG 打包。GitHub Actions run `30729114294` 成功生成并发布 `Juhe-Shiyi-0.3.4-arm64.dmg`（132,602,728 bytes，SHA-256 `8f1d36577ab3ee4f461d565eb3bf3d07fe2c8e076d1f5c37c9710e6f715d8880`）与 `Juhe-Shiyi-Setup-0.3.4-x64.exe`（114,635,763 bytes，SHA-256 `84587e1d990286e81da109cf239d00c0b7da00ac17b29c30fea2189e1ed24ec9`）。远端下载后复核了 DMG 内版本、ICNS、运行时 PNG 和 `app.asar`，以及 Windows x64 NSIS、主程序 16–256 七档图标和 0.3.4 `app.asar`。Actions v4 仍显示 Node 20 弃用但强制使用 Node 24 的非阻塞提示，后续应升级对应 Action 主版本。
 
+- **订阅同步系统代理兼容修复（2026-08-02，v0.3.4 发布后待交付）**：Feed 同步和懒加载文章正文从 Node 全局 `fetch` 切换到 Electron `net.fetch`，使用 Chromium 网络栈并继承系统代理、PAC、HTTPS 隧道和代理认证能力；HTTP 客户端改为可注入网络实现，继续执行 http(s) 白名单、15/20 秒超时、一次重试和 5/10 MB 大小限制。DNS、代理、证书、拒绝连接、连接重置和超时会转换为稳定错误码与可读提示，本地日志只增加不含 URL 的失败码。真实 Feed smoke 同步修正为断言内层 `SyncResult.success`，并通过正文 IPC 验证实际阅读内容。164 项单测、双端 typecheck、生产构建、离线 Phase 2、UI/IPC 和 Feed actions smoke 均通过；用户报告失败的 `soulhacker.me`、`ericmigi.com`、`baoyu.io` 和 `seangoedecke.com` 四个真实源均在 Electron 完整链路中同步、读取正文和持久化成功。
+
+- **AI 标签建议与摘要宽度兼容修复（2026-08-02，v0.3.4 发布后待交付）**：Tag Agent 关闭思考模式并请求结构化 JSON，兼容正式答案位于 `reasoning_content`、代码围栏、分析文字、尾逗号和旧版顶层数组的 OpenAI-compatible 模型响应；只有结构化任务会读取并校验该字段，普通摘要与对话仍不会暴露推理内容。无结构响应追加一次受控 JSON 修复，界面将内部错误码转换为可操作提示。摘要底部栏移除固定 `76ch` 上限，在收起一、二级目录后随灵活窗口扩展且保持在面板边界内；单元测试、真实 IPC smoke 和目录三态测量 smoke 覆盖这些回归。
+
 - **订阅源分组入口优化（2026-08-02）**：一级目录“+”菜单、对话框标题和提交按钮统一使用“新建订阅源组 / 新建”，成功提示同步改为“已新建订阅源组”。订阅源分组区域向下覆盖列表剩余空白，右键空白处显示同名上下文菜单并复用原新建对话框；订阅源行和分组标题的既有操作不受影响。`FeedList.test.ts` 覆盖菜单文案、空白区域右键和控件区域隔离，`smoke:feeds-group` 通过真实 Electron 窗口验证剩余空白命中、菜单、对话框及完整分组回归。
 
 - **OPML 导出操作与 AI 专题兼容加固（2026-08-02）**：选择性导出页将“取消导出 / 确认导出”从长列表底部移到顶部“全选/取消全选”旁，窄窗口自动换行，避免操作栏遮挡列表。专题推荐可从夹带分析文字、代码围栏或尾逗号的模型响应中安全提取 JSON；完全无结构时追加一次受控修复请求，Provider 拒绝 `response_format` 时自动降级重试。界面不再展示内部 AI 错误码，改为可操作的用户提示；单元测试和 Electron smoke 覆盖按钮位置、底栏移除、格式兼容与真实 IPC 降级。

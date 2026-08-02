@@ -49,6 +49,22 @@ describe('OpenAI-compatible message content', () => {
       .rejects.toThrow(/只返回了 reasoning_content/);
   });
 
+  it('accepts reasoning_content only for a structured JSON task', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      model: 'deepseek-v4-flash',
+      choices: [{
+        message: {
+          content: null,
+          reasoning_content: '{"suggestions":[{"name":"rss"}]}'
+        }
+      }]
+    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+
+    await expect(chatCompletion(provider, [{ role: 'user', content: 'Return JSON' }], {
+      responseFormat: 'json_object'
+    })).resolves.toBe('{"suggestions":[{"name":"rss"}]}');
+  });
+
   it('retries once without response_format when a compatible provider rejects it', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({

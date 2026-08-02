@@ -99,6 +99,13 @@
             topicRecommendations.success &&
             cachedTopicRecommendations.data.sourceSignature === topicRecommendations.data.sourceSignature &&
             cachedTopicRecommendations.data.generatedAt === topicRecommendations.data.generatedAt;
+          var generatedTags = await api.ai.suggestTags(chatArticle.id);
+          var cachedTags = await api.ai.getTagSuggestions(chatArticle.id);
+          R.prov.checks.tagReasoningContentFallback =
+            generatedTags.success &&
+            cachedTags.success &&
+            cachedTags.data.suggestions.length === 3 &&
+            cachedTags.data.suggestions[0].name === 'machine-learning';
           if (topicRecommendations.success) {
             var topicDraft = topicRecommendations.data.suggestions[0];
             var createdTopic = await api.topic.create({
@@ -124,6 +131,7 @@
           R.prov.checks.topicRecommendations = false;
           R.prov.checks.topicRecommendationsCached = false;
           R.prov.checks.topicRecommendationCreatesUsableTopic = false;
+          R.prov.checks.tagReasoningContentFallback = false;
         }
       } else {
         R.prov.checks.chatArticleReady = false;
@@ -132,6 +140,7 @@
         R.prov.checks.topicRecommendations = false;
         R.prov.checks.topicRecommendationsCached = false;
         R.prov.checks.topicRecommendationCreatesUsableTopic = false;
+        R.prov.checks.tagReasoningContentFallback = false;
       }
 
       var pd = await api.ai.providerDelete(pid);

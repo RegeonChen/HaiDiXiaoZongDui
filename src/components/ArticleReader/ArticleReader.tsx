@@ -36,6 +36,7 @@ import { ArticleAiChatPanel } from '../ArticleAiChatPanel/ArticleAiChatPanel';
 import { useReaderMode, type ReaderMode } from '../../hooks/useReaderMode';
 import { prepareArticleHtmlForDisplay } from '../../utils/article-images';
 import { parseArticleTitleTags } from '../../utils/article-title-tags';
+import { formatTagSuggestionError } from '../../utils/ai-errors';
 import './ArticleReader.css';
 
 export interface ArticleReaderProps {
@@ -569,9 +570,10 @@ export function ArticleReader({
       const generated = await ds.aiSuggestTags(requestedArticleId);
       if (!isCurrentArticle()) return;
       if (!generated.ok) {
-        setTagSuggestionsError(generated.message);
+        const message = formatTagSuggestionError(generated.message);
+        setTagSuggestionsError(message);
         setTagSuggestionsStatus('error');
-        onToast(`标签建议失败:${generated.message}`, 'error');
+        onToast(`标签建议失败：${message}`, 'error');
         return;
       }
 
@@ -581,17 +583,21 @@ export function ArticleReader({
         setTagSuggestions(result.data);
         setTagSuggestionsStatus('ready');
       } else {
-        const message = result.kind === 'error' ? result.error : '暂时无法读取建议';
+        const message = formatTagSuggestionError(
+          result.kind === 'error' ? result.error : '暂时无法读取建议'
+        );
         setTagSuggestionsError(message);
         setTagSuggestionsStatus('error');
-        onToast(`读取标签建议失败:${message}`, 'error');
+        onToast(`读取标签建议失败：${message}`, 'error');
       }
     } catch (error) {
       if (!isCurrentArticle()) return;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatTagSuggestionError(
+        error instanceof Error ? error.message : String(error)
+      );
       setTagSuggestionsError(message);
       setTagSuggestionsStatus('error');
-      onToast(`标签建议失败:${message}`, 'error');
+      onToast(`标签建议失败：${message}`, 'error');
     } finally {
       if (tagSuggestionsRequestRef.current === requestedArticleId) {
         tagSuggestionsRequestRef.current = null;

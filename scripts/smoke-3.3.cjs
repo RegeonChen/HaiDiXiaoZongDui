@@ -33,6 +33,7 @@ if (!fs.existsSync(mainEntry)) {
 }
 
 let topicResponseFormatRejected = false;
+let tagReasoningFallbackExercised = false;
 
 // Mock OpenAI-compatible server 作为 AI 后端
 const server = http.createServer((req, res) => {
@@ -117,13 +118,25 @@ const server = http.createServer((req, res) => {
           }) } }]
         }));
       } else if (isTag) {
+        tagReasoningFallbackExercised =
+          payload.response_format?.type === 'json_object' &&
+          payload.enable_thinking === false;
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({
-          choices: [{ message: { content: JSON.stringify([
-            { name: 'machine-learning', confidence: 0.95, reason: 'Article discusses ML concepts' },
-            { name: 'large-language-models', confidence: 0.9, reason: 'Mentions LLMs' },
-            { name: 'ai', confidence: 0.85, reason: 'Core topic is AI' }
-          ]) } }]
+          model: 'deepseek-v4-flash',
+          choices: [{ message: {
+            content: null,
+            reasoning_content: [
+              'I will now return the requested structured result.',
+              '```json',
+              '{"suggestions":[',
+              '{"name":"machine-learning","confidence":0.95,"reason":"Article discusses ML concepts"},',
+              '{"name":"large-language-models","confidence":0.9,"reason":"Mentions LLMs"},',
+              '{"name":"ai","confidence":0.85,"reason":"Core topic is AI"},',
+              ']}',
+              '```'
+            ].join('\n')
+          } }]
         }));
       } else if (isTranslation) {
         res.writeHead(200, { 'content-type': 'application/json' });
@@ -188,6 +201,8 @@ server.listen(0, '127.0.0.1', () => {
       passed = passed && credentialCheck.encrypted && credentialCheck.plaintextAbsent;
       passed = passed && topicResponseFormatRejected;
       console.log(`[smoke-3.3] response_format fallback exercised: ${topicResponseFormatRejected}`);
+      passed = passed && tagReasoningFallbackExercised;
+      console.log(`[smoke-3.3] tag reasoning_content fallback exercised: ${tagReasoningFallbackExercised}`);
     } catch (error) {
       console.error(`[smoke-3.3] credential storage 检查失败: ${String(error)}`);
       passed = false;

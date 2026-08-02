@@ -658,11 +658,14 @@
 }
 
 .sticky-summary__content {
-  max-width: 76ch;
+  width: 100%;
+  min-width: 0;
   padding: 4px 8px 12px;
+  box-sizing: border-box;
   color: var(--fg);
   font-size: 14px;
   line-height: 1.75;
+  overflow-wrap: anywhere;
 }
 
 .sticky-summary__content p {

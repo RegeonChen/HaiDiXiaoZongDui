@@ -5,6 +5,7 @@
  *  - 摘要与标签共用 StickyBottomPanel，不再创建悬浮窗
  *  - 首次打开立即显示 Loading，完成后渲染 Markdown 摘要
  *  - 上方工具按钮和底部 tab 都能打开缓存摘要
+ *  - 收起一、二级目录后摘要随灵活窗口扩展
  *  - 面板可拉伸、切换到标签并收起
  *
  * 运行：npm run smoke:summary
@@ -50,7 +51,7 @@ child.on('exit', (code) => {
   console.log(`[smoke-3.5.1] electron 退出 code=${code}`);
   console[passed ? 'log' : 'error'](
     passed
-      ? '[smoke-3.5.1] ✓ 摘要底部栏（生成/缓存/tab/拉伸/收起）全部通过'
+      ? '[smoke-3.5.1] ✓ 摘要底部栏（生成/缓存/自适应宽度/tab/拉伸/收起）全部通过'
       : '[smoke-3.5.1] ✗ 摘要底部栏验证失败'
   );
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });

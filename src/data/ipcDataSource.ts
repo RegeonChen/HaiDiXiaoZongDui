@@ -499,7 +499,7 @@ export class IpcDataSource implements FullDataSource {
 
   async aiSuggestTags(articleId: string): Promise<{ ok: boolean; message: string }> {
     const r = await window.api.ai.suggestTags(articleId);
-    if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
+    if (!r.success) return { ok: false, message: r.error.message };
     return { ok: true, message: '标签建议已生成' };
   }
 

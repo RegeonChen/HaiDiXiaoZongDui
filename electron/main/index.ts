@@ -1577,6 +1577,38 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           report.summary.checks.toolbarButtonActive =
             document.querySelector('[data-tool="summary"]')?.classList.contains('is-active') === true;
 
+          // 收起一、二级目录后，摘要内容必须随灵活窗口一起扩展，不能停留在旧的 76ch 宽度。
+          const summaryWidthBefore = summaryContent?.getBoundingClientRect().width || 0;
+          const readerAction = document.querySelector('[data-page-key="reader"]');
+          readerAction?.click();
+          await waitFor(() => (
+            document.querySelector('.app-workbench__content')?.getAttribute('data-directory-mode') === 'secondary'
+          ), { timeout: 2000 });
+          await sleep(220);
+          document.querySelector('[data-page-key="reader"]')?.click();
+          await waitFor(() => (
+            document.querySelector('.app-workbench__content')?.getAttribute('data-directory-mode') === 'none'
+          ), { timeout: 2000 });
+          await sleep(220);
+          const expandedSummaryContent = document.querySelector('[data-testid="sticky-summary__content"]');
+          const expandedPanelBody = document.querySelector('[data-testid="sticky-bottom-panel__body"]');
+          const expandedSummaryRect = expandedSummaryContent?.getBoundingClientRect();
+          const expandedBodyRect = expandedPanelBody?.getBoundingClientRect();
+          report.summary.checks.summaryContentGrowsWithFlexibleWindow =
+            !!expandedSummaryRect && expandedSummaryRect.width > summaryWidthBefore + 200;
+          report.summary.checks.summaryContentFillsExpandedFlexibleWindow =
+            !!expandedSummaryRect && !!expandedBodyRect &&
+            expandedSummaryRect.width >= expandedBodyRect.width - 32;
+          report.summary.checks.summaryContentStaysInsideExpandedPanel =
+            !!expandedSummaryRect && !!expandedBodyRect &&
+            expandedSummaryRect.left >= expandedBodyRect.left &&
+            expandedSummaryRect.right <= expandedBodyRect.right;
+          document.querySelector('[data-page-key="reader"]')?.click();
+          await waitFor(() => (
+            document.querySelector('.app-workbench__content')?.getAttribute('data-directory-mode') === 'both'
+          ), { timeout: 2000 });
+          await sleep(220);
+
           const panelBeforeDrag = document.querySelector('.sticky-bottom-panel');
           const heightBefore = parseInt(panelBeforeDrag?.style?.height || '0', 10);
           const handle = document.querySelector('.sticky-bottom-panel__handle');
@@ -1636,7 +1668,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             'panelInitiallyCollapsed', 'summaryTabInBottomBar', 'noFloatingPanel',
             'summaryPanelOpened', 'summaryTabActive', 'loadingVisible',
             'summaryContentVisible', 'markdownRendered', 'markdownBlockStructureRendered',
-            'toolbarButtonActive',
+            'toolbarButtonActive', 'summaryContentGrowsWithFlexibleWindow',
+            'summaryContentFillsExpandedFlexibleWindow', 'summaryContentStaysInsideExpandedPanel',
             'panelResizable', 'toolbarButtonCollapsesPanel', 'cachedSummaryReopened',
             'sharesPanelWithTags', 'closeButtonCollapsesPanel', 'floatingPanelStillAbsent'
           ].every((key) => report.summary.checks[key] === true);
