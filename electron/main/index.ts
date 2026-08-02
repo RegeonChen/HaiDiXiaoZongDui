@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 聚合拾遗 — Electron 主进程入口
  * Phase 2: Core Reading Workflow
  *
@@ -5798,6 +5798,18 @@ function seedTopicSmokeData(): void {
   ArticleRepository.insertBatch(fixtures);
 }
 
+/** 首次启动时插入内置默认订阅源。仅在 feeds 表为空时执行。 */
+function seedDefaultFeeds(): void {
+  const existingFeeds = FeedRepository.list();
+  if (existingFeeds.length > 0) return;
+
+  FeedRepository.create({
+    url: 'https://soulhacker.me/index.xml',
+    title: 'Soul Hacker',
+    groupName: '个人博客'
+  });
+}
+
 // ============================================================
 // App 生命周期
 // ============================================================
@@ -5836,6 +5848,7 @@ app.whenReady().then(async () => {
 
   await initDatabase();
   runMigrations();
+  seedDefaultFeeds();
   if (
     (SMOKE_FLAGS.smoke || SMOKE_FLAGS.smokeUi) &&
     !SMOKE_FLAGS.smokeOnboarding
