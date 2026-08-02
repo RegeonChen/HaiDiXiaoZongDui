@@ -27,6 +27,7 @@ import type {
   OpmlImportResult,
   Language,
   HtmlBlock,
+  ExportFormat,
 } from './types';
 
 // ============================================================

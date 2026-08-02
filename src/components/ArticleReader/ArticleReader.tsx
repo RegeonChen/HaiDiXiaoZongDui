@@ -20,6 +20,7 @@ import type {
   AITopicRecommendation,
   Article,
   Feed,
+  Note,
   NoteCreateInput,
   Tag
 } from '@shared/types';
@@ -54,6 +55,19 @@ function formatAbsolute(iso: string | null): string {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return iso;
   return new Date(t).toLocaleString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+// Phase 4.3.5:笔记时间显示(短格式:刚刚/X 分钟前/X 小时前/X 天前/MM-DD)
+function formatNoteTime(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  const deltaSec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (deltaSec < 60) return '刚刚';
+  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)} 分钟前`;
+  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)} 小时前`;
+  if (deltaSec < 86400 * 7) return `${Math.floor(deltaSec / 86400)} 天前`;
+  const d = new Date(t);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
 interface ContentState {
@@ -125,6 +139,16 @@ export function ArticleReader({
   const [tagSuggestionsError, setTagSuggestionsError] = useState<string | null>(null);
   const [contentArticleId, setContentArticleId] = useState<string | null>(null);
   const [noteMarkdown, setNoteMarkdown] = useState('');
+  // Phase 4.3.5:当前文章的笔记列表(底栏 note tab 实时显示已保存的笔记)
+  //   - 真根因:之前只渲染输入表单,handleAddNote 只清空 textarea,没把笔记
+  //     存到任何 state,底栏里完全没有"已添加笔记"区域,用户保存后看不到
+  //   - 修法:用 state 维护笔记数组,加 useEffect 在 article.id 变化时
+  //     重新加载,handleAddNote 成功后 add 到 state,handleDeleteNote 同步移除
+  const [articleNotes, setArticleNotes] = useState<Note[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const lastLoadedNotesForArticleRef = useRef<string | null>(null);
+  const articleIdForNotesRef = useRef<string | null>(article?.id ?? null);
+  articleIdForNotesRef.current = article?.id ?? null;
   const [topicDialogOpen, setTopicDialogOpen] = useState(false);
   const [topicRecommendationState, setTopicRecommendationState] = useState<TopicRecommendationState>({
     status: 'idle'
@@ -246,6 +270,8 @@ export function ArticleReader({
       setTagSuggestionsError(null);
       tagSuggestionsRequestRef.current = null;
       setNoteMarkdown('');
+      setArticleNotes([]);
+      setNotesLoading(false);
       setArticleTags([]);
       setStickyTab(null);
       setTopicDialogOpen(false);
@@ -262,6 +288,8 @@ export function ArticleReader({
     setTagSuggestionsError(null);
     tagSuggestionsRequestRef.current = null;
     setNoteMarkdown('');
+    setArticleNotes([]);
+    setNotesLoading(false);
     setTopicDialogOpen(false);
     setTopicRecommendationState({ status: 'idle' });
     topicRecommendationRequestRef.current += 1;
@@ -744,6 +772,8 @@ export function ArticleReader({
       try {
         const r = await ds.noteCreate(input);
         if (r.kind === 'ready') {
+          // Phase 4.3.5:把新笔记插入 articleNotes(顶部最新),底栏立即可见
+          setArticleNotes((prev) => [r.data, ...prev]);
           onToast('笔记已添加', 'success');
           setNoteMarkdown('');
         } else {
@@ -755,6 +785,57 @@ export function ArticleReader({
     },
     [article, noteMarkdown, ds, onToast]
   );
+
+  /** 删除一条笔记(底栏 note tab) */
+  const handleDeleteNote = useCallback(
+    async (noteId: string) => {
+      try {
+        await ds.noteDelete(noteId);
+        setArticleNotes((prev) => prev.filter((n) => n.id !== noteId));
+        onToast('笔记已删除', 'success');
+      } catch (err) {
+        onToast(`删除失败:${err instanceof Error ? err.message : String(err)}`, 'error');
+      }
+    },
+    [ds, onToast]
+  );
+
+  // Phase 4.3.5:article 切换时(或首次进入时)加载该文章所有笔记
+  //   - 用 ref 记录上次加载的 articleId,避免重复请求
+  //   - 与 article 切换 reset effect 配合(那里已 setArticleNotes([]) 清空)
+  useEffect(() => {
+    if (!article) return;
+    if (lastLoadedNotesForArticleRef.current === article.id) return;
+    lastLoadedNotesForArticleRef.current = article.id;
+    const requestedArticleId = article.id;
+    setNotesLoading(true);
+    void (async () => {
+      try {
+        const r = await ds.noteListByArticle(requestedArticleId);
+        if (articleIdForNotesRef.current !== requestedArticleId) return;
+        if (r.kind === 'ready') {
+          // 按更新时间倒序(最新在前);缺 updatedAt 时退到 createdAt
+          const sorted = [...r.data].sort((a, b) => {
+            const ta = Date.parse(b.updatedAt || b.createdAt) || 0;
+            const sa = Date.parse(a.updatedAt || a.createdAt) || 0;
+            return ta - sa;
+          });
+          setArticleNotes(sorted);
+        } else {
+          onToast(`加载笔记失败:${r.kind === 'error' ? r.error : '未知'}`, 'error');
+          setArticleNotes([]);
+        }
+      } catch (err) {
+        if (articleIdForNotesRef.current !== requestedArticleId) return;
+        onToast(`加载笔记失败:${err instanceof Error ? err.message : String(err)}`, 'error');
+        setArticleNotes([]);
+      } finally {
+        if (articleIdForNotesRef.current === requestedArticleId) {
+          setNotesLoading(false);
+        }
+      }
+    })();
+  }, [article, ds, onToast]);
 
   /** 打开粘性底部面板到指定 tab(如果当前是同一 tab,则收起为 null) */
   const toggleStickyTab = useCallback((tab: StickyTabId) => {
@@ -1125,31 +1206,76 @@ export function ArticleReader({
             }
             if (tabId === 'note') {
               return (
-                <form className="sticky-note" onSubmit={handleAddNote}>
-                  <textarea
-                    className="sticky-note__input"
-                    value={noteMarkdown}
-                    onChange={(e) => setNoteMarkdown(e.target.value)}
-                    placeholder="Markdown 笔记(GFM:标题、代码块、列表)"
-                    rows={4}
-                  />
-                  <div className="sticky-note__actions">
-                    <button
-                      type="submit"
-                      className="article-reader__btn article-reader__btn--primary"
-                      disabled={!noteMarkdown.trim()}
-                    >
-                      添加笔记
-                    </button>
-                    <button
-                      type="button"
-                      className="article-reader__btn"
-                      onClick={() => setNoteMarkdown('')}
-                    >
-                      清空
-                    </button>
+                <div className="sticky-note" data-testid="sticky-note">
+                  <form className="sticky-note__form" onSubmit={handleAddNote}>
+                    <textarea
+                      className="sticky-note__input"
+                      value={noteMarkdown}
+                      onChange={(e) => setNoteMarkdown(e.target.value)}
+                      placeholder="Markdown 笔记(GFM:标题、代码块、列表)"
+                      rows={4}
+                    />
+                    <div className="sticky-note__actions">
+                      <button
+                        type="submit"
+                        className="article-reader__btn article-reader__btn--primary"
+                        disabled={!noteMarkdown.trim()}
+                      >
+                        添加笔记
+                      </button>
+                      <button
+                        type="button"
+                        className="article-reader__btn"
+                        onClick={() => setNoteMarkdown('')}
+                      >
+                        清空
+                      </button>
+                    </div>
+                  </form>
+                  {/* Phase 4.3.5:已保存的笔记列表(实时显示) */}
+                  <div className="sticky-note__list" data-testid="sticky-note__list">
+                    {notesLoading ? (
+                      <p className="sticky-note__empty">正在加载笔记…</p>
+                    ) : articleNotes.length === 0 ? (
+                      <p className="sticky-note__empty">还没有笔记，输入上方文本后点击"添加笔记"保存。</p>
+                    ) : (
+                      <>
+                        <div className="sticky-note__list-header">
+                          共 {articleNotes.length} 条
+                        </div>
+                        <ul className="sticky-note__items" data-sticky-section="article-notes">
+                          {articleNotes.map((n) => (
+                            <li
+                              key={n.id}
+                              className="sticky-note__item"
+                              data-sticky-note-id={n.id}
+                            >
+                              <div
+                                className="sticky-note__item-content"
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(n.markdownContent) }}
+                              />
+                              <div className="sticky-note__item-meta">
+                                <span className="sticky-note__item-time">
+                                  {formatNoteTime(n.updatedAt || n.createdAt)}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="sticky-note__item-remove"
+                                  onClick={() => void handleDeleteNote(n.id)}
+                                  aria-label="删除笔记"
+                                  title="删除笔记"
+                                  data-sticky-action="delete-note"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
                   </div>
-                </form>
+                </div>
               );
             }
             return null;
