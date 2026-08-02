@@ -257,12 +257,10 @@ export function Layout({
   return (
     <div className="app-layout">
       <header className="app-header">
-        {/* Phase 4.3.3:移除"聚合拾遗"标题(原 .app-header__title / .app-header__identity)
-            根因:与搜索框同处顶栏,标题显得冗余突兀;搜索框 + 右侧工具栏已足够辨识应用
-            保留 .app-header__left 空容器作为未来扩展位 + 窄屏布局占位 */}
-        <div className="app-header__left" aria-hidden="true" />
-
         {searchSlot && <div className="app-header__search">{searchSlot}</div>}
+
+        {/* 保留 .app-header__left 空容器作为未来扩展位 + 窄屏布局占位 */}
+        <div className="app-header__left" aria-hidden="true" />
 
         <div className="app-header__right">
           <button
