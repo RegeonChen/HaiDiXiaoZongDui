@@ -3191,7 +3191,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
             const expectedSteps = [
               'feeds', 'add', 'articles', 'sync',
-              'reader', 'layout', 'ai', 'search'
+              'reader', 'layout', 'tags', 'notes',
+              'digests', 'topics', 'ai', 'search'
             ];
             const seenSteps = [];
             let allTargetsLocated = true;

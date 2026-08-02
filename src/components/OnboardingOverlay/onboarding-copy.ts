@@ -7,6 +7,10 @@ export type OnboardingStepId =
   | 'sync'
   | 'reader'
   | 'layout'
+  | 'tags'
+  | 'notes'
+  | 'digests'
+  | 'topics'
   | 'ai'
   | 'search';
 
@@ -40,6 +44,10 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   { id: 'sync', target: '[data-testid="article-list__action-bar"]', padding: 8 },
   { id: 'reader', target: '.app-editor', padding: 4 },
   { id: 'layout', target: '[data-page-key="reader"]', padding: 7 },
+  { id: 'tags', target: '[data-page-key="tags"]', padding: 8 },
+  { id: 'notes', target: '[data-page-key="notes"]', padding: 8 },
+  { id: 'digests', target: '[data-page-key="digests"]', padding: 8 },
+  { id: 'topics', target: '[data-page-key="topics"]', padding: 8 },
   { id: 'ai', target: '[data-testid="app-header__ai"]', padding: 7 },
   { id: 'search', target: '.app-header__search', padding: 6 }
 ];
@@ -85,6 +93,26 @@ export const ONBOARDING_COPY: Record<OnboardingLanguage, OnboardingCopy> = {
         title: '切换工作区密度',
         description: '在阅读页反复点击这个入口，可按“完整目录 → 仅文章目录 → 只保留灵活窗口”循环。',
         hint: '需要沉浸阅读时，可以快速收起两级目录。'
+      },
+      tags: {
+        title: '管理文章标签',
+        description: '为文章添加分类标签，方便按主题筛选和查找。标签管理页会列出所有标签及其关联文章。',
+        hint: 'AI 也可以根据文章内容自动推荐标签。'
+      },
+      notes: {
+        title: '记录阅读笔记',
+        description: '选中文章正文即可摘录为笔记，支持 Markdown 格式，记录你的思考与观点。',
+        hint: '笔记保存在本地，导出文摘时会一起包含。'
+      },
+      digests: {
+        title: '整理与导出文摘',
+        description: '将多篇文章的笔记和摘录汇集成一份文摘，支持导出为 Markdown 或 HTML 文件。',
+        hint: '适合整理专题阅读成果，方便归档和分享。'
+      },
+      topics: {
+        title: '追踪专题动态',
+        description: '创建专题并关联相关文章，系统自动生成多源简报和演化时间线，追踪事件发展脉络。',
+        hint: '专题是本应用的核心特色功能，适合长期追踪某个领域。'
       },
       ai: {
         title: '调用文章 AI 助手',
@@ -138,6 +166,26 @@ export const ONBOARDING_COPY: Record<OnboardingLanguage, OnboardingCopy> = {
         title: 'Adjust the workspace density',
         description: 'Repeatedly select Reading to cycle through both directories, article-only, and editor-only layouts.',
         hint: 'Collapse both directories whenever you want a distraction-free view.'
+      },
+      tags: {
+        title: 'Organize with tags',
+        description: 'Add labels to articles for filtering by topic. The tag management page lists all tags and their articles.',
+        hint: 'AI can also suggest tags based on article content.'
+      },
+      notes: {
+        title: 'Take reading notes',
+        description: 'Select text to excerpt as a note with Markdown formatting. Capture your thoughts and insights.',
+        hint: 'Notes stay local and are included when exporting digests.'
+      },
+      digests: {
+        title: 'Compile and export digests',
+        description: 'Collect notes from multiple articles into a digest, exportable as Markdown or HTML.',
+        hint: 'Great for summarizing topic research and archiving your reading.'
+      },
+      topics: {
+        title: 'Track topic developments',
+        description: 'Create topics and link related articles. Auto-generate multi-source briefings and evolution timelines.',
+        hint: 'The core differentiator of this app, designed for long-term topic tracking.'
       },
       ai: {
         title: 'Use the article AI assistant',

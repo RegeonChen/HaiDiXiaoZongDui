@@ -32,6 +32,10 @@ describe('OnboardingOverlay', () => {
       <div class="pane-list"><button data-testid="feed-action__sync">同步</button></div>
       <div class="app-editor"></div>
       <button data-page-key="reader">阅读</button>
+      <button data-page-key="tags">标签</button>
+      <button data-page-key="notes">笔记</button>
+      <button data-page-key="digests">文摘</button>
+      <button data-page-key="topics">专题</button>
       <button data-testid="app-header__ai">AI</button>
       <div class="app-header__search"></div>
     `;
@@ -48,7 +52,7 @@ describe('OnboardingOverlay', () => {
     vi.unstubAllGlobals();
   });
 
-  it('walks through all eight localized steps and completes', async () => {
+  it('walks through all twelve localized steps and completes', async () => {
     const onDismiss = vi.fn(async () => true);
     await act(async () => {
       root.render(createElement(OnboardingOverlay, {
@@ -84,7 +88,7 @@ describe('OnboardingOverlay', () => {
     expect(container.querySelector('[data-testid="onboarding-overlay"]')
       ?.getAttribute('data-step-transitioning')).toBe('true');
 
-    for (let index = 2; index < 8; index += 1) {
+    for (let index = 2; index < 12; index += 1) {
       await act(async () => {
         container.querySelector<HTMLButtonElement>('[data-testid="onboarding-next"]')?.click();
       });
@@ -110,7 +114,7 @@ describe('OnboardingOverlay', () => {
     });
 
     expect(container.textContent).toContain('Start with your sources');
-    expect(container.textContent).toContain('Step 1 of 8');
+    expect(container.textContent).toContain('Step 1 of 12');
     await act(async () => {
       container.querySelector<HTMLButtonElement>('[data-testid="onboarding-skip"]')?.click();
     });
