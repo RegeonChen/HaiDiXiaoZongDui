@@ -665,12 +665,15 @@
 }
 
 .sticky-summary__content {
-  /* Phase 4.3.4:flex:1 + min-height:0 + overflow-y:auto 让摘要填满 panel body
-     内容超长时可滚动,不再受 panel 高度限制 */
+  /* Phase 4.3.4 二次修复:删掉 max-width:76ch,让摘要内容撑满 panel body 整宽
+     (之前只设 width:100% 但 max-width:76ch 仍是上限约束,实际宽度
+     被限制在 ~500px,右半边空白)
+     - flex:1 + min-height:0 + overflow-y:auto 让垂直方向填满并可滚动
+     - 段落最大宽度 76ch 由 .sticky-summary__content p 单独控制
+       (只让单行文字有合理行长,不限制整块容器宽度) */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  max-width: 76ch;
   width: 100%;
   min-width: 0;
   padding: 4px 8px 12px;
@@ -679,6 +682,14 @@
   font-size: 14px;
   line-height: 1.75;
   overflow-wrap: anywhere;
+}
+
+/* 单行文字的舒适行长(76ch ≈ 500px),不让单段横跨整个超宽 panel 难以阅读 */
+.sticky-summary__content p,
+.sticky-summary__content li,
+.sticky-summary__content blockquote,
+.sticky-summary__content pre {
+  max-width: 76ch;
 }
 
 .sticky-summary__content p {
