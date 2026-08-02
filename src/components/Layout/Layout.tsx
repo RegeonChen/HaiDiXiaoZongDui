@@ -345,7 +345,7 @@ export function Layout({
 
             <section
               className="app-editor pane pane-reader"
-              onClick={handleEditorInteraction}
+              onClickCapture={handleEditorInteraction}
               onFocusCapture={handleEditorInteraction}
               onChange={handleEditorInteraction}
               onSubmit={onEditorInteraction}

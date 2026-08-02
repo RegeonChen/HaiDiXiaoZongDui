@@ -182,7 +182,11 @@ describe('Layout fixed directory structure', () => {
       articlesSlot: createElement('div'),
       readerSlot: createElement(
         'button',
-        { type: 'button', 'data-testid': 'reader-action' },
+        {
+          type: 'button',
+          'data-testid': 'reader-action',
+          onClick: (event: Event) => event.stopPropagation()
+        },
         '翻译'
       ),
       sidebarPercent: 24,
