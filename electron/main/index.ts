@@ -112,6 +112,7 @@ import {
   recommendTopics
 } from './services/ai/topic-recommendation-agent.js';
 import { configureAiFetch, testConnection } from './services/ai/openai-client.js';
+import { classifyAiFailure } from './services/ai/ai-failure.js';
 import { normalizeTopicAnalysisInput } from './services/content-pipeline/topic-analysis-input.js';
 import { stripArticleTitleTags } from './db/article-title-tags.js';
 
@@ -3111,6 +3112,31 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             { timeout: 3000 }
           );
           report.opmlExport.checks.opmlExportPageOpened = true;
+          const opmlPage = document.querySelector('[data-testid="opml-export-page"]');
+          const opmlViewport = document.querySelector('.app-page__content');
+          const opmlPageRect = opmlPage?.getBoundingClientRect();
+          const opmlViewportRect = opmlViewport?.getBoundingClientRect();
+          const opmlPageStyle = opmlPage ? getComputedStyle(opmlPage) : null;
+          report.opmlExport.checks.opmlPageUsesCenteredWorkspace =
+            !!opmlPageRect && !!opmlViewportRect &&
+            opmlPageRect.width <= 1040.5 &&
+            Math.abs(
+              (opmlPageRect.left - opmlViewportRect.left) -
+              (opmlViewportRect.right - opmlPageRect.right)
+            ) <= 1.5 &&
+            opmlPageStyle?.maxWidth === '1040px' &&
+            opmlPageStyle?.boxSizing === 'border-box';
+          report.opmlExport.checks.opmlPageMetrics = {
+            width: opmlPageRect?.width ?? null,
+            leftGutter: opmlPageRect && opmlViewportRect
+              ? opmlPageRect.left - opmlViewportRect.left
+              : null,
+            rightGutter: opmlPageRect && opmlViewportRect
+              ? opmlViewportRect.right - opmlPageRect.right
+              : null,
+            maxWidth: opmlPageStyle?.maxWidth ?? null,
+            boxSizing: opmlPageStyle?.boxSizing ?? null
+          };
 
           // 3) 默认全选 → 计数 = N/N
           const counter = document.querySelector('[data-testid="opml-export__counter"]');
@@ -3198,8 +3224,11 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
             !!document.querySelector('[data-testid="opml-export-page"]');
           report.opmlExport.checks.selectionRetainedAfterError =
             errorSelected ? parseInt(errorSelected[1], 10) === total - 2 : false;
+          const errorToastText = document.body.textContent || '';
           report.opmlExport.checks.errorToastRendered =
-            (document.body.textContent || '').includes('SMOKE_EXPORT_FAILED');
+            errorToastText.includes('OPML 导出失败') &&
+            errorToastText.includes('确认保存位置可写') &&
+            !errorToastText.includes('SMOKE_EXPORT_FAILED');
 
           // 11) 改回成功实现并再次确认 → 回到 reader
           if (ds && origExport) {
@@ -3230,7 +3259,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
         }
 
         const mustPass = [
-          'exportBtnFound', 'opmlExportPageOpened',
+          'exportBtnFound', 'opmlExportPageOpened', 'opmlPageUsesCenteredWorkspace',
           'counterRendered', 'defaultAllSelected',
           'listRendered', 'itemsCountMatchesTotal',
           'exportActionsBesideToggle', 'bottomFooterRemoved',
@@ -3726,13 +3755,14 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           const allChecks = [...boolChecks, ...checks251];
 
           // ============== Phase 3 Integration 探针 ==============
-          // 4 个内容工具 + 设置页切换 + AI 工具栏 + 主题切换
+          // 3 个内容工具 + 设置页切换 + AI 工具栏 + 主题切换
           const integrationReport = { ok: false, error: null, checks: {} };
           try {
-            // 1) Activity Bar 只保留 4 个内容工具；设置与 AI 位于右上角。
+            // 1) Activity Bar 只保留 3 个内容工具；设置与 AI 位于右上角。
             const navBtns = document.querySelectorAll('.app-header__nav-btn');
             integrationReport.checks.navBtnCount = navBtns.length;
-            integrationReport.checks.navBtnsOk = navBtns.length === 4;
+            // 文摘功能移除后，工作台页面入口只保留标签、笔记、专题三项。
+            integrationReport.checks.navBtnsOk = navBtns.length === 3;
 
             // 2) 切到每个内容工具，验证页面在统一编辑器标签中渲染。
             const pageCheckpoints = [
@@ -4869,6 +4899,75 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
               accentColor
             };
           }
+
+          // 15) 收起两级目录后，各功能页仍使用同一条限宽居中内容轴。
+          //     这覆盖全屏/宽窗口下最容易暴露的“有的铺满、有的居中”回归。
+          const widthReaderBtn = document.querySelector('[data-page-key="reader"]');
+          widthReaderBtn?.click();
+          await waitFor(() => !!document.querySelector('.article-reader'), { timeout: 3000 });
+          document.querySelector('[data-page-key="reader"]')?.click();
+          await sleep(220);
+          document.querySelector('[data-page-key="reader"]')?.click();
+          await waitFor(
+            () => document.querySelector('[data-page-key="reader"]')
+              ?.getAttribute('data-directory-mode') === 'none',
+            { timeout: 2000 }
+          );
+
+          const featurePageCheckpoints = [
+            { page: 'tags', selector: '.tags-page', title: '.tags-page__title' },
+            { page: 'notes', selector: '.notes-page', title: '.notes-page__title' },
+            { page: 'topics', selector: '.topics-page', title: '.topics-page__title' }
+          ];
+          const featurePageMetrics = [];
+          for (const checkpoint of featurePageCheckpoints) {
+            document.querySelector('[data-page-key="' + checkpoint.page + '"]')?.click();
+            await waitFor(() => !!document.querySelector(checkpoint.selector), { timeout: 3000 });
+            await sleep(80);
+            const page = document.querySelector(checkpoint.selector);
+            const viewport = document.querySelector('.app-page__content');
+            const title = document.querySelector(checkpoint.title);
+            const pageRect = page?.getBoundingClientRect();
+            const viewportRect = viewport?.getBoundingClientRect();
+            const pageStyle = page ? getComputedStyle(page) : null;
+            const titleStyle = title ? getComputedStyle(title) : null;
+            featurePageMetrics.push({
+              page: checkpoint.page,
+              width: pageRect?.width ?? null,
+              leftGutter: pageRect && viewportRect ? pageRect.left - viewportRect.left : null,
+              rightGutter: pageRect && viewportRect ? viewportRect.right - pageRect.right : null,
+              maxWidth: pageStyle?.maxWidth ?? null,
+              boxSizing: pageStyle?.boxSizing ?? null,
+              paddingInline: pageStyle ? pageStyle.paddingLeft + ' / ' + pageStyle.paddingRight : null,
+              titleFontSize: titleStyle?.fontSize ?? null,
+              titleLineHeight: titleStyle?.lineHeight ?? null
+            });
+          }
+          const measuredFeaturePages = featurePageMetrics.filter((metric) =>
+            typeof metric.width === 'number' &&
+            typeof metric.leftGutter === 'number' &&
+            typeof metric.rightGutter === 'number'
+          );
+          report.phase42.checks.featurePagesCenteredInFullWidth =
+            measuredFeaturePages.length === featurePageCheckpoints.length &&
+            measuredFeaturePages.every((metric) =>
+              metric.width <= 1040.5 &&
+              Math.abs(metric.leftGutter - metric.rightGutter) <= 1.5 &&
+              metric.maxWidth === '1040px' &&
+              metric.boxSizing === 'border-box'
+            );
+          report.phase42.checks.featurePagesUseOneWidth =
+            measuredFeaturePages.length === featurePageCheckpoints.length &&
+            measuredFeaturePages.every((metric) =>
+              Math.abs(metric.width - measuredFeaturePages[0].width) <= 1
+            );
+          report.phase42.checks.featurePageTitleTypographyUnified =
+            measuredFeaturePages.length === featurePageCheckpoints.length &&
+            measuredFeaturePages.every((metric) =>
+              metric.titleFontSize === measuredFeaturePages[0].titleFontSize &&
+              metric.titleLineHeight === measuredFeaturePages[0].titleLineHeight
+            );
+          report.phase42.checks.featurePageMetrics = featurePageMetrics;
         } catch (e) {
           report.phase42.error = String(e);
           report.phase42.stack = (e instanceof Error) ? e.stack : null;
@@ -4897,7 +4996,9 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
           'fontSizeVarStillDefault', 'readerDoesNotInheritUiFontSize',
           'settingsSystemFontSizeIs20',
           'settingsPagesUseSharedStructure', 'settingsPagesVisualMetricsUnified',
-          'formFocusHasNoBlueFrame'
+          'formFocusHasNoBlueFrame',
+          'featurePagesCenteredInFullWidth', 'featurePagesUseOneWidth',
+          'featurePageTitleTypographyUnified'
         ];
         for (const k of checks42) {
           if (report.phase42.checks[k] !== true) {
@@ -4938,7 +5039,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
   try {
     const raw = await win.webContents.executeJavaScript(probe);
-    if ((smokeTopic || smokeOnboarding) && SMOKE_FLAGS.screenshotPath) {
+    if ((smokeTopic || smokeOnboarding || smokePhase42) && SMOKE_FLAGS.screenshotPath) {
       await new Promise<void>((resolve) => setTimeout(resolve, 250));
       const { writeFileSync } = await import('node:fs');
       const screenshot = await win.webContents.capturePage();
@@ -5364,7 +5465,10 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       const provider = AiProviderRepository.getByIdWithKey(args.id);
       if (!provider) return fail('NOT_FOUND', 'Provider 不存在');
       return ok(await testConnection(provider, provider._apiKey));
-    } catch (e) { return fail('AI_PROVIDER_TEST_FAILED', String(e)); }
+    } catch (e) {
+      const failure = classifyAiFailure(e, 'PROVIDER');
+      return fail(failure.code, failure.message);
+    }
   });
 
   trustedIpcMain.handle(IPC_CHANNELS.AI_GENERATE_SUMMARY, async (_, args): Promise<IpcResult<AISummary>> => {
@@ -5387,7 +5491,10 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       // Phase 3.5.3：同步回写 articles 表，使文章重新打开时自动加载缓存
       ArticleRepository.updateSummary(article.id, content);
       return ok(result);
-    } catch (e) { return fail('AI_SUMMARY_FAILED', e instanceof Error ? e.message : String(e)); }
+    } catch (e) {
+      const failure = classifyAiFailure(e, 'SUMMARY');
+      return fail(failure.code, failure.message);
+    }
   });
 
   trustedIpcMain.handle(IPC_CHANNELS.AI_GENERATE_TRANSLATION, async (event, args): Promise<IpcResult<AITranslation>> => {
@@ -5430,9 +5537,9 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       ArticleRepository.updateTranslation(article.id, paragraphs);
       return ok(result);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      sendFailure(message);
-      return fail('AI_TRANSLATION_FAILED', message);
+      const failure = classifyAiFailure(e, 'TRANSLATION');
+      sendFailure(failure.message);
+      return fail(failure.code, failure.message);
     }
   });
 
@@ -5475,7 +5582,8 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
         generatedAt: new Date().toISOString()
       });
     } catch (e) {
-      return fail('AI_CHAT_FAILED', e instanceof Error ? e.message : String(e));
+      const failure = classifyAiFailure(e, 'CHAT');
+      return fail(failure.code, failure.message);
     }
   });
 
@@ -5607,7 +5715,10 @@ function registerIpcHandlers(trustedRendererUrl: string): void {
       const result: AITagSuggestion = { id: crypto.randomUUID(), articleId: article.id, providerId: provider.id, modelName: provider.modelName, suggestions, generatedAt: new Date().toISOString() };
       AiResultCache.set(article.id, 'tag_suggestions', result);
       return ok(result);
-    } catch (e) { return fail('AI_TAG_SUGGEST_FAILED', e instanceof Error ? e.message : String(e)); }
+    } catch (e) {
+      const failure = classifyAiFailure(e, 'TAG');
+      return fail(failure.code, failure.message);
+    }
   });
 
   trustedIpcMain.handle(IPC_CHANNELS.AI_GET_SUMMARY, async (_, args): Promise<IpcResult<AISummary | null>> => {

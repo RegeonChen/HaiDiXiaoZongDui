@@ -6,7 +6,9 @@ import { chatCompletion } from './openai-client';
 import {
   generateTranslation,
   splitMarkdownIntoChunks,
-  stripMarkdownImages
+  stripMarkdownImages,
+  TRANSLATION_LIMITS,
+  translationOutputTokenBudget
 } from './translation-agent';
 
 vi.mock('./openai-client', () => ({ chatCompletion: vi.fn() }));
@@ -84,6 +86,30 @@ describe('generateTranslation', () => {
       { type: 'segmentCompleted', count: 1, translated: '第一段译文。' },
       { type: 'segmentCompleted', count: 1, translated: '第二段译文。' }
     ]);
+  });
+
+  it('translates long articles with bounded concurrency and preserves final order', async () => {
+    let active = 0;
+    let maxActive = 0;
+    vi.mocked(chatCompletion).mockImplementation(async (_provider, messages) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return `译文：${messages?.[0]?.content.slice(-16) ?? ''}`;
+    });
+    const source = ['one', 'two', 'three', 'four', 'five'].join('\n\n');
+
+    const result = await generateTranslation(provider, source);
+
+    expect(maxActive).toBe(TRANSLATION_LIMITS.concurrency);
+    expect(result.map((item) => item.index)).toEqual([0, 1, 2, 3, 4]);
+    expect(chatCompletion).toHaveBeenCalledTimes(5);
+    const options = vi.mocked(chatCompletion).mock.calls[0]?.[2];
+    expect(options).toEqual(expect.objectContaining({
+      timeoutMs: TRANSLATION_LIMITS.timeoutMs,
+      maxTokens: translationOutputTokenBudget(3)
+    }));
   });
 
   it('does not send image blocks or image URLs to the model and preserves source indexes', async () => {
@@ -180,5 +206,11 @@ describe('generateTranslation', () => {
     expect(chunks[1]).toContain('```js');
     expect(chunks[1]).toContain('Still inside the outer block.');
     expect(chunks[2]).toBe('After.');
+  });
+
+  it('scales output tokens with paragraph length while keeping safe bounds', () => {
+    expect(translationOutputTokenBudget(20)).toBe(TRANSLATION_LIMITS.minOutputTokens);
+    expect(translationOutputTokenBudget(1_000)).toBeLessThan(TRANSLATION_LIMITS.maxOutputTokens);
+    expect(translationOutputTokenBudget(100_000)).toBe(TRANSLATION_LIMITS.maxOutputTokens);
   });
 });

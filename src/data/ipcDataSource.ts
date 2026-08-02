@@ -43,22 +43,26 @@ import type {
   DataSourceState,
   FeedSyncOutcome
 } from '../types/dataSource';
+import {
+  formatUserFacingError,
+  type UserAction
+} from '../utils/user-facing-error';
 
 type ErrorResponse = { success: false; error: { code: string; message: string; detail?: string } };
 type SuccessResponse<T> = { success: true; data: T };
 type IpcResponse<T> = SuccessResponse<T> | ErrorResponse;
 
-function toError<T>(r: ErrorResponse): DataSourceState<T> {
-  return { kind: 'error', error: `${r.error.code}: ${r.error.message}` };
+function toError<T>(r: ErrorResponse, action: UserAction = 'general'): DataSourceState<T> {
+  return { kind: 'error', error: formatUserFacingError(r.error, action) };
 }
 
-function unwrap<T>(r: IpcResponse<T>): DataSourceState<T> {
-  return r.success ? { kind: 'ready', data: r.data } : toError(r);
+function unwrap<T>(r: IpcResponse<T>, action: UserAction = 'general'): DataSourceState<T> {
+  return r.success ? { kind: 'ready', data: r.data } : toError(r, action);
 }
 
-function throwOnError(r: IpcResponse<unknown>, action: string): void {
+function throwOnError(r: IpcResponse<unknown>, action: UserAction): void {
   if (!r.success) {
-    throw new Error(`${action} failed: ${r.error.code}: ${r.error.message}`);
+    throw new Error(formatUserFacingError(r.error, action));
   }
 }
 
@@ -153,25 +157,25 @@ export class IpcDataSource implements FullDataSource {
   private _lastArticleTotal = 0;
 
   async feeds(): Promise<DataSourceState<Feed[]>> {
-    return unwrap(await window.api.feed.list());
+    return unwrap(await window.api.feed.list(), 'load');
   }
 
   async articles(filter: ArticleFilter): Promise<DataSourceState<Article[]>> {
     const r = await window.api.article.list(filter);
-    if (!r.success) return toError(r);
+    if (!r.success) return toError(r, 'load');
     this._lastArticleTotal = r.data.total;
     return { kind: 'ready', data: r.data.items };
   }
 
   async articleCount(filter: ArticleFilter): Promise<DataSourceState<number>> {
     const r = await window.api.article.list({ ...filter, offset: 0, limit: 1 });
-    if (!r.success) return toError(r);
+    if (!r.success) return toError(r, 'load');
     return { kind: 'ready', data: r.data.total };
   }
 
   // Phase 3.7.3：按 ID 获取单篇文章（搜索跳转保底）
   async getArticle(id: string): Promise<DataSourceState<Article>> {
-    return unwrap(await window.api.article.get(id));
+    return unwrap(await window.api.article.get(id), 'load');
   }
 
   // Phase 3.7.1:上次 articles 查询的 total(供"加载更多"判断 hasMore)
@@ -181,35 +185,35 @@ export class IpcDataSource implements FullDataSource {
 
   async markRead(articleId: string, isRead: boolean): Promise<void> {
     const r = await window.api.article.markRead(articleId, isRead);
-    throwOnError(r, 'markRead');
+    throwOnError(r, 'save');
   }
 
   async markStarred(articleId: string, isStarred: boolean): Promise<void> {
     const r = await window.api.article.markStarred(articleId, isStarred);
-    throwOnError(r, 'markStarred');
+    throwOnError(r, 'save');
   }
 
   // Phase 4.1.3：将指定订阅源下所有未读文章批量标为已读
   async markAllReadByFeed(feedId: string): Promise<number> {
     const r = await window.api.article.markAllReadByFeed(feedId);
-    if (!r.success) throw new Error(`${r.error.code}: ${r.error.message}`);
+    if (!r.success) throw new Error(formatUserFacingError(r.error, 'save'));
     return r.data;
   }
 
   // Phase 3.6.3：侧栏计数
   async articleCounts(): Promise<DataSourceState<{ all: number; unread: number; starred: number }>> {
-    return unwrap(await window.api.article.counts());
+    return unwrap(await window.api.article.counts(), 'load');
   }
 
   // Phase 3.5.x:按 tag 统计文章数(侧栏 tab=tags 展示用)
   async articleCountsByTag(): Promise<DataSourceState<Record<string, number>>> {
-    return unwrap(await window.api.article.countsByTag());
+    return unwrap(await window.api.article.countsByTag(), 'load');
   }
 
   async syncFeed(feedId: string): Promise<FeedSyncOutcome> {
     const r = await window.api.sync.feed(feedId);
     if (!r.success) {
-      const message = `${r.error.code}: ${r.error.message}`;
+      const message = formatUserFacingError(r.error, 'sync');
       return {
         ok: false,
         message,
@@ -232,20 +236,20 @@ export class IpcDataSource implements FullDataSource {
     }
     return {
       ok: false,
-      message: result.error ?? '同步失败',
+      message: formatUserFacingError(result.error ?? '同步失败', 'sync'),
       newArticles: 0,
       updatedArticles: 0,
-      error: result.error,
+      error: formatUserFacingError(result.error ?? '同步失败', 'sync'),
       stages: result.stages
     };
   }
 
   async syncProgress(): Promise<DataSourceState<SyncProgress>> {
-    return unwrap(await window.api.sync.progress());
+    return unwrap(await window.api.sync.progress(), 'sync');
   }
 
   async createFeed(url: string, title?: string): Promise<DataSourceState<Feed>> {
-    return unwrap(await window.api.feed.create({ url, title }));
+    return unwrap(await window.api.feed.create({ url, title }), 'feed');
   }
 
   // Phase 3.5.x: 更新订阅源(title / groupName / syncIntervalMin),
@@ -254,158 +258,162 @@ export class IpcDataSource implements FullDataSource {
     id: string,
     input: { title?: string; groupName?: string | null; syncIntervalMin?: number | null }
   ): Promise<DataSourceState<Feed>> {
-    return unwrap(await window.api.feed.update(id, input));
+    return unwrap(await window.api.feed.update(id, input), 'feed');
   }
 
   // Phase 3.5.x: 列出订阅源组 + 删除组
   async feedListGroups(): Promise<DataSourceState<string[]>> {
-    return unwrap(await window.api.feed.listGroups());
+    return unwrap(await window.api.feed.listGroups(), 'load');
   }
 
   async feedClearGroup(groupName: string): Promise<DataSourceState<number>> {
-    return unwrap(await window.api.feed.clearGroup(groupName));
+    return unwrap(await window.api.feed.clearGroup(groupName), 'save');
   }
 
   async getCleanedHtml(articleId: string): Promise<DataSourceState<string>> {
-    return unwrap(await window.api.content.getCleanedHtml(articleId));
+    return unwrap(await window.api.content.getCleanedHtml(articleId), 'load');
   }
 
   async getCleanedMarkdown(articleId: string): Promise<DataSourceState<string>> {
-    return unwrap(await window.api.content.getCleanedMarkdown(articleId));
+    return unwrap(await window.api.content.getCleanedMarkdown(articleId), 'load');
   }
 
   async htmlBlockSplit(html: string): Promise<DataSourceState<HtmlBlock[]>> {
-    return unwrap(await window.api.content.splitHtmlBlocks(html));
+    return unwrap(await window.api.content.splitHtmlBlocks(html), 'load');
   }
 
   // ============== Tag ==============
 
   async tagList(): Promise<DataSourceState<Tag[]>> {
-    return unwrap(await window.api.tag.list());
+    return unwrap(await window.api.tag.list(), 'load');
   }
 
   async tagCreate(input: TagCreateInput): Promise<DataSourceState<Tag>> {
-    return unwrap(await window.api.tag.create(input));
+    return unwrap(await window.api.tag.create(input), 'save');
   }
 
   async tagUpdate(id: string, input: TagUpdateInput): Promise<DataSourceState<Tag>> {
-    return unwrap(await window.api.tag.update(id, input));
+    return unwrap(await window.api.tag.update(id, input), 'save');
   }
 
   async tagDelete(id: string): Promise<void> {
-    throwOnError(await window.api.tag.delete(id), 'tagDelete');
+    throwOnError(await window.api.tag.delete(id), 'delete');
   }
 
   async tagAddToArticle(articleId: string, tagId: string): Promise<void> {
-    throwOnError(await window.api.tag.addToArticle(articleId, tagId), 'tagAddToArticle');
+    throwOnError(await window.api.tag.addToArticle(articleId, tagId), 'save');
   }
 
   async tagRemoveFromArticle(articleId: string, tagId: string): Promise<void> {
     throwOnError(
       await window.api.tag.removeFromArticle(articleId, tagId),
-      'tagRemoveFromArticle'
+      'save'
     );
   }
 
   async tagGetByArticle(articleId: string): Promise<DataSourceState<Tag[]>> {
-    return unwrap(await window.api.tag.getByArticle(articleId));
+    return unwrap(await window.api.tag.getByArticle(articleId), 'load');
   }
 
   // ============== Note ==============
 
   async noteListByArticle(articleId: string): Promise<DataSourceState<Note[]>> {
-    return unwrap(await window.api.note.listByArticle(articleId));
+    return unwrap(await window.api.note.listByArticle(articleId), 'load');
   }
 
   async noteCreate(input: NoteCreateInput): Promise<DataSourceState<Note>> {
-    return unwrap(await window.api.note.create(input));
+    return unwrap(await window.api.note.create(input), 'save');
   }
 
   async noteUpdate(id: string, input: NoteUpdateInput): Promise<DataSourceState<Note>> {
-    return unwrap(await window.api.note.update(id, input));
+    return unwrap(await window.api.note.update(id, input), 'save');
   }
 
   async noteDelete(id: string): Promise<void> {
-    throwOnError(await window.api.note.delete(id), 'noteDelete');
+    throwOnError(await window.api.note.delete(id), 'delete');
   }
 
   // ============== Topic ==============
 
   async topicList(): Promise<DataSourceState<Topic[]>> {
-    return unwrap(await window.api.topic.list());
+    return unwrap(await window.api.topic.list(), 'load');
   }
 
   async topicGet(id: string): Promise<DataSourceState<Topic>> {
-    return unwrap(await window.api.topic.get(id));
+    return unwrap(await window.api.topic.get(id), 'load');
   }
 
   async topicCreate(input: TopicCreateInput): Promise<DataSourceState<Topic>> {
-    return unwrap(await window.api.topic.create(input));
+    return unwrap(await window.api.topic.create(input), 'save');
   }
 
   async topicUpdate(id: string, input: TopicUpdateInput): Promise<DataSourceState<Topic>> {
-    return unwrap(await window.api.topic.update(id, input));
+    return unwrap(await window.api.topic.update(id, input), 'save');
   }
 
   async topicDelete(id: string): Promise<void> {
-    throwOnError(await window.api.topic.delete(id), 'topicDelete');
+    throwOnError(await window.api.topic.delete(id), 'delete');
   }
 
   async topicGetArticles(topicId: string): Promise<DataSourceState<Article[]>> {
-    return unwrap(await window.api.topic.getArticles(topicId));
+    return unwrap(await window.api.topic.getArticles(topicId), 'load');
   }
 
   async topicGetGraph(topicId: string): Promise<DataSourceState<TopicGraph>> {
-    return unwrap(await window.api.topic.getGraph(topicId));
+    return unwrap(await window.api.topic.getGraph(topicId), 'load');
   }
 
   async topicGetTimeline(topicId: string): Promise<DataSourceState<TimelineEntry[]>> {
-    return unwrap(await window.api.topic.getTimeline(topicId));
+    return unwrap(await window.api.topic.getTimeline(topicId), 'load');
   }
 
   async topicGetEventGroups(topicId: string): Promise<DataSourceState<EventGroup[]>> {
-    return unwrap(await window.api.topic.getEventGroups(topicId));
+    return unwrap(await window.api.topic.getEventGroups(topicId), 'load');
   }
 
   async topicGenerateBriefing(topicId: string): Promise<{ ok: boolean; message: string }> {
     const r = await window.api.topic.generateBriefing(topicId);
-    return r.success ? { ok: true, message: '已生成' } : { ok: false, message: r.error?.message ?? '生成失败' };
+    return r.success
+      ? { ok: true, message: '已生成' }
+      : { ok: false, message: formatUserFacingError(r.error, 'ai') };
   }
 
   async topicGetBriefing(topicId: string): Promise<DataSourceState<Briefing | null>> {
-    return unwrap(await window.api.topic.getBriefing(topicId));
+    return unwrap(await window.api.topic.getBriefing(topicId), 'load');
   }
 
   async topicUpdateBriefing(topicId: string, editedContent: string): Promise<DataSourceState<Briefing>> {
-    return unwrap(await window.api.topic.updateBriefing(topicId, editedContent));
+    return unwrap(await window.api.topic.updateBriefing(topicId, editedContent), 'save');
   }
 
   async topicExportBriefing(topicId: string, format: ExportFormat): Promise<DataSourceState<string>> {
-    return unwrap(await window.api.topic.exportBriefing(topicId, format));
+    return unwrap(await window.api.topic.exportBriefing(topicId, format), 'general');
   }
 
   // ============== AI Provider ==============
 
   async aiProviderList(): Promise<DataSourceState<AIProvider[]>> {
-    return unwrap(await window.api.ai.providerList());
+    return unwrap(await window.api.ai.providerList(), 'load');
   }
 
   async aiProviderCreate(input: AIProviderCreateInput): Promise<DataSourceState<AIProvider>> {
-    return unwrap(await window.api.ai.providerCreate(input));
+    return unwrap(await window.api.ai.providerCreate(input), 'save');
   }
 
   async aiProviderUpdate(id: string, input: AIProviderUpdateInput): Promise<DataSourceState<AIProvider>> {
-    return unwrap(await window.api.ai.providerUpdate(id, input));
+    return unwrap(await window.api.ai.providerUpdate(id, input), 'save');
   }
 
   async aiProviderDelete(id: string): Promise<void> {
-    throwOnError(await window.api.ai.providerDelete(id), 'aiProviderDelete');
+    throwOnError(await window.api.ai.providerDelete(id), 'delete');
   }
 
   async aiProviderTest(id: string): Promise<{ ok: boolean; message: string }> {
     const r = await window.api.ai.providerTest(id);
-    if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
-    return r.data;
+    if (!r.success) return { ok: false, message: formatUserFacingError(r.error, 'ai') };
+    return r.data.ok
+      ? r.data
+      : { ok: false, message: formatUserFacingError(r.data.message, 'ai') };
   }
 
   // ============== AI Operations ==============
@@ -416,14 +424,14 @@ export class IpcDataSource implements FullDataSource {
     detailLevel?: SummaryDetailLevel
   ): Promise<{ ok: boolean; message: string }> {
     const r = await window.api.ai.generateSummary(articleId, language, detailLevel);
-    if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
+    if (!r.success) return { ok: false, message: formatUserFacingError(r.error, 'ai') };
     return { ok: true, message: '摘要已生成' };
   }
 
   async aiGetSummary(articleId: string): Promise<DataSourceState<string>> {
     const r = await window.api.ai.getSummary(articleId);
-    if (!r.success) return toError(r);
-    if (!r.data) return { kind: 'error', error: 'AI_RESULT_NOT_FOUND: 未找到摘要结果' };
+    if (!r.success) return toError(r, 'ai');
+    if (!r.data) return { kind: 'error', error: '生成完成后没有读取到摘要，请重试。' };
     return { kind: 'ready', data: r.data.content };
   }
 
@@ -432,7 +440,7 @@ export class IpcDataSource implements FullDataSource {
     targetLanguage?: Language
   ): Promise<{ ok: boolean; message: string }> {
     const r = await window.api.ai.generateTranslation(articleId, targetLanguage);
-    if (!r.success) return { ok: false, message: `${r.error.code}: ${r.error.message}` };
+    if (!r.success) return { ok: false, message: formatUserFacingError(r.error, 'ai') };
     return { ok: true, message: '翻译已生成' };
   }
 
@@ -440,14 +448,14 @@ export class IpcDataSource implements FullDataSource {
     articleId: string,
     messages: AIChatMessage[]
   ): Promise<DataSourceState<AIChatReply>> {
-    return unwrap(await window.api.ai.chat(articleId, messages));
+    return unwrap(await window.api.ai.chat(articleId, messages), 'ai');
   }
 
   async aiRecommendTopics(
     articleId: string,
     refresh = false
   ): Promise<DataSourceState<AITopicRecommendation>> {
-    return unwrap(await window.api.ai.recommendTopics(articleId, refresh));
+    return unwrap(await window.api.ai.recommendTopics(articleId, refresh), 'ai');
   }
 
   aiSubscribeTranslationProgress(
@@ -461,51 +469,51 @@ export class IpcDataSource implements FullDataSource {
 
   async aiGetTranslation(articleId: string): Promise<DataSourceState<Array<{ index: number; original: string; translated: string }>>> {
     const r = await window.api.ai.getTranslation(articleId);
-    if (!r.success) return toError(r);
-    if (!r.data) return { kind: 'error', error: 'AI_RESULT_NOT_FOUND: 未找到翻译结果' };
+    if (!r.success) return toError(r, 'ai');
+    if (!r.data) return { kind: 'error', error: '生成完成后没有读取到翻译结果，请重试。' };
     return { kind: 'ready', data: r.data.paragraphs };
   }
 
   async aiSuggestTags(articleId: string): Promise<{ ok: boolean; message: string }> {
     const r = await window.api.ai.suggestTags(articleId);
-    if (!r.success) return { ok: false, message: r.error.message };
+    if (!r.success) return { ok: false, message: formatUserFacingError(r.error, 'ai') };
     return { ok: true, message: '标签建议已生成' };
   }
 
   async aiGetTagSuggestions(articleId: string): Promise<DataSourceState<Array<{ name: string; confidence: number; reason: string }>>> {
     const r = await window.api.ai.getTagSuggestions(articleId);
-    if (!r.success) return toError(r);
-    if (!r.data) return { kind: 'error', error: 'AI_RESULT_NOT_FOUND: 未找到标签建议' };
+    if (!r.success) return toError(r, 'ai');
+    if (!r.data) return { kind: 'error', error: '生成完成后没有读取到标签建议，请重试。' };
     return { kind: 'ready', data: r.data.suggestions };
   }
 
   // ============== Settings ==============
 
   async settingsGet(): Promise<DataSourceState<AppSettings>> {
-    return unwrap(await window.api.settings.get());
+    return unwrap(await window.api.settings.get(), 'load');
   }
 
   async settingsUpdate(settings: Partial<AppSettings>): Promise<DataSourceState<AppSettings>> {
-    return unwrap(await window.api.settings.update(settings));
+    return unwrap(await window.api.settings.update(settings), 'save');
   }
 
   // ============== Log ==============
 
   async logList(limit?: number): Promise<DataSourceState<LogEntry[]>> {
-    return unwrap(await window.api.log.list(limit));
+    return unwrap(await window.api.log.list(limit), 'load');
   }
 
   async logExport(): Promise<DataSourceState<string>> {
-    return unwrap(await window.api.log.export());
+    return unwrap(await window.api.log.export(), 'general');
   }
 
   // ============== OPML ==============
 
   async opmlImport(): Promise<DataSourceState<OpmlImportResult | null>> {
-    return unwrap(await window.api.opml.import());
+    return unwrap(await window.api.opml.import(), 'opml-import');
   }
 
   async opmlExport(feedIds?: string[]): Promise<DataSourceState<boolean>> {
-    return unwrap(await window.api.opml.export(feedIds));
+    return unwrap(await window.api.opml.export(feedIds), 'opml-export');
   }
 }

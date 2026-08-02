@@ -1,0 +1,107 @@
+/*
+ * 功能工作区统一布局
+ * ------------------
+ * 标签、笔记、专题、OPML 与设置页共用同一条内容轴。该文件由应用入口
+ * 在页面组件样式之后加载，专门收敛各历史页面残留的不同 max-width。
+ */
+
+.app-page__content,
+.settings-workspace__content {
+  --workspace-page-width: 1040px;
+}
+
+.app-page__content > :is(
+  .settings-page,
+  .notes-page,
+  .opml-export-page,
+  .tags-page,
+  .topics-page,
+  .topic-detail
+),
+.settings-workspace__content > :is(.settings-page, .general-modal--embedded) {
+  width: 100%;
+  max-width: var(--workspace-page-width);
+  min-height: 100%;
+  height: auto;
+  margin: 0 auto;
+  padding: 24px 30px 64px;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.app-page__content > .status-view,
+.settings-workspace__content > .status-view {
+  display: flex;
+  width: 100%;
+  max-width: var(--workspace-page-width);
+  min-height: 360px;
+  flex: 1 1 auto;
+  margin: 0 auto;
+  align-items: stretch;
+  box-sizing: border-box;
+}
+
+/* 专题详情沿用同一页面宽度，并将内部导航和内容收成一张连续卡片。 */
+.app-page__content > .topic-detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-page__content > .topic-detail .topic-detail__header {
+  flex: 0 0 auto;
+  padding: 0 2px 18px;
+  border: 0;
+  background: transparent;
+}
+
+.app-page__content > .topic-detail .topic-detail__back-btn {
+  margin-bottom: 10px;
+}
+
+.app-page__content > .topic-detail .topic-detail__title {
+  margin: 0;
+  color: var(--fg);
+  font-size: 24px;
+  font-weight: 680;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.app-page__content > .topic-detail .topic-detail__tabs {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-bottom-color: var(--border-soft);
+  border-radius: 10px 10px 0 0;
+  background: color-mix(in srgb, var(--bg-elev) 72%, var(--bg));
+  box-shadow: var(--shadow-sm);
+}
+
+.app-page__content > .topic-detail .topic-detail__content {
+  min-height: 360px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-sm);
+}
+
+.app-page__content > .topic-detail .topic-briefing {
+  margin-inline: auto;
+}
+
+@media (max-width: 1050px) {
+  .app-page__content > :is(
+    .settings-page,
+    .notes-page,
+    .opml-export-page,
+    .tags-page,
+    .topics-page,
+    .topic-detail
+  ),
+  .settings-workspace__content > :is(.settings-page, .general-modal--embedded) {
+    padding: 20px 22px 52px;
+  }
+}

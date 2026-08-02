@@ -29,6 +29,7 @@ import {
   type ContentPipelineIpcSecurity,
   type ContentPipelineIpcServices
 } from './ipc-handlers';
+import { ContentPipelineError } from './errors';
 
 const trustedRendererUrl = 'file:///Applications/Juhe/out/renderer/index.html';
 
@@ -116,6 +117,24 @@ describe('content pipeline IPC security', () => {
       .resolves.toEqual({ success: true, data: false });
     expect(harness.importFile).not.toHaveBeenCalled();
     expect(harness.exportFile).not.toHaveBeenCalled();
+  });
+
+  it('preserves stable OPML error codes for actionable renderer messages', async () => {
+    const harness = createHarness({
+      importPath: '/approved/broken.opml',
+      exportPath: null
+    });
+    harness.importFile.mockRejectedValueOnce(
+      new ContentPipelineError('OPML_PARSE_FAILED', '文件缺少 OPML 根节点')
+    );
+
+    await expect(invoke(IPC_CHANNELS.OPML_IMPORT, trustedRendererUrl)).resolves.toEqual({
+      success: false,
+      error: {
+        code: 'OPML_PARSE_FAILED',
+        message: '文件缺少 OPML 根节点'
+      }
+    });
   });
 
   it('validates, trims and deduplicates selected feed IDs before exporting', async () => {

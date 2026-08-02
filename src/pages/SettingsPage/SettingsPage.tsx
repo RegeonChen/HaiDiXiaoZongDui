@@ -12,6 +12,7 @@ import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
 import { EmptyView } from '../../components/StatusView/EmptyView';
+import { formatUserFacingError } from '../../utils/user-facing-error';
 import './SettingsPage.css';
 
 export interface SettingsPageProps {
@@ -56,7 +57,10 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
         setSettings(r.data);
         onToast('设置已保存', 'success');
       } else {
-        onToast(`保存失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        onToast(
+          `保存失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '设置尚未准备完成，请重试。'}`,
+          'error'
+        );
       }
     },
     [ds, onToast]
@@ -71,7 +75,10 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
         const list = await ds.aiProviderList();
         if (list.kind === 'ready') setProviders(list.data);
       } else {
-        onToast(`创建失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        onToast(
+          `创建失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '设置尚未准备完成，请重试。'}`,
+          'error'
+        );
       }
     },
     [ds, onToast]
@@ -86,7 +93,10 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
         const list = await ds.aiProviderList();
         if (list.kind === 'ready') setProviders(list.data);
       } else {
-        onToast(`更新失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        onToast(
+          `更新失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '设置尚未准备完成，请重试。'}`,
+          'error'
+        );
       }
     },
     [ds, onToast]
@@ -100,7 +110,7 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
         const list = await ds.aiProviderList();
         if (list.kind === 'ready') setProviders(list.data);
       } catch (e) {
-        onToast(`删除失败：${e instanceof Error ? e.message : String(e)}`, 'error');
+        onToast(`删除失败：${formatUserFacingError(e, 'delete')}`, 'error');
       }
     },
     [ds, onToast]

@@ -13,6 +13,7 @@ import { TopicArticlesTab } from './tabs/TopicArticlesTab';
 import { TopicBriefingTab } from './tabs/TopicBriefingTab';
 import { TopicFormDialog } from '../TopicFormDialog/TopicFormDialog';
 import { TopicGraphView } from '../TopicGraph/TopicGraphView';
+import { formatUserFacingError } from '../../utils/user-facing-error';
 import './TopicDetail.css';
 
 export type TopicTab = 'graph' | 'articles' | 'briefing';
@@ -77,9 +78,20 @@ export function TopicDetail({ topicId, onBack, onToast, onOpenArticle }: TopicDe
         setGraph(graphResult.data);
       } else {
         setGraph(null);
-        onToast(`脉络图生成失败：${graphResult.kind === 'error' ? graphResult.error : '尚未就绪'}`, 'error');
+        onToast(
+          `脉络图生成失败：${graphResult.kind === 'error' ? formatUserFacingError(graphResult.error, 'load') : '数据尚未准备完成，请重试。'}`,
+          'error'
+        );
       }
-      if (articleResult.kind === 'ready') setArticles(articleResult.data);
+      if (articleResult.kind === 'ready') {
+        setArticles(articleResult.data);
+      } else {
+        setArticles([]);
+        onToast(
+          `专题文章加载失败：${articleResult.kind === 'error' ? formatUserFacingError(articleResult.error, 'load') : '数据尚未准备完成，请重试。'}`,
+          'error'
+        );
+      }
     } finally {
       setGraphRefreshing(false);
     }
@@ -92,15 +104,31 @@ export function TopicDetail({ topicId, onBack, onToast, onOpenArticle }: TopicDe
     } else if (tab === 'articles' && articles === null) {
       void (async () => {
         const r = await ds.topicGetArticles(topicId);
-        setArticles(r.kind === 'ready' ? r.data : []);
+        if (r.kind === 'ready') {
+          setArticles(r.data);
+        } else {
+          setArticles([]);
+          onToast(
+            `专题文章加载失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'load') : '数据尚未准备完成，请重试。'}`,
+            'error'
+          );
+        }
       })();
     } else if (tab === 'briefing' && briefing === undefined) {
       void (async () => {
         const r = await ds.topicGetBriefing(topicId);
-        setBriefing(r.kind === 'ready' ? r.data : null);
+        if (r.kind === 'ready') {
+          setBriefing(r.data);
+        } else {
+          setBriefing(null);
+          onToast(
+            `专题简报加载失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'load') : '数据尚未准备完成，请重试。'}`,
+            'error'
+          );
+        }
       })();
     }
-  }, [tab, topicId, articles, graph, graphRefreshing, briefing, ds, loadGraph]);
+  }, [tab, topicId, articles, graph, graphRefreshing, briefing, ds, loadGraph, onToast]);
 
   if (topic === undefined) {
     return <LoadingView message="正在加载专题…" />;
@@ -121,10 +149,13 @@ export function TopicDetail({ topicId, onBack, onToast, onOpenArticle }: TopicDe
           setBriefing(r2.data);
           onToast('简报已生成', 'success');
         } else {
-          onToast(`读取简报失败：${r2.kind === 'error' ? r2.error : '尚未就绪'}`, 'error');
+          onToast(
+            `读取简报失败：${r2.kind === 'error' ? formatUserFacingError(r2.error, 'load') : '结果尚未准备完成，请重试。'}`,
+            'error'
+          );
         }
       } else {
-        onToast(`简报生成失败：${r.message}`, 'error');
+        onToast(`简报生成失败：${formatUserFacingError(r.message, 'ai')}`, 'error');
       }
     } finally {
       setBusy(false);
@@ -223,7 +254,10 @@ export function TopicDetail({ topicId, onBack, onToast, onOpenArticle }: TopicDe
                 onToast('简报已保存', 'success');
                 return true;
               }
-              onToast(`保存失败：${r.kind === 'error' ? r.error : '尚未就绪'}`, 'error');
+              onToast(
+                `保存失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '简报尚未准备完成，请重试。'}`,
+                'error'
+              );
               return false;
             }}
             onExport={async (format) => {
@@ -232,7 +266,10 @@ export function TopicDetail({ topicId, onBack, onToast, onOpenArticle }: TopicDe
                 onToast(`已导出 ${format.toUpperCase()}（${r.data.length} 字符）`, 'success');
                 return r.data;
               }
-              onToast(`导出失败：${r.kind === 'error' ? r.error : '尚未就绪'}`, 'error');
+              onToast(
+                `导出失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'general') : '简报尚未准备完成，请重试。'}`,
+                'error'
+              );
               return null;
             }}
             onToast={onToast}
@@ -255,7 +292,10 @@ export function TopicDetail({ topicId, onBack, onToast, onOpenArticle }: TopicDe
               onToast(`已更新「${value.name}」`, 'success');
               setEditing(false);
             } else {
-              onToast(`更新失败：${r.kind === 'error' ? r.error : '尚未就绪'}`, 'error');
+              onToast(
+                `更新失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '专题尚未准备完成，请重试。'}`,
+                'error'
+              );
             }
           }}
           onClose={() => setEditing(false)}

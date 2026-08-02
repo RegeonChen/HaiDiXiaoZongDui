@@ -25,6 +25,7 @@ import type {
   AppSettings,
   LogEntry,
   OpmlImportResult,
+  ExportFormat,
   Language,
   HtmlBlock,
 } from './types';

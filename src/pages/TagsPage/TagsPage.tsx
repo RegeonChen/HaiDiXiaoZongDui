@@ -12,6 +12,7 @@ import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
 import { EmptyView } from '../../components/StatusView/EmptyView';
 import { parseArticleTitleTags } from '../../utils/article-title-tags';
+import { formatUserFacingError } from '../../utils/user-facing-error';
 import './TagsPage.css';
 
 const TAG_ARTICLE_PAGE_SIZE = 50;
@@ -63,7 +64,7 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
       setTags(r.data);
       setError(null);
     } else {
-      setError(r.kind === 'error' ? r.error : '加载失败');
+      setError(r.kind === 'error' ? formatUserFacingError(r.error, 'load') : '标签仍在加载，请稍后重试。');
     }
   }, [ds]);
 
@@ -89,7 +90,10 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
         setNewName('');
         await load();
       } else {
-        onToast(`创建失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        onToast(
+          `创建失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '数据尚未准备完成，请重试。'}`,
+          'error'
+        );
       }
     },
     [ds, newName, newColor, load, onToast]
@@ -109,7 +113,7 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
         }
         await load();
       } catch (err) {
-        onToast(`删除失败：${err instanceof Error ? err.message : String(err)}`, 'error');
+        onToast(`删除失败：${formatUserFacingError(err, 'delete')}`, 'error');
       }
     },
     [ds, load, onToast, selectedTagId]
@@ -204,8 +208,12 @@ export function TagsPage({ onToast, onOpenArticle }: TagsPageProps) {
     return m;
   }, [allFeeds]);
 
-  if (error) return <ErrorView message={error} onRetry={load} />;
-  if (tags === null) return <LoadingView message="正在加载标签…" />;
+  if (error) {
+    return <ErrorView message={error} onRetry={load} />;
+  }
+  if (tags === null) {
+    return <LoadingView message="正在加载标签…" />;
+  }
 
   return (
     <div className="tags-page">

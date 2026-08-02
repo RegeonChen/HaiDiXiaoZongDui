@@ -46,6 +46,7 @@ import {
   openWorkbenchTab as mergeWorkbenchTab,
   pinWorkbenchTab
 } from './utils/workbench-tabs';
+import { formatUserFacingError } from './utils/user-facing-error';
 import './index.css';
 import './styles/workbench-polish.css';
 
@@ -66,6 +67,14 @@ const SYNC_STAGE_LABELS: Record<SyncStage, string> = {
   completed: '已完成',
   failed: '失败'
 };
+
+function formatOpmlEntryError(value: string): string {
+  const separator = value.indexOf(': ');
+  if (separator <= 0) return formatUserFacingError(value, 'opml-import');
+  const name = value.slice(0, separator).trim();
+  const reason = value.slice(separator + 2);
+  return `${name}：${formatUserFacingError(reason, 'opml-import')}`;
+}
 
 export function App() {
   const ds = useDataSource();
@@ -631,7 +640,7 @@ export function App() {
             await refreshCounts();
           } catch (error) {
             pushToast(
-              `标记已读失败：${error instanceof Error ? error.message : String(error)}`,
+              `标记已读失败：${formatUserFacingError(error, 'save')}`,
               'error'
             );
           }
@@ -659,7 +668,7 @@ export function App() {
           await refreshCounts();
         } catch (error) {
           pushToast(
-            `更新星标失败：${error instanceof Error ? error.message : String(error)}`,
+            `更新星标失败：${formatUserFacingError(error, 'save')}`,
             'error'
           );
         }
@@ -746,12 +755,15 @@ export function App() {
         finishProgress(true);
         setFailedFeedIds((prev) => prev.filter((id) => id !== feed.id));
       } else {
-        pushToast(`同步失败：${r.error ?? '未知错误'}`, 'error');
+        pushToast(
+          `同步失败：${r.error ?? r.message ?? '同步未完成，请检查订阅地址和网络后重试。'}`,
+          'error'
+        );
         finishProgress(false);
         setFailedFeedIds((prev) => prev.includes(feed.id) ? prev : [...prev, feed.id]);
       }
     } catch (e) {
-      pushToast(`同步出错：${String(e)}`, 'error');
+      pushToast(`同步出错：${formatUserFacingError(e, 'sync')}`, 'error');
       finishProgress(false);
       setFailedFeedIds((prev) => prev.includes(feed.id) ? prev : [...prev, feed.id]);
     } finally {
@@ -831,7 +843,7 @@ export function App() {
       }
       void refreshCounts();
     } catch (e) {
-      pushToast(`标记失败：${e instanceof Error ? e.message : String(e)}`, 'error');
+      pushToast(`标记失败：${formatUserFacingError(e, 'save')}`, 'error');
     } finally {
       setFeedActionBusy(false);
     }
@@ -873,13 +885,16 @@ export function App() {
 
       let markedCount = 0;
       const updatedFeedIds = new Set<string>();
-      const failedFeedNames: string[] = [];
+      const failedFeeds: Array<{ name: string; error: string }> = [];
       for (const feed of feeds) {
         try {
           markedCount += await ds.markAllReadByFeed(feed.id);
           updatedFeedIds.add(feed.id);
-        } catch {
-          failedFeedNames.push(feed.siteTitle || feed.title || feed.url);
+        } catch (error) {
+          failedFeeds.push({
+            name: feed.siteTitle || feed.title || feed.url,
+            error: formatUserFacingError(error, 'save')
+          });
         }
       }
 
@@ -900,16 +915,18 @@ export function App() {
       }
       void refreshCounts();
 
-      if (failedFeedNames.length === 0) {
+      if (failedFeeds.length === 0) {
         pushToast(`已标记 ${markedCount} 篇为已读`, 'success');
       } else {
+        const details = failedFeeds.slice(0, 5).map((item) => `· ${item.name}：${item.error}`);
+        if (failedFeeds.length > 5) details.push(`…还有 ${failedFeeds.length - 5} 个订阅源失败`);
         pushToast(
-          `已标记 ${markedCount} 篇为已读；${failedFeedNames.length} 个订阅源处理失败`,
+          `部分标记完成：已标记 ${markedCount} 篇，${failedFeeds.length} 个订阅源失败\n${details.join('\n')}`,
           'error'
         );
       }
     } catch (e) {
-      pushToast(`标记失败：${e instanceof Error ? e.message : String(e)}`, 'error');
+      pushToast(`标记失败：${formatUserFacingError(e, 'save')}`, 'error');
     } finally {
       setFeedActionBusy(false);
     }
@@ -1073,7 +1090,7 @@ export function App() {
           }
           await refreshCounts();
         } catch (error) {
-          const message = error instanceof Error ? error.message : '未知错误';
+          const message = formatUserFacingError(error, 'sync');
           pushToast(`「${feed.title || url}」同步失败：${message}`, 'error');
         }
       })();
@@ -1125,7 +1142,7 @@ export function App() {
           // 收集失败源名称和具体错误原因(后端 diagnosticErrorMessage 已规范化文本)
           failedFeedErrors.push({
             name: f.siteTitle || f.title || f.url,
-            error: r.message || r.error || '未知错误'
+            error: r.message || r.error || '同步未完成，请检查订阅地址和网络后重试。'
           });
         }
       }
@@ -1161,7 +1178,7 @@ export function App() {
       }, 3000);
     } catch (e) {
       setSyncingProgress(null);
-      pushToast(`同步出错：${String(e)}`, 'error');
+      pushToast(`同步出错：${formatUserFacingError(e, 'sync')}`, 'error');
     } finally {
       setSyncing(false);
     }
@@ -1188,14 +1205,14 @@ export function App() {
       });
       if (!ok) return;
       try {
-        const api = (window as unknown as { api?: { feed?: { delete: (id: string) => Promise<{ success: boolean; error?: { message: string } }> } } }).api;
+        const api = (window as unknown as { api?: { feed?: { delete: (id: string) => Promise<{ success: boolean; error?: { code?: string; message: string } }> } } }).api;
         if (!api?.feed?.delete) {
           pushToast('当前模式不支持删除', 'error');
           return;
         }
         const r = await api.feed.delete(feed.id);
         if (!r.success) {
-          pushToast(`删除失败：${r.error?.message ?? '未知错误'}`, 'error');
+          pushToast(`删除失败：${formatUserFacingError(r.error, 'delete')}`, 'error');
           return;
         }
         if (selection.feedId === feed.id) {
@@ -1206,7 +1223,7 @@ export function App() {
         await refreshCounts();
         pushToast(`已删除「${feed.siteTitle || feed.title}」`, 'success');
       } catch (e) {
-        pushToast(`删除失败：${String(e)}`, 'error');
+        pushToast(`删除失败：${formatUserFacingError(e, 'delete')}`, 'error');
       }
     },
     [ds, purgeArticleTabsByFeed, pushToast, refreshCounts, refreshFeeds, selectFeed, selection.feedId]
@@ -1245,7 +1262,7 @@ export function App() {
       });
       if (!ok) return;
       const api = (window as unknown as {
-        api?: { feed?: { delete: (id: string) => Promise<{ success: boolean; error?: { message: string } }> } }
+        api?: { feed?: { delete: (id: string) => Promise<{ success: boolean; error?: { code?: string; message: string } }> } }
       }).api;
       if (!api?.feed?.delete) {
         pushToast('当前模式不支持删除', 'error');
@@ -1253,8 +1270,11 @@ export function App() {
       }
       let ok2 = 0;
       let fail2 = 0;
+      const failures: Array<{ name: string; error: string }> = [];
       const deletedFeedIds = new Set<string>();
       for (const id of feedIds) {
+        const feed = feeds.find((item) => item.id === id);
+        const feedName = feed?.siteTitle || feed?.title || feed?.url || '未命名订阅源';
         try {
           const r = await api.feed.delete(id);
           if (r.success) {
@@ -1262,9 +1282,14 @@ export function App() {
             deletedFeedIds.add(id);
           } else {
             fail2 += 1;
+            failures.push({
+              name: feedName,
+              error: formatUserFacingError(r.error, 'delete')
+            });
           }
-        } catch {
+        } catch (error) {
           fail2 += 1;
+          failures.push({ name: feedName, error: formatUserFacingError(error, 'delete') });
         }
       }
       // 如果当前选中在被删列表里,回退到 'all'
@@ -1275,10 +1300,13 @@ export function App() {
       await refreshFeeds();
       await refreshGroups();
       await refreshCounts();
-      pushToast(
-        `已删除 ${ok2} 个订阅源${fail2 > 0 ? `,${fail2} 个失败` : ''}`,
-        fail2 > 0 ? 'info' : 'success'
-      );
+      if (fail2 === 0) {
+        pushToast(`已删除 ${ok2} 个订阅源`, 'success');
+      } else {
+        const details = failures.slice(0, 5).map((item) => `· ${item.name}：${item.error}`);
+        if (failures.length > 5) details.push(`…还有 ${failures.length - 5} 个失败项`);
+        pushToast(`批量删除部分完成：成功 ${ok2}，失败 ${fail2}\n${details.join('\n')}`, 'error');
+      }
     },
     [
       ds,
@@ -1312,12 +1340,15 @@ export function App() {
       if (!ok) return;
       let ok2 = 0;
       let fail2 = 0;
+      const failures: Array<{ name: string; error: string }> = [];
       for (const id of tagIds) {
+        const tagName = tags.find((tag) => tag.id === id)?.name ?? '未命名标签';
         try {
           await ds.tagDelete(id);
           ok2 += 1;
-        } catch {
+        } catch (error) {
           fail2 += 1;
+          failures.push({ name: tagName, error: formatUserFacingError(error, 'delete') });
         }
       }
       // 如果当前选中是被删的 tag,回退到 'all'
@@ -1327,10 +1358,13 @@ export function App() {
       }
       await refreshTags();
       await refreshTagCounts();
-      pushToast(
-        `已删除 ${ok2} 个标签${fail2 > 0 ? `,${fail2} 个失败` : ''}`,
-        fail2 > 0 ? 'info' : 'success'
-      );
+      if (fail2 === 0) {
+        pushToast(`已删除 ${ok2} 个标签`, 'success');
+      } else {
+        const details = failures.slice(0, 5).map((item) => `· ${item.name}：${item.error}`);
+        if (failures.length > 5) details.push(`…还有 ${failures.length - 5} 个失败项`);
+        pushToast(`批量删除标签部分完成：成功 ${ok2}，失败 ${fail2}\n${details.join('\n')}`, 'error');
+      }
     },
     [tags, ds, pushToast, refreshTags, refreshTagCounts, selectFeed, selection.feedId]
   );
@@ -1359,10 +1393,13 @@ export function App() {
           const target = groupName ?? '未分组';
           pushToast(`已将「${feed.siteTitle || feed.title}」移到「${target}」`, 'success');
         } else {
-          pushToast(`移动失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+          pushToast(
+            `移动失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '数据尚未准备完成，请重试。'}`,
+            'error'
+          );
         }
       } catch (e) {
-        pushToast(`移动失败：${String(e)}`, 'error');
+        pushToast(`移动失败：${formatUserFacingError(e, 'save')}`, 'error');
       }
     },
     [ds, pushToast, refreshFeeds, refreshGroups]
@@ -1385,7 +1422,7 @@ export function App() {
         await refreshTagCounts();
         pushToast(`已删除标签「${tagName}」`, 'success');
       } catch (e) {
-        pushToast(`删除失败:${e instanceof Error ? e.message : String(e)}`, 'error');
+        pushToast(`删除失败：${formatUserFacingError(e, 'delete')}`, 'error');
       }
     },
     [ds, pushToast, refreshTags, refreshTagCounts]
@@ -1408,17 +1445,25 @@ export function App() {
     if (!ok) return;
     let ok2 = 0;
     let fail2 = 0;
+    const failures: Array<{ name: string; error: string }> = [];
     for (const t of unusedTags) {
       try {
         await ds.tagDelete(t.id);
         ok2 += 1;
-      } catch {
+      } catch (error) {
         fail2 += 1;
+        failures.push({ name: t.name, error: formatUserFacingError(error, 'delete') });
       }
     }
     await refreshTags();
     await refreshTagCounts();
-    pushToast(`已删除 ${ok2} 个未使用标签${fail2 > 0 ? `，${fail2} 个失败` : ''}`, 'success');
+    if (fail2 === 0) {
+      pushToast(`已删除 ${ok2} 个未使用标签`, 'success');
+    } else {
+      const details = failures.slice(0, 5).map((item) => `· ${item.name}：${item.error}`);
+      if (failures.length > 5) details.push(`…还有 ${failures.length - 5} 个失败项`);
+      pushToast(`删除未使用标签部分完成：成功 ${ok2}，失败 ${fail2}\n${details.join('\n')}`, 'error');
+    }
   }, [tags, tagCounts, ds, pushToast, refreshTags, refreshTagCounts]);
 
   // Phase 3.5.x：删除组（组内所有订阅源移到"未分组"，订阅源本身保留）
@@ -1440,10 +1485,13 @@ export function App() {
           await refreshGroups();
           pushToast(`已删除组「${groupName}」（${r.data} 个订阅源移到未分组）`, 'success');
         } else {
-          pushToast(`删除失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+          pushToast(
+            `删除失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'delete') : '数据尚未准备完成，请重试。'}`,
+            'error'
+          );
         }
       } catch (e) {
-        pushToast(`删除失败：${String(e)}`, 'error');
+        pushToast(`删除失败：${formatUserFacingError(e, 'delete')}`, 'error');
       }
     },
     [ds, pushToast, refreshFeeds, refreshGroups]
@@ -1451,22 +1499,29 @@ export function App() {
 
   // OPML 导入
   const handleOpmlImport = useCallback(async () => {
-    const api = (window as unknown as { api?: { opml?: { import: () => Promise<{ success: boolean; data?: { feedsImported: number; feedsSkipped: number; errors: string[] } | null; error?: { message: string } }> } } }).api;
+    const api = (window as unknown as { api?: { opml?: { import: () => Promise<{ success: boolean; data?: { feedsImported: number; feedsSkipped: number; errors: string[] } | null; error?: { code?: string; message: string } }> } } }).api;
     if (!api?.opml?.import) {
       pushToast('当前模式不支持 OPML 操作', 'error');
       return { ok: false, message: 'no-opml' };
     }
     const r = await api.opml.import();
     if (!r.success) {
-      pushToast(`OPML 导入失败：${r.error?.message ?? '未知错误'}`, 'error');
-      return { ok: false, message: r.error?.message ?? 'failed' };
+      const message = formatUserFacingError(r.error, 'opml-import');
+      pushToast(`OPML 导入失败：${message}`, 'error');
+      return { ok: false, message };
     }
     if (r.data === null || r.data === undefined) {
       return { ok: true, message: '已取消', result: null };
     }
     const { feedsImported, feedsSkipped, errors } = r.data;
     if (errors.length > 0) {
-      pushToast(`OPML 导入完成：新增 ${feedsImported}，跳过 ${feedsSkipped}，错误 ${errors.length}`, 'error');
+      const MAX_DETAILS = 5;
+      const details = errors.slice(0, MAX_DETAILS).map((error) => `· ${formatOpmlEntryError(error)}`);
+      if (errors.length > MAX_DETAILS) details.push(`…还有 ${errors.length - MAX_DETAILS} 条错误`);
+      pushToast(
+        `OPML 导入部分完成：新增 ${feedsImported}，跳过 ${feedsSkipped}，失败 ${errors.length}\n${details.join('\n')}`,
+        'error'
+      );
     } else if (feedsImported === 0 && feedsSkipped > 0) {
       pushToast(`OPML 全部跳过（已存在）：${feedsSkipped} 个`, 'info');
     } else {
@@ -1481,18 +1536,32 @@ export function App() {
         const newFeeds = allFeedsResp.data.filter((f) => f.lastSyncAt === null || !f.lastSyncSuccess);
         let okCount = 0;
         let failCount = 0;
+        const syncErrors: Array<{ name: string; error: string }> = [];
         for (let i = 0; i < newFeeds.length; i += 1) {
           const f = newFeeds[i];
           const r2 = await ds.syncFeed(f.id);
           if (r2.ok) okCount += 1;
-          else failCount += 1;
+          else {
+            failCount += 1;
+            syncErrors.push({
+              name: f.siteTitle || f.title || f.url,
+              error: r2.message || r2.error || '同步失败，请稍后重试。'
+            });
+          }
         }
         if (failCount === 0) {
           pushToast(`自动同步完成：${okCount}/${newFeeds.length} 成功`, 'success');
         } else {
-          pushToast(`自动同步部分失败：成功 ${okCount}，失败 ${failCount}`, 'error');
+          const details = syncErrors.slice(0, 5).map((item) => `· ${item.name}：${item.error}`);
+          if (syncErrors.length > 5) details.push(`…还有 ${syncErrors.length - 5} 个失败源`);
+          pushToast(
+            `自动同步部分完成：成功 ${okCount}，失败 ${failCount}\n${details.join('\n')}`,
+            'error'
+          );
         }
         await refreshFeeds();
+      } else if (allFeedsResp.kind === 'error') {
+        pushToast(`导入成功，但无法开始自动同步：${allFeedsResp.error}`, 'error');
       }
     }
     if (selectedFeedIdRef.current === 'all') {

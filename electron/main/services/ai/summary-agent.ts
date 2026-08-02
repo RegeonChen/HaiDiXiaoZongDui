@@ -9,7 +9,18 @@
  */
 
 import { chatCompletion } from './openai-client';
+import { compactArticleContent } from './article-input';
 import type { AIProvider, SummaryDetailLevel, Language } from '../../../../shared/types';
+
+export const SUMMARY_LIMITS = {
+  articleCharacters: 24_000,
+  timeoutMs: 60_000,
+  maxTokens: {
+    brief: 256,
+    standard: 1_024,
+    detailed: 2_200
+  }
+} as const;
 
 // ============================================================
 // 默认 Prompt 模板
@@ -106,17 +117,24 @@ export async function generateSummary(
 
   const template = customPromptTemplate || PROMPTS[detailLevel];
 
+  const compactContent = compactArticleContent(
+    articleContent,
+    SUMMARY_LIMITS.articleCharacters
+  );
   const prompt = template
     .replace(/\{\{title\}\}/g, articleTitle)
-    .replace(/\{\{content\}\}/g, articleContent)
+    .replace(/\{\{content\}\}/g, compactContent)
     .replace(/\{\{language\}\}/g, languageName)
     .replace(/\{\{detailLevel\}\}/g, detailLevel);
-
-  const maxTokens = detailLevel === 'brief' ? 512 : detailLevel === 'standard' ? 2048 : 4096;
 
   return chatCompletion(
     provider,
     [{ role: 'user', content: prompt }],
-    { temperature, maxTokens }
+    {
+      temperature,
+      maxTokens: SUMMARY_LIMITS.maxTokens[detailLevel],
+      timeoutMs: SUMMARY_LIMITS.timeoutMs,
+      enableThinking: /^qwen3(?:[.\-]|$)/i.test(provider.modelName) ? false : undefined
+    }
   );
 }

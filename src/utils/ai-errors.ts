@@ -1,3 +1,5 @@
+import { formatUserFacingError } from './user-facing-error';
+
 /** 将标签建议链路的内部错误转换成可操作的界面提示。 */
 export function formatTagSuggestionError(message: string): string {
   const raw = message.trim();
@@ -23,6 +25,5 @@ export function formatTagSuggestionError(message: string): string {
     return 'AI 请求超时，请检查网络后重试。';
   }
 
-  const withoutInternalCode = raw.replace(/^(?:[A-Z][A-Z0-9_]+:\s*)+/, '').trim();
-  return withoutInternalCode || '暂时无法生成标签建议，请稍后重试。';
+  return formatUserFacingError(raw, 'ai');
 }

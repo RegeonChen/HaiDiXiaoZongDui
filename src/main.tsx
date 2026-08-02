@@ -4,6 +4,7 @@ import App from './App';
 import { DataSourceProvider } from './context/DataSourceContext';
 import { createDataSource } from './data/dataSourceFactory';
 import './index.css';
+import './styles/workspace-pages.css';
 
 const ds = createDataSource();
 

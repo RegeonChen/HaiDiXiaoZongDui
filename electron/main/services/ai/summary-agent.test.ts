@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProvider } from '../../../../shared/types';
 import { chatCompletion } from './openai-client';
-import { generateSummary } from './summary-agent';
+import { generateSummary, SUMMARY_LIMITS } from './summary-agent';
 
 vi.mock('./openai-client', () => ({ chatCompletion: vi.fn() }));
 
@@ -28,5 +28,21 @@ describe('generateSummary', () => {
     expect(prompt).toContain('## Overview');
     expect(prompt).toContain('Markdown bullet list');
     expect(prompt).toContain('Do not wrap the response in a code fence');
+    expect(vi.mocked(chatCompletion).mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      maxTokens: SUMMARY_LIMITS.maxTokens.standard,
+      timeoutMs: SUMMARY_LIMITS.timeoutMs
+    }));
+  });
+
+  it('does not send image URLs or an unbounded long article to the provider', async () => {
+    vi.mocked(chatCompletion).mockResolvedValue('摘要');
+    const body = `开头 ![图](https://cdn.example.com/large.png)\n\n${'正文'.repeat(20_000)}\n\n结尾`;
+
+    await generateSummary(provider, '长文', body);
+
+    const prompt = vi.mocked(chatCompletion).mock.calls[0]?.[1][0]?.content ?? '';
+    expect(prompt).not.toContain('cdn.example.com');
+    expect(prompt).toContain('因文章较长已省略');
+    expect(prompt.length).toBeLessThan(SUMMARY_LIMITS.articleCharacters + 1_000);
   });
 });

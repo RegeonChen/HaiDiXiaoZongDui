@@ -4,7 +4,7 @@ import {
   type IpcChannel,
   type IpcResponse
 } from '../../../../shared/ipc';
-import { errorMessage } from './errors';
+import { ContentPipelineError, errorMessage } from './errors';
 import { splitCleanedHtmlIntoBlocks } from './content-cleaner';
 import type { ArticleContentService } from './article-content-service';
 import type { OpmlApplicationService } from './opml-service';
@@ -172,10 +172,12 @@ function handle<C extends IpcChannel>(
     try {
       return await handler(event, args);
     } catch (error) {
+      const pipelineError = error instanceof ContentPipelineError ? error : null;
       return {
         success: false,
         error: {
-          code: error instanceof TypeError ? 'VALIDATION_ERROR' : 'CONTENT_PIPELINE_ERROR',
+          code: pipelineError?.code
+            ?? (error instanceof TypeError ? 'VALIDATION_ERROR' : 'CONTENT_PIPELINE_ERROR'),
           message: errorMessage(error)
         }
       };

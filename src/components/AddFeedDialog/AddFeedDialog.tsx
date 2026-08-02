@@ -7,6 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { formatUserFacingError } from '../../utils/user-facing-error';
 import './AddFeedDialog.css';
 
 export interface AddFeedDialogProps {
@@ -70,7 +71,7 @@ export function AddFeedDialog({ open, onClose, onSubmit }: AddFeedDialogProps) {
       setErrorMsg(r.message);
     } catch (error) {
       setState('error');
-      setErrorMsg(error instanceof Error ? error.message : '添加失败，请稍后重试');
+      setErrorMsg(formatUserFacingError(error, 'feed'));
     }
   };
 

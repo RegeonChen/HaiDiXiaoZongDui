@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Article, Note, NoteCreateInput } from '@shared/types';
 import { useDataSource } from '../../context/DataSourceContext';
+import { formatUserFacingError } from '../../utils/user-facing-error';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
 import { EmptyView } from '../../components/StatusView/EmptyView';
@@ -40,7 +41,7 @@ export function NotesPage({ onToast }: NotesPageProps) {
           setSelectedArticleId(r.data[0].id);
         }
       } else {
-        setArticlesError(r.kind === 'error' ? r.error : '加载文章失败');
+        setArticlesError(r.kind === 'error' ? formatUserFacingError(r.error, 'load') : '文章仍在加载，请稍后重试。');
       }
     })();
   }, [ds, selectedArticleId]);
@@ -57,7 +58,7 @@ export function NotesPage({ onToast }: NotesPageProps) {
       setNotes(r.data);
       setNotesError(null);
     } else {
-      setNotesError(r.kind === 'error' ? r.error : '加载笔记失败');
+      setNotesError(r.kind === 'error' ? formatUserFacingError(r.error, 'load') : '笔记仍在加载，请稍后重试。');
     }
   }, [ds, selectedArticleId]);
 
@@ -79,7 +80,10 @@ export function NotesPage({ onToast }: NotesPageProps) {
         setNewMarkdown('');
         void loadNotes();
       } else {
-        onToast(`创建失败：${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        onToast(
+          `创建失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '数据尚未准备完成，请重试。'}`,
+          'error'
+        );
       }
     },
     [ds, selectedArticleId, newMarkdown, loadNotes, onToast]
@@ -93,14 +97,18 @@ export function NotesPage({ onToast }: NotesPageProps) {
         onToast('已删除', 'success');
         void loadNotes();
       } catch (err) {
-        onToast(`删除失败：${err instanceof Error ? err.message : String(err)}`, 'error');
+        onToast(`删除失败：${formatUserFacingError(err, 'delete')}`, 'error');
       }
     },
     [ds, loadNotes, onToast]
   );
 
-  if (articlesError) return <ErrorView message={articlesError} onRetry={() => void loadNotes()} />;
-  if (articles === null) return <LoadingView message="正在加载文章…" />;
+  if (articlesError) {
+    return <ErrorView message={articlesError} onRetry={() => void loadNotes()} />;
+  }
+  if (articles === null) {
+    return <LoadingView message="正在加载文章…" />;
+  }
 
   return (
     <div className="notes-page">

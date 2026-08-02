@@ -50,6 +50,10 @@ describe('article chat agent', () => {
       { role: 'assistant', content: '核心结论与缓存有关。' },
       { role: 'user', content: '它具体解决什么问题？' }
     ]);
+    expect(vi.mocked(chatCompletion).mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      maxTokens: ARTICLE_CHAT_LIMITS.maxTokens,
+      timeoutMs: ARTICLE_CHAT_LIMITS.timeoutMs
+    }));
   });
 
   it('限制文章长度、历史条数和单条消息长度', () => {

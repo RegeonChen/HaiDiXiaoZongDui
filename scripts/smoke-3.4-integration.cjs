@@ -88,7 +88,7 @@ server.listen(0, '127.0.0.1', () => {
     console.log(`[smoke-integration] electron 退出 code=${code}`);
     console[passed ? 'log' : 'error'](
       passed
-        ? '[smoke-integration] ✓ Phase 3 Integration (设置工作区 + 4 个内容工具 + AI 工具栏) 全部通过'
+        ? '[smoke-integration] ✓ Phase 3 Integration (设置工作区 + 3 个内容工具 + AI 工具栏) 全部通过'
         : '[smoke-integration] ✗ Phase 3 Integration 验证失败'
     );
     server.close(() => {

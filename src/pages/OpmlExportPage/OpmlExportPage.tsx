@@ -15,6 +15,7 @@ import { useDataSource } from '../../context/DataSourceContext';
 import { LoadingView } from '../../components/StatusView/LoadingView';
 import { ErrorView } from '../../components/StatusView/ErrorView';
 import { EmptyView } from '../../components/StatusView/EmptyView';
+import { formatUserFacingError } from '../../utils/user-facing-error';
 import './OpmlExportPage.css';
 
 export interface OpmlExportPageProps {
@@ -37,7 +38,7 @@ export function OpmlExportPage({ onToast, onClose }: OpmlExportPageProps) {
       setFeeds(r.data);
       setError(null);
     } else {
-      setError(r.kind === 'error' ? r.error : '加载失败');
+      setError(r.kind === 'error' ? formatUserFacingError(r.error, 'load') : '订阅源仍在加载，请稍后重试。');
     }
   }, [ds]);
 
@@ -100,17 +101,24 @@ export function OpmlExportPage({ onToast, onClose }: OpmlExportPageProps) {
         }
         onClose();
       } else {
-        onToast(`OPML 导出失败：${r.kind === 'error' ? r.error : '未知错误'}`, 'error');
+        onToast(
+          `OPML 导出失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'opml-export') : '保存尚未完成，请重试。'}`,
+          'error'
+        );
       }
     } catch (e) {
-      onToast(`OPML 导出失败：${e instanceof Error ? e.message : String(e)}`, 'error');
+      onToast(`OPML 导出失败：${formatUserFacingError(e, 'opml-export')}`, 'error');
     } finally {
       setExporting(false);
     }
   }, [noneSelected, selected, ds, onToast, onClose]);
 
-  if (error) return <ErrorView message={error} onRetry={load} />;
-  if (feeds === null) return <LoadingView message="正在加载订阅源…" />;
+  if (error) {
+    return <ErrorView message={error} onRetry={load} />;
+  }
+  if (feeds === null) {
+    return <LoadingView message="正在加载订阅源…" />;
+  }
 
   return (
     <div className="opml-export-page" data-testid="opml-export-page">

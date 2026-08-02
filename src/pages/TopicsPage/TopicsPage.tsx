@@ -18,6 +18,7 @@ import { ErrorView } from '../../components/StatusView/ErrorView';
 import { EmptyView } from '../../components/StatusView/EmptyView';
 import { TopicDetail } from '../../components/TopicDetail/TopicDetail';
 import { TopicFormDialog } from '../../components/TopicFormDialog/TopicFormDialog';
+import { formatUserFacingError } from '../../utils/user-facing-error';
 import './TopicsPage.css';
 
 export interface TopicsPageProps {
@@ -43,7 +44,7 @@ export function TopicsPage({ onToast, onOpenArticle }: TopicsPageProps) {
       setTopics(r.data);
       setError(null);
     } else {
-      setError(r.kind === 'error' ? r.error : '正在加载专题');
+      setError(r.kind === 'error' ? formatUserFacingError(r.error, 'load') : '专题仍在加载，请稍后重试。');
       setTopics([]);
     }
   }, [ds]);
@@ -171,7 +172,7 @@ export function TopicsPage({ onToast, onOpenArticle }: TopicsPageProps) {
                       onToast(`已删除「${t.name}」`, 'success');
                       await refresh();
                     } catch (e) {
-                      onToast(`删除失败：${e instanceof Error ? e.message : String(e)}`, 'error');
+                      onToast(`删除失败：${formatUserFacingError(e, 'delete')}`, 'error');
                     }
                   }}
                 >
@@ -198,7 +199,10 @@ export function TopicsPage({ onToast, onOpenArticle }: TopicsPageProps) {
               setFormDialog({ mode: 'closed' });
               await refresh();
             } else {
-              onToast(`创建失败：${r.kind === 'error' ? r.error : '尚未就绪'}`, 'error');
+              onToast(
+                `创建失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '数据尚未准备完成，请重试。'}`,
+                'error'
+              );
             }
           }}
           onClose={() => setFormDialog({ mode: 'closed' })}
@@ -220,7 +224,10 @@ export function TopicsPage({ onToast, onOpenArticle }: TopicsPageProps) {
               setFormDialog({ mode: 'closed' });
               await refresh();
             } else {
-              onToast(`更新失败：${r.kind === 'error' ? r.error : '尚未就绪'}`, 'error');
+              onToast(
+                `更新失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '数据尚未准备完成，请重试。'}`,
+                'error'
+              );
             }
           }}
           onClose={() => setFormDialog({ mode: 'closed' })}

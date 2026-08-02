@@ -9,6 +9,7 @@
  */
 
 import { chatCompletion, type ChatMessage } from './openai-client';
+import { compactArticleContent } from './article-input';
 import type { AIProvider, TagSuggestion } from '../../../../shared/types';
 
 // ============================================================
@@ -52,6 +53,13 @@ const REPAIR_SYSTEM_PROMPT = [
 ].join('\n');
 
 const MAX_REPAIR_INPUT_CHARACTERS = 12_000;
+export const TAG_SUGGESTION_LIMITS = {
+  articleCharacters: 12_000,
+  primaryMaxTokens: 768,
+  primaryTimeoutMs: 45_000,
+  repairMaxTokens: 640,
+  repairTimeoutMs: 15_000
+} as const;
 
 // ============================================================
 // 公共 API
@@ -63,17 +71,22 @@ export async function suggestTags(
   customPromptTemplate?: string | null
 ): Promise<TagSuggestion[]> {
   const template = customPromptTemplate || DEFAULT_TAG_PROMPT;
+  const compactContent = compactArticleContent(
+    articleContent,
+    TAG_SUGGESTION_LIMITS.articleCharacters
+  );
 
   const prompt = template
     .replace(/\{\{title\}\}/g, '')
-    .replace(/\{\{content\}\}/g, articleContent);
+    .replace(/\{\{content\}\}/g, compactContent);
 
   const output = await chatCompletion(provider, [
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'user', content: prompt }
   ], {
     temperature: 0.5,
-    maxTokens: 1024,
+    maxTokens: TAG_SUGGESTION_LIMITS.primaryMaxTokens,
+    timeoutMs: TAG_SUGGESTION_LIMITS.primaryTimeoutMs,
     enableThinking: false,
     responseFormat: 'json_object'
   });
@@ -87,7 +100,8 @@ export async function suggestTags(
       buildRepairMessages(output),
       {
         temperature: 0,
-        maxTokens: 1024,
+        maxTokens: TAG_SUGGESTION_LIMITS.repairMaxTokens,
+        timeoutMs: TAG_SUGGESTION_LIMITS.repairTimeoutMs,
         enableThinking: false,
         responseFormat: 'json_object'
       }

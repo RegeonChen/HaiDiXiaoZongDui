@@ -37,6 +37,7 @@ import { useReaderMode, type ReaderMode } from '../../hooks/useReaderMode';
 import { prepareArticleHtmlForDisplay } from '../../utils/article-images';
 import { parseArticleTitleTags } from '../../utils/article-title-tags';
 import { formatTagSuggestionError } from '../../utils/ai-errors';
+import { formatUserFacingError } from '../../utils/user-facing-error';
 import './ArticleReader.css';
 
 export interface ArticleReaderProps {
@@ -363,7 +364,9 @@ export function ArticleReader({
           { role: 'assistant', content: result.data.message }
         ]);
       } else {
-        const message = result.kind === 'error' ? result.error : 'AI 尚未返回结果';
+        const message = result.kind === 'error'
+          ? formatUserFacingError(result.error, 'ai')
+          : 'AI 尚未返回结果，请稍后重试。';
         setChatError(message);
         onToast(`AI 对话失败：${message}`, 'error');
       }
@@ -449,7 +452,7 @@ export function ArticleReader({
       const gen = await ds.aiGenerateSummary(article.id);
       if (!isCurrentArticle()) return;
       if (!gen.ok) {
-        onToast(`摘要失败:${gen.message}`, 'error');
+        onToast(`摘要失败：${formatUserFacingError(gen.message, 'ai')}`, 'error');
         // 生成失败时只关闭仍在展示的摘要栏，不能误收起用户后来切换的其他 tab。
         setStickyTab((current) => current === 'summary' ? null : current);
         return;
@@ -460,7 +463,10 @@ export function ArticleReader({
         setSummary(r.data);
         onToast('摘要已生成', 'success');
       } else {
-        onToast(`读取摘要失败:${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        onToast(
+          `读取摘要失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'ai') : '结果尚未准备完成，请重试。'}`,
+          'error'
+        );
         setStickyTab((current) => current === 'summary' ? null : current);
       }
     } finally {
@@ -524,7 +530,7 @@ export function ArticleReader({
       const gen = await ds.aiGenerateTranslation(article.id);
       if (!isCurrentArticle()) return;
       if (!gen.ok) {
-        onToast(`翻译失败:${gen.message}`, 'error');
+        onToast(`翻译失败：${formatUserFacingError(gen.message, 'ai')}`, 'error');
         // 在模型请求之前就失败(例如未配置 Provider)时没有段落状态框可保留,
         // 关闭翻译面板,不能留下一个永远显示"正在按段落翻译"的加载提示。
         if (!receivedInitialParagraphs) removePanel('translation');
@@ -536,7 +542,10 @@ export function ArticleReader({
         setTranslationParagraphs(r.data.map((paragraph) => ({ ...paragraph, status: 'ready' })));
         onToast('翻译已生成', 'success');
       } else {
-        onToast(`读取翻译失败:${r.kind === 'error' ? r.error : '未知'}`, 'error');
+        onToast(
+          `读取翻译失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'ai') : '结果尚未准备完成，请重试。'}`,
+          'error'
+        );
       }
     } finally {
       unsubscribe();
@@ -621,7 +630,7 @@ export function ArticleReader({
         await onTagsChanged();
         onToast(`已添加标签「${tag.name}」`, 'success');
       } catch (err) {
-        onToast(`添加失败:${err instanceof Error ? err.message : String(err)}`, 'error');
+        onToast(`添加失败：${formatUserFacingError(err, 'save')}`, 'error');
       }
     },
     [article, ds, articleTags, onTagsChanged, onToast]
@@ -636,7 +645,7 @@ export function ArticleReader({
         setArticleTags((prev) => prev.filter((t) => t.id !== tagId));
         await onTagsChanged();
       } catch (err) {
-        onToast(`移除失败:${err instanceof Error ? err.message : String(err)}`, 'error');
+        onToast(`移除失败：${formatUserFacingError(err, 'save')}`, 'error');
       }
     },
     [article, ds, onTagsChanged, onToast]
@@ -658,10 +667,13 @@ export function ArticleReader({
           });
           await handleAddTagToArticle(newTag);
         } else {
-          onToast(`创建失败:${r.kind === 'error' ? r.error : '未知'}`, 'error');
+          onToast(
+            `创建失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '数据尚未准备完成，请重试。'}`,
+            'error'
+          );
         }
       } catch (err) {
-        onToast(`创建失败:${err instanceof Error ? err.message : String(err)}`, 'error');
+        onToast(`创建失败：${formatUserFacingError(err, 'save')}`, 'error');
       }
     },
     [article, ds, handleAddTagToArticle, onToast]
@@ -747,10 +759,13 @@ export function ArticleReader({
           onToast('笔记已添加', 'success');
           setNoteMarkdown('');
         } else {
-          onToast(`添加失败:${r.kind === 'error' ? r.error : '未知'}`, 'error');
+          onToast(
+            `添加失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '数据尚未准备完成，请重试。'}`,
+            'error'
+          );
         }
       } catch (err) {
-        onToast(`添加失败:${err instanceof Error ? err.message : String(err)}`, 'error');
+        onToast(`添加失败：${formatUserFacingError(err, 'save')}`, 'error');
       }
     },
     [article, noteMarkdown, ds, onToast]
@@ -787,7 +802,10 @@ export function ArticleReader({
       setTopicDialogOpen(false);
       onToast(`专题「${value.name}」已创建，相关文章会在脉络图中自动关联`, 'success');
     } else {
-      onToast(`创建失败:${r.kind === 'error' ? r.error : '未知'}`, 'error');
+      onToast(
+        `创建失败：${r.kind === 'error' ? formatUserFacingError(r.error, 'save') : '数据尚未准备完成，请重试。'}`,
+        'error'
+      );
     }
   }, [article, ds, onToast]);
 
@@ -807,7 +825,9 @@ export function ArticleReader({
     }
     setTopicRecommendationState({
       status: 'error',
-      error: r.kind === 'error' ? r.error : 'AI 尚未返回可用专题名'
+      error: r.kind === 'error'
+        ? formatUserFacingError(r.error, 'ai')
+        : 'AI 尚未返回可用专题名，请重试。'
     });
   }, [article, ds]);
 

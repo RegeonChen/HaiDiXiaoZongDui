@@ -21,6 +21,6 @@ describe('formatTagSuggestionError', () => {
 
   it('removes an internal code while preserving a useful provider message', () => {
     expect(formatTagSuggestionError('AI_TAG_SUGGEST_FAILED: 上游服务暂时不可用'))
-      .toBe('上游服务暂时不可用');
+      .toBe('上游服务暂时不可用。请检查 AI 设置和网络后重试。');
   });
 });

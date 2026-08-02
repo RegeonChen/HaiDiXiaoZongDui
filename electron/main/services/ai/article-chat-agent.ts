@@ -7,11 +7,14 @@
 
 import type { AIChatMessage, AIProvider } from '../../../../shared/types';
 import { chatCompletion, type ChatMessage } from './openai-client';
+import { compactArticleContent } from './article-input';
 
 export const ARTICLE_CHAT_LIMITS = {
-  articleCharacters: 30_000,
+  articleCharacters: 20_000,
   historyMessages: 16,
-  messageCharacters: 6_000
+  messageCharacters: 6_000,
+  maxTokens: 1_200,
+  timeoutMs: 60_000
 } as const;
 
 export function buildArticleChatMessages(
@@ -32,7 +35,10 @@ export function buildArticleChatMessages(
   }
 
   const title = articleTitle.trim().slice(0, 500) || '未命名文章';
-  const content = articleContent.trim().slice(0, ARTICLE_CHAT_LIMITS.articleCharacters);
+  const content = compactArticleContent(
+    articleContent,
+    ARTICLE_CHAT_LIMITS.articleCharacters
+  );
   const systemPrompt = [
     '你是 RSS 阅读器中的文章 AI 助手。',
     '请优先依据下方文章内容回答，并结合当前对话理解用户的追问。',
@@ -63,7 +69,9 @@ export async function answerArticleQuestion(
     buildArticleChatMessages(articleTitle, articleContent, messages),
     {
       temperature: 0.35,
-      maxTokens: 2048
+      maxTokens: ARTICLE_CHAT_LIMITS.maxTokens,
+      timeoutMs: ARTICLE_CHAT_LIMITS.timeoutMs,
+      enableThinking: /^qwen3(?:[.\-]|$)/i.test(provider.modelName) ? false : undefined
     }
   );
 }

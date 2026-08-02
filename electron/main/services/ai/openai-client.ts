@@ -9,6 +9,7 @@
  */
 
 import type { AIProvider } from '../../../../shared/types';
+import { classifyAiFailure } from './ai-failure';
 
 // ============================================================
 // 类型
@@ -280,6 +281,6 @@ export async function testConnection(provider: AIProvider, apiKey: string): Prom
     }
     return { ok: false, message: `模型返回空文本（reply="${reply}"，${reply.length} 字符）` };
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : '未知错误' };
+    return { ok: false, message: classifyAiFailure(e, 'PROVIDER').message };
   }
 }
