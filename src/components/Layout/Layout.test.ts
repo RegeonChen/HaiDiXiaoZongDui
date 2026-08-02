@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { act, createElement } from 'react';
+import { act, createElement, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThemeProvider } from '../../hooks/useTheme';
+import { pinWorkbenchTab } from '../../utils/workbench-tabs';
 import { Layout, nextDirectoryMode, type LayoutProps } from './Layout';
 
 const matchMedia = (query: string): MediaQueryList => ({
@@ -232,5 +233,83 @@ describe('Layout fixed directory structure', () => {
     });
     expect(onTabSelect).toHaveBeenCalledWith('article:1');
     expect(onEditorInteraction).toHaveBeenCalledOnce();
+  });
+
+  it('keeps controlled editor inputs editable while pinning a preview tab', async () => {
+    function ControlledInputHarness() {
+      const [value, setValue] = useState('');
+      const [tabs, setTabs] = useState<LayoutProps['tabs']>([{
+        id: 'page:notes',
+        label: '笔记',
+        page: 'notes',
+        icon: 'notes',
+        closeable: true,
+        preview: true
+      }]);
+      const props: LayoutProps = {
+        sidebarSlot: createElement('div'),
+        articlesSlot: createElement('div'),
+        readerSlot: createElement('div'),
+        sidebarPercent: 24,
+        listPercent: 28,
+        onResizeSidebar: vi.fn(),
+        onResizeList: vi.fn(),
+        currentPage: 'notes',
+        onPageChange: vi.fn(),
+        pageSlot: createElement('textarea', {
+          'data-testid': 'controlled-editor-input',
+          value,
+          onChange: (event: Event) => {
+            setValue((event.target as HTMLTextAreaElement).value);
+          }
+        }),
+        tabs,
+        activeTabId: 'page:notes',
+        onTabSelect: vi.fn(),
+        onTabPin: vi.fn(),
+        onTabClose: vi.fn(),
+        aiDockOpen: false,
+        aiAvailable: false,
+        onToggleAiDock: vi.fn(),
+        onOpenSettings: vi.fn(),
+        directoryMode: 'both',
+        onReaderAction: vi.fn(),
+        onEditorInteraction: () => {
+          setTabs((current) => pinWorkbenchTab(current, 'page:notes'));
+        }
+      };
+      return createElement(
+        ThemeProvider,
+        null,
+        createElement(Layout, props)
+      );
+    }
+
+    await act(async () => {
+      root.render(createElement(ControlledInputHarness));
+    });
+
+    const input = container.querySelector<HTMLTextAreaElement>(
+      '[data-testid="controlled-editor-input"]'
+    );
+    expect(input).not.toBeNull();
+
+    await act(async () => {
+      input?.focus();
+    });
+    expect(container.querySelector('[data-tab-id="page:notes"]')?.getAttribute('data-preview'))
+      .toBe('false');
+
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        'value'
+      )?.set;
+      valueSetter?.call(input, '现在可以输入');
+      input?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    expect(input?.value).toBe('现在可以输入');
+    expect(document.activeElement).toBe(input);
   });
 });

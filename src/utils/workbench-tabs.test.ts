@@ -50,4 +50,11 @@ describe('workbench preview tabs', () => {
     expect(second.tabs[0].preview).toBe(false);
     expect(second.replacedTab).toBeNull();
   });
+
+  it('keeps the same array when the requested tab is already pinned', () => {
+    const tabs = [tab('page:notes', false)];
+
+    expect(pinWorkbenchTab(tabs, 'page:notes')).toBe(tabs);
+    expect(pinWorkbenchTab(tabs, 'page:missing')).toBe(tabs);
+  });
 });

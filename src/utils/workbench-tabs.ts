@@ -44,9 +44,10 @@ export function pinWorkbenchTab(
   tabs: WorkbenchTab[],
   tabId: string
 ): WorkbenchTab[] {
-  return tabs.map((tab) => (
-    tab.id === tabId && tab.preview
-      ? { ...tab, preview: false }
-      : tab
-  ));
+  const previewIndex = tabs.findIndex((tab) => tab.id === tabId && tab.preview);
+  if (previewIndex < 0) return tabs;
+
+  const nextTabs = [...tabs];
+  nextTabs[previewIndex] = { ...nextTabs[previewIndex], preview: false };
+  return nextTabs;
 }

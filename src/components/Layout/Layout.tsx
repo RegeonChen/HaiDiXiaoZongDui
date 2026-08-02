@@ -345,10 +345,10 @@ export function Layout({
 
             <section
               className="app-editor pane pane-reader"
-              onClickCapture={handleEditorInteraction}
-              onInputCapture={handleEditorInteraction}
-              onChangeCapture={handleEditorInteraction}
-              onSubmitCapture={onEditorInteraction}
+              onClick={handleEditorInteraction}
+              onFocusCapture={handleEditorInteraction}
+              onChange={handleEditorInteraction}
+              onSubmit={onEditorInteraction}
             >
               {tabs.length > 0 && (
                 <div className="app-page__tabbar" role="tablist" aria-label="工作区标签页">
